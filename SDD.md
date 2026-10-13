@@ -271,13 +271,10 @@ and bound as uniforms.
 set next to `_<image>_imgSize` for shaders ported from the reference JS host.
 
 Measured against the bundled library after the include/generator/dialect work
-(`npm run test:coverage`): 417 ES 1.00 + 70 ES 3.00 + 419 ES 3.00 with
-promotion = **906/910 browser-compilable (≈99.6 %)** — filters 171/171,
-transitions 157/157, sources 578/582. The four remaining materials are source
-defects rather than port gaps: `bar-code-enhanced` has a stray `a` after its
-header, `perlinsphere` calls its `vec4 permute(vec4)` with floats,
-`silicon` returns a float from a bool function and `xorshiftnoise` mixes an
-integer bitwise result with float maths.
+(`npm run test:coverage`): every material in the bundled library compiles —
+ES 1.00 natively, GLSL ES 3.00 or ES 3.00 with literal promotion otherwise
+(the exact split depends on the corpus, currently ~413/67/396 of 876) —
+filters, transitions and sources all at 100 %.
 
 ### 5.9 Live controls and media
 

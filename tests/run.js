@@ -683,6 +683,21 @@ test("desktop exponent literals do not lose their exponent", () => {
     assert(built.fragmentES3Loose.indexOf("6.0") === -1, built.fragmentES3Loose);
 });
 
+test("int-returning functions keep integer return expressions", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nint binLand(vec2 p){\n    float land = p.x;\n    return (land < .15 ? 1: 0);\n}\nvoid main(){ gl_FragColor = vec4(float(binLand(isf_FragNormCoord))); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("return (land < .15 ? 1: 0)") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("? 1.0: 0.0") === -1, built.fragmentES3Loose);
+});
+
+test("integer constants used with bitwise operators stay int", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nconst int k = 1103515245;\nvec3 hash(ivec3 x){\n    x = ((x>>8)^x.yzx)*k;\n    return vec3(x);\n}\nvoid main(){ gl_FragColor = vec4(hash(ivec3(1,2,3)), 1.0); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("const int k = 1103515245;") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("1103515245.0") === -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("((x>>8)^x.yzx)*k") !== -1, built.fragmentES3Loose);
+});
+
 test("MadMapper GENERATORS are declared and exposed", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mat_speed","TYPE":"float","DEFAULT":1,"MIN":0,"MAX":4}],"GENERATORS":[{"NAME":"mat_time_source","TYPE":"time_base","PARAMS":{"speed":"mat_speed"}}]}*/\nvoid main(){ gl_FragColor = vec4(mat_time_source); }';
     const built = isf.buildShader(isf.parseISF(source), {});

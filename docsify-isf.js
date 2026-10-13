@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.7.0
+ * docsify-isf v1.8.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.7.0";
+    var VERSION = "1.8.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1776,6 +1776,17 @@
 
         // 1. Float `const int` declarations whose name is only used in
         //    arithmetic (never as an array index, loop bound or bit operand).
+        function constantUsedInBitwise(source, name) {
+            var lines = String(source).split("\n");
+            for (var li = 0; li < lines.length; li++) {
+                var line = lines[li];
+                if (line.indexOf(name) === -1) continue;
+                var withoutLogical = line.replace(/&&/g, "").replace(/\|\|/g, "");
+                if (/[&|^]|<<|>>/.test(withoutLogical)) return true;
+            }
+            return false;
+        }
+
         var intConstRe = /const\s+(?:lowp\s+|mediump\s+|highp\s+)?int\s+([A-Za-z_]\w*)\s*=\s*([0-9]+)\s*;/g;
         var match;
         var conversions = [];
@@ -1783,7 +1794,7 @@
             var constantName = escapeRegExp(match[1]);
             var risky = new RegExp("\\[\\s*" + constantName + "\\b|\\b" + constantName + "\\s*]|[%]\\s*" + constantName + "\\b|\\b" + constantName + "\\s*[%]").test(text)
                 || new RegExp("\\b(for|while)\\s*\\([^)]*\\b" + constantName + "\\b").test(text);
-            if (!risky) conversions.push({ name: match[1], value: match[2] });
+            if (!risky && !constantUsedInBitwise(text, match[1])) conversions.push({ name: match[1], value: match[2] });
         }
         for (var c = 0; c < conversions.length; c++) {
             var declaration = new RegExp("const\\s+(?:lowp\\s+|mediump\\s+|highp\\s+)?int\\s+" + escapeRegExp(conversions[c].name) + "\\s*=\\s*" + conversions[c].value + "\\s*;");
@@ -2178,6 +2189,9 @@
             if (patterns.intAssignRe && patterns.intAssignRe.test(code)) continue;
             if (/<<|>>/.test(code)) continue;
             if (patterns.intAssignRe && patterns.intAssignRe.test(code)) continue;
+            // An int-returning function's expression is an integer context
+            // (`return (land < .15 ? 1 : 0);`).
+            if (!intDeclarationMatch && /\breturn\b/.test(code) && /^(?:int|uint|[iub]vec[234])$/.test(scopes[i].returnType || "")) continue;
             // `return 0;` in a float-returning function: force the literal.
             if (!intDeclarationMatch && /\breturn\b/.test(code) && /^(?:float|vec[234]|mat[234])$/.test(scopes[i].returnType || "")) {
                 lines[i] = castAndPromote(line, null, -1, true, null, patterns, false, protectedNames, null);
