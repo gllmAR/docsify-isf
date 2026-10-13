@@ -149,9 +149,10 @@ try {
                 const overlayVisible = overlay && overlay.style.display !== "none";
                 if (loading || (overlayVisible && /Loading/.test(overlay.textContent))) return false;
                 const hasParams = block.querySelectorAll(".isf-param").length > 0;
+                const hasView = !!block.querySelector(".isf-view");
                 const erroring = overlayVisible && /error|could not|invalid|unexpected|redefinition|syntax/i.test(overlay.textContent);
                 const statusError = status && /error/i.test(status.className);
-                return hasParams || erroring || statusError;
+                return hasParams || hasView || erroring || statusError;
             });
         }, { timeout: 45000, polling: 250 });
     } catch (error) {
@@ -182,7 +183,8 @@ try {
                 overlayText: overlay ? overlay.textContent.trim().slice(0, 120) : "",
                 badge: badge ? badge.textContent.trim() : "",
                 hasEditor: editors.length > 0,
-                hasParams: !!block.querySelector(".isf-param")
+                hasParams: !!block.querySelector(".isf-param"),
+                hasView: !!block.querySelector(".isf-view")
             };
         });
     });
@@ -235,7 +237,7 @@ try {
         }
         if (!item.canvasWidth || !item.canvasHeight) problems.push(item.title + ": canvas has no size");
         if (!item.hasContext) problems.push(item.title + ": no WebGL context");
-        if (!item.hasParams) problems.push(item.title + ": no parameter controls");
+        if (!item.hasParams && !item.hasView) problems.push(item.title + ": no controls or view row");
         if (!item.hasEditor) problems.push(item.title + ": no editor");
     }
 
@@ -343,6 +345,112 @@ try {
         if (closed.missing) problems.push("editor close button missing");
         else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
     }
+
+    // Live-editing features: fragment/vertex tabs, comment toggle, font zoom.
+    const editorFeatures = await page.evaluate(async () => {
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
+        const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
+        if (block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden")) byTitle(block, "Source editor").click();
+        await wait(300);
+        const textarea = block.querySelector(".isf-input");
+        Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Vertex/i.test(t.textContent)).click();
+        await wait(150);
+        const vertexStarter = /isf_vertShaderInit/.test(textarea.value);
+        byText(block, "Apply").click();
+        await wait(700);
+        const vertexApplied = /Applied/.test(block.querySelector(".isf-editor-status").textContent);
+        Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Fragment/i.test(t.textContent)).click();
+        await wait(150);
+        textarea.selectionStart = textarea.selectionEnd = 0;
+        textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true }));
+        await wait(150);
+        const commented = textarea.value.split("\n")[0].indexOf("//") === 0;
+        textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true }));
+        await wait(120);
+        const sizeBefore = parseFloat(getComputedStyle(block.querySelector(".isf-editor")).fontSize);
+        textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "=", ctrlKey: true, bubbles: true }));
+        await wait(150);
+        const sizeAfter = parseFloat(getComputedStyle(block.querySelector(".isf-editor")).fontSize);
+        textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true, bubbles: true }));
+        await wait(120);
+        return { vertexStarter: vertexStarter, vertexApplied: vertexApplied, commented: commented, sizeBefore: sizeBefore, sizeAfter: sizeAfter };
+    });
+    if (!editorFeatures.vertexStarter) problems.push("vertex tab did not prefill the starter");
+    if (!editorFeatures.vertexApplied) problems.push("custom vertex shader apply failed");
+    if (!editorFeatures.commented) problems.push("Ctrl+/ did not toggle the comment");
+    if (!(editorFeatures.sizeAfter > editorFeatures.sizeBefore)) problems.push("Ctrl+= did not zoom the editor: " + JSON.stringify(editorFeatures));
+
+    // Shadertoy importer round trip (paste, convert, apply, revert).
+    const importFlow = await page.evaluate(async () => {
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
+        const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
+        if (block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden")) byTitle(block, "Source editor").click();
+        await wait(250);
+        byText(block, "Import").click();
+        await wait(250);
+        const panel = block.querySelector(".isf-import");
+        const area = panel.querySelector("textarea");
+        area.value = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { vec2 uv = fragCoord / iResolution.xy; fragColor = texture(iChannel0, uv) * (0.5 + 0.5 * sin(iTime)) + iMouse.x * 0.001; }";
+        byText(panel, "Convert & Load").click();
+        await wait(1400);
+        const source = block.querySelector(".isf-input").value;
+        const status = block.querySelector(".isf-editor-status").textContent;
+        const error = /is-error/.test(block.querySelector(".isf-status").className) || /error/i.test(status);
+        const converted = /Converted from a Shadertoy/.test(source) && /iChannel0/.test(source) && /texture2D\(iChannel0/.test(source) && /#define iMouse _isfMouse/.test(source) && /mainImage\(gl_FragColor, gl_FragCoord.xy\)/.test(source);
+        // exercise the pointer extension on the imported shader
+        const stage = block.querySelector(".isf-stage");
+        stage.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 100, clientY: 100, pointerId: 1, cancelable: true }));
+        stage.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 140, clientY: 120, pointerId: 1, cancelable: true }));
+        window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
+        await wait(400);
+        const pointerError = /is-error/.test(block.querySelector(".isf-status").className);
+        byText(block, "Revert").click();
+        await wait(900);
+        const restored = /CATEGORIES/.test(block.querySelector(".isf-input").value);
+        return { converted: converted, error: error, status: status, restored: restored, pointerError: pointerError };
+    });
+    if (!importFlow.converted) problems.push("Shadertoy import did not produce ISF: " + JSON.stringify(importFlow));
+    if (importFlow.error) problems.push("imported shader reported an error: " + JSON.stringify(importFlow));
+    if (importFlow.pointerError) problems.push("pointer events broke the imported shader");
+    if (!importFlow.restored) problems.push("revert after import did not restore the original source");
+
+    // View controls: pass preview, quality selector, PNG export, share link.
+    const viewControls = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        const share = plasma.querySelector('.isf-btn[title="Copy a link with the current parameters"]');
+        const quality = plasma.querySelector('select[aria-label="Render quality"]');
+        const canvas = plasma.querySelector(".isf-canvas");
+        const before = canvas.width;
+        quality.value = "0.5";
+        quality.dispatchEvent(new Event("change", { bubbles: true }));
+        await wait(500);
+        const after = canvas.width;
+        quality.value = "auto";
+        quality.dispatchEvent(new Event("change", { bubbles: true }));
+        await wait(300);
+        const exportLength = canvas.toDataURL("image/png").length;
+        const multipass = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /Multi-pass/i.test(title.textContent);
+        });
+        const passSelect = multipass.querySelector('select[aria-label="Preview a render pass"]');
+        const passOptions = passSelect ? Array.from(passSelect.options).map((option) => option.value) : [];
+        if (passSelect) {
+            passSelect.value = "halfImage";
+            passSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        await wait(300);
+        return { share: !!share, qualityShrunk: after < before, passOptions: passOptions, exportLength: exportLength };
+    });
+    if (!viewControls.share) problems.push("share button missing");
+    if (!viewControls.qualityShrunk) problems.push("quality selector did not resize the canvas: " + JSON.stringify(viewControls));
+    if (viewControls.passOptions.indexOf("halfImage") === -1) problems.push("pass preview selector missing halfImage: " + JSON.stringify(viewControls.passOptions));
+    if (viewControls.exportLength < 100) problems.push("PNG export produced no data");
 
     // Context budget: scroll a released viewer into view and wait for the pump.
     const recovery = await page.evaluate(async () => {

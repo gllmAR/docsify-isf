@@ -100,6 +100,16 @@ Both must show a readable error (`caption`/line number) instead of a blank
 canvas or a silent failure. Open the editor to see the offending line
 highlighted.
 
+### Shadertoy import — pointer extension
+
+[Mouse ripple (converted from Shadertoy)](./samples/mouse-ripple.fs)
+
+This file is the output of the built-in importer: open the editor, press
+**Import**, paste a Shadertoy `mainImage()` shader and press **Convert &
+Load**. Move the pointer over the preview to move the ripple (click for the
+`iMouse.zw` state) — the importer maps `iMouse`/`mouse` to the docsify-isf
+`_isfMouse` pointer extension.
+
 ## Quick start (Docsify)
 
 ```html
@@ -172,6 +182,8 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
 | `persistLayout` | `true` | Remember editor height / side width across viewers and pages. |
+| `persistValues` | `true` | Remember parameter values per shader URL. |
+| `share` | `true` | Show the “copy link” button (parameters + panel state). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
@@ -189,12 +201,19 @@ Press the `</>` button in the viewer header:
 - **GLSL syntax highlighting** for keywords, types, built-ins, ISF functions
   and the ISF uniforms, with an **active-line highlight**, a **line-number
   gutter** and a live **`Ln x, Col y`** caret readout.
+- **Fragment and Vertex tabs** — a companion `.vs` is loaded into the Vertex
+  tab automatically; opening an empty Vertex tab prefills a working
+  `isf_vertShaderInit()` starter. Compile errors are mapped to the right tab.
 - **Ctrl/Cmd + Enter** (or **Apply**) compiles; with `editorLive` the shader
   recompiles shortly after you stop typing and the status bar reports the
   compile time.
 - **Enter auto-indents** (keeps the current indentation, adds one level after
   an opening bracket); **Tab / Shift+Tab** indent and dedent the selection;
+  **Ctrl/Cmd + /** toggles comments; **Ctrl/Cmd + +/-/0** zooms the editor;
   indentation width follows `editorIndent`.
+- A **Templates…** menu inserts ready-made `INPUTS` snippets (float, bool,
+  color, point2D, event, long, image, audioFFT) or starts a new generator,
+  filter, transition or multi-pass shader.
 - Compile errors are mapped back to the original `.fs` file line — the gutter
   highlights it, the status bar explains it, and the error overlay offers
   **Fix at line N**, **Copy error** and **Open source**.
@@ -204,6 +223,24 @@ Press the `</>` button in the viewer header:
   or focus it and use ↑/↓/Home/End). The panel width has the same handle on
   its left edge. Both sizes persist in `localStorage` when `persistLayout` is
   on.
+
+## Import (Shadertoy / GLSL Sandbox)
+
+The editor's **Import** button opens a paste box and converts the two most
+common non-ISF dialects the way the official ISF Editor does:
+
+| Source | Conversion |
+|---|---|
+| Shadertoy | `iTime`/`iGlobalTime`→`TIME`, `iTimeDelta`→`TIMEDELTA`, `iResolution`→`RENDERSIZE`, `iFrame`→`FRAMEINDEX`, `iDate`→`DATE`, `iChannelTime[n]`→`TIME`, `iChannelResolution[n]`→`IMG_SIZE(iChannelN)`, `texture`/`textureLod`/`textureGrad`→`texture2D`, `texelFetch`→`IMG_PIXEL`, `iChannelN`→image inputs, and a `main()` wrapper that calls `mainImage(gl_FragColor, gl_FragCoord.xy)` |
+| GLSL Sandbox | `time`→`TIME`, `resolution`→`RENDERSIZE`, `mouse`→`_isfMouse.xy`, stale environment `uniform` declarations stripped |
+
+Converted `iMouse`/`mouse` uses the docsify-isf **`_isfMouse` pointer
+extension** (`vec4`: `xy` = pointer position in pixels with the origin at the
+bottom-left, `zw` = click position, `z` negative when the button is up) so
+imported shaders are interactive without any input control. The `View`
+selector in the parameters panel previews any render-pass target, `Quality`
+scales the render (0.25×–2× or auto), and **Export PNG** downloads the
+current frame.
 
 ## UI/UX notes
 
@@ -230,8 +267,9 @@ Press the `</>` button in the viewer header:
 | Functions | `IMG_PIXEL`, `IMG_NORM_PIXEL`, `IMG_THIS_PIXEL`, `IMG_NORM_THIS_PIXEL`, `IMG_THIS_NORM_PIXEL`, `IMG_SIZE` |
 | Passes | `TARGET`, `PERSISTENT`, `FLOAT`, `WIDTH`/`HEIGHT` equations |
 | Imports | `IMPORTED` map (and the MadMapper array form) |
-| Vertex | default generated vertex shader, or a same-name `.vs` |
+| Vertex | default generated vertex shader, or a same-name `.vs` (editable tab) |
 | ISF v1 | `vv_FragNormCoord`, `vv_vertShaderInit` aliases |
+| docsify-isf | `_isfMouse` pointer `vec4` (Shadertoy semantics), pass-target preview, quality scaling, PNG export |
 
 ## Performance and context budget
 

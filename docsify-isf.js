@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.1.0
+ * docsify-isf v1.2.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.1.0";
+    var VERSION = "1.2.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -76,6 +76,8 @@
         editorDebounce: 600,
         editorIndent: 2,            // spaces per indent level; 0 = tab
         persistLayout: true,        // remember editor height / side width
+        persistValues: true,        // remember parameter values per shader URL
+        share: true,                // show the copy-link button
         imageUrl: null,
         vertexShader: "auto",       // "auto" | false
         imports: true,
@@ -195,6 +197,48 @@
     }
 
     var LAYOUT_KEY = "docsify-isf:layout";
+    var VALUES_KEY_PREFIX = "docsify-isf:values:";
+    var VIEWERS = [];
+
+    function loadStoredValues(url) {
+        try {
+            var raw = typeof localStorage !== "undefined" ? localStorage.getItem(VALUES_KEY_PREFIX + url) : null;
+            var parsed = raw ? JSON.parse(raw) : null;
+            return isObject(parsed) ? parsed : null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function storeValues(viewer) {
+        if (!viewer || viewer.disposed || viewer.config.persistValues === false) return;
+        try {
+            if (typeof localStorage !== "undefined") {
+                localStorage.setItem(VALUES_KEY_PREFIX + viewer.url, JSON.stringify(viewer.nonDefaultValues()));
+            }
+        } catch (err) { /* private mode / full storage */ }
+    }
+
+    function readUrlFlags() {
+        var flags = { editor: false, controls: false, values: null };
+        try {
+            var params = new URLSearchParams(window.location.search);
+            flags.editor = params.get("isf-editor") === "1";
+            flags.controls = params.get("isf-controls") === "1";
+            var raw = params.get("isf-values");
+            if (raw) {
+                var padded = raw.replace(/-/g, "+").replace(/_/g, "/");
+                while (padded.length % 4) padded += "=";
+                flags.values = JSON.parse(atob(padded));
+            }
+        } catch (err) { /* malformed flags are ignored */ }
+        return flags;
+    }
+
+    function encodeBase64Url(text) {
+        var base64 = btoa(String(text));
+        return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
 
     function loadLayout() {
         try {
@@ -1322,6 +1366,7 @@
         "uniform float TIMEDELTA;",
         "uniform int FRAMEINDEX;",
         "uniform vec4 DATE;",
+        "uniform vec4 _isfMouse;",
         "varying vec2 isf_FragNormCoord;"
     ].join("\n") + "\n";
 
@@ -1349,25 +1394,29 @@
     }
 
     function buildVertexShader(userVertexShader, uniformDeclarations) {
-        if (!userVertexShader) return defaultVertexShader();
+        if (!userVertexShader) return { source: defaultVertexShader(), preludeLines: 0 };
         var body = stripVersionDirective(userVertexShader);
         body = body.replace(/\bvv_vertShaderInit\b/g, "isf_vertShaderInit");
         body = body.replace(/\bvv_FragNormCoord\b/g, "isf_FragNormCoord");
-        return [
+        var prefixLines = [
             "precision highp float;",
             "precision highp int;",
             "attribute vec2 isf_position;",
             "uniform int PASSINDEX;",
             "uniform vec2 RENDERSIZE;",
-            "varying vec2 isf_FragNormCoord;",
-            uniformDeclarations,
-            "void isf_vertShaderInit(void);",
-            body,
+            "varying vec2 isf_FragNormCoord;"
+        ];
+        if (uniformDeclarations) prefixLines.push(uniformDeclarations);
+        prefixLines.push("void isf_vertShaderInit(void);");
+        var prefix = prefixLines.join("\n");
+        var preludeLines = (prefix.match(/\n/g) || []).length;
+        var suffix = [
             "void isf_vertShaderInit(void) {",
             "    gl_Position = vec4(isf_position, 0.0, 1.0);",
             "    isf_FragNormCoord = gl_Position.xy * 0.5 + 0.5;",
             "}"
         ].join("\n");
+        return { source: prefix + "\n" + body + "\n" + suffix + "\n", preludeLines: preludeLines };
     }
 
     function buildShader(parsed, options) {
@@ -1429,7 +1478,8 @@
         var fragment = prelude + rewritten.source;
         var preludeLines = (prelude.match(/\n/g) || []).length;
 
-        var vertex = buildVertexShader(options.vertexShader, uniformLines.join("\n"));
+        var vertexInfo = buildVertexShader(options.vertexShader, uniformLines.join("\n"));
+        var vertex = vertexInfo.source;
 
         return {
             ok: true,
@@ -1442,11 +1492,126 @@
             warnings: warnings,
             unresolved: unresolved,
             preludeLines: preludeLines,
+            vertexPreludeLines: vertexInfo.preludeLines,
             bodyStartLine: parsed.bodyStartLine || 1,
             lineMap: function (generatedLine) {
                 if (generatedLine <= preludeLines) return null;
                 return (parsed.bodyStartLine || 1) + (generatedLine - preludeLines - 1);
+            },
+            vertexLineMap: function (generatedLine) {
+                if (!vertexInfo.preludeLines || generatedLine <= vertexInfo.preludeLines) return null;
+                return generatedLine - vertexInfo.preludeLines;
             }
+        };
+    }
+
+    /* ==================================================================
+     * Shadertoy / GLSL Sandbox → ISF conversion
+     *
+     * Mirrors the import feature of the official ISF Editor (VVISF-GL
+     * ShadertoyConverter / GLSLSandboxConverter): map the well-known
+     * uniforms and texture helpers onto ISF, wrap mainImage() in main() and
+     * generate the metadata block. The docsify-isf pointer extension
+     * `_isfMouse` (vec4, Shadertoy semantics) replaces iMouse/mouse.
+     * ================================================================== */
+
+    function detectShaderDialect(source) {
+        var text = String(source == null ? "" : source);
+        if (/\bvoid\s+mainImage\s*\(/.test(text)) return "shadertoy";
+        if (/\buniform\s+float\s+time\b/.test(text) || /\bresolution\b/.test(text) && /\bgl_FragColor\b/.test(text)) return "glslsandbox";
+        return "isf";
+    }
+
+    function convertToISF(source) {
+        var text = String(source == null ? "" : source).replace(/\r\n?/g, "\n");
+        var dialect = detectShaderDialect(text);
+        var warnings = [];
+        var inputLines = [];
+        var body = text;
+        var description;
+
+        function replaceIdentifier(name, replacement) {
+            var re = new RegExp("(^|[^A-Za-z0-9_])" + name + "(?![A-Za-z0-9_])", "g");
+            body = body.replace(re, "$1" + replacement);
+        }
+
+        // Shadertoy / GLSL Sandbox code often declares its environment
+        // uniforms; ISF hosts declare them, so the stale lines must go.
+        function stripBuiltinUniforms() {
+            body = body.replace(/^[ \t]*uniform\s+(?:lowp\s+|mediump\s+|highp\s+)?(?:float|vec2|vec3|vec4|int|bool)\s+(?:TIME|TIMEDELTA|RENDERSIZE|DATE|FRAMEINDEX|PASSINDEX|_isfMouse)\s*;[ \t]*$/gm, "");
+        }
+
+        if (dialect === "shadertoy") {
+            description = "Converted from a Shadertoy mainImage() shader.";
+
+            replaceIdentifier("iGlobalTime", "TIME");
+            replaceIdentifier("iTimeDelta", "TIMEDELTA");
+            replaceIdentifier("iTime", "TIME");
+            replaceIdentifier("iResolution", "RENDERSIZE");
+            replaceIdentifier("iFrame", "FRAMEINDEX");
+            replaceIdentifier("iDate", "DATE");
+            body = body.replace(/iChannelTime\s*\[\s*\d+\s*\]/g, "TIME");
+
+            body = body.replace(/\btextureLod\s*\(([^,]+),([^,]+),[^)]+\)/g, "texture2D($1,$2)");
+            body = body.replace(/\btextureGrad\s*\(([^,]+),([^,]+),[^)]+,[^)]+\)/g, "texture2D($1,$2)");
+            body = body.replace(/\btexelFetch\s*\(([^,]+),\s*([^,]+),\s*[^)]+\)/g, "IMG_PIXEL($1, vec2($2))");
+            body = body.replace(/\btexture\s*\(/g, "texture2D(");
+
+            var channels = {};
+            body.replace(/\biChannel([0-9])\b/g, function (match, index) { channels[index] = true; return match; });
+            Object.keys(channels).sort().forEach(function (index) {
+                inputLines.push('        { "NAME": "iChannel' + index + '", "TYPE": "image", "LABEL": "Channel ' + index + '" }');
+            });
+            body = body.replace(/iChannelResolution\s*\[\s*([0-9]+)\s*\]/g, function (match, index) {
+                return "IMG_SIZE(iChannel" + index + ")";
+            });
+
+            var prelude = ["#define HW_PERFORMANCE 1"];
+            if (/\biMouse\b/.test(body)) {
+                prelude.push("#define iMouse _isfMouse");
+                warnings.push("iMouse is fed from the pointer (xy = position, zw = click state).");
+            }
+            body = prelude.join("\n") + "\n\n" + body;
+            body += "\n\nvoid main() {\n    mainImage(gl_FragColor, gl_FragCoord.xy);\n}\n";
+        } else if (dialect === "glslsandbox") {
+            description = "Converted from a GLSL Sandbox shader.";
+            replaceIdentifier("time", "TIME");
+            replaceIdentifier("resolution", "RENDERSIZE");
+            if (/\bmouse\b/.test(body)) {
+                body = body.replace(/(^|[^A-Za-z0-9_.])mouse(?![A-Za-z0-9_])/g, "$1_isfMouse.xy");
+                warnings.push("mouse is fed from the pointer (pixels, origin bottom-left).");
+            }
+            if (/\bbackbuffer\b/.test(body)) warnings.push("backbuffer feedback is not supported in the browser viewer.");
+        } else {
+            return {
+                ok: false,
+                format: dialect,
+                source: text,
+                warnings: [],
+                error: "This source already looks like ISF; only Shadertoy mainImage() and GLSL Sandbox shaders need conversion."
+            };
+        }
+
+        stripBuiltinUniforms();
+        var header = [
+            "/*{",
+            '    "DESCRIPTION": "' + description.replace(/"/g, '\\"') + '",',
+            '    "CREDIT": "Converted to ISF by docsify-isf",',
+            '    "ISFVSN": "2",',
+            '    "CATEGORIES": [ "Converted" ],',
+            '    "INPUTS": [',
+            inputLines.join(",\n"),
+            "    ]",
+            "}*/",
+            ""
+        ].join("\n");
+
+        return {
+            ok: true,
+            format: dialect,
+            source: header + body,
+            warnings: warnings,
+            error: null
         };
     }
 
@@ -1643,11 +1808,11 @@
             ".isf-editor-status.is-ok{color:#3f9142}",
             ".isf-editor-actions{display:flex;gap:.25rem}",
             ".isf-editor-actions .isf-btn{padding:.2rem .45rem}",
-            ".isf-editor{position:relative;display:flex;height:300px;background:var(--isf-code-bg);color:var(--isf-code-text);overflow:hidden}",
-            ".isf-gutter{flex:0 0 auto;width:3em;padding:8px 4px 8px 0;text-align:right;overflow:hidden;background:rgba(255,255,255,.03);color:#565c66;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.55;white-space:pre;user-select:none}",
+            ".isf-editor{position:relative;display:flex;height:300px;background:var(--isf-code-bg);color:var(--isf-code-text);overflow:hidden;font-size:12px}",
+            ".isf-gutter{flex:0 0 auto;width:3em;padding:8px 4px 8px 0;text-align:right;overflow:hidden;background:rgba(255,255,255,.03);color:#565c66;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:inherit;line-height:1.55;white-space:pre;user-select:none}",
             ".isf-gutter-error{color:#ff7b72;font-weight:700}",
             ".isf-code{position:relative;flex:1 1 auto;min-width:0;overflow:hidden}",
-            ".isf-editor .isf-highlight,.isf-editor .isf-input{position:absolute;inset:0;margin:0;border:0;padding:8px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.55;tab-size:2;-moz-tab-size:2;white-space:pre;word-wrap:normal;overflow:auto;background:transparent}",
+            ".isf-editor .isf-highlight,.isf-editor .isf-input{position:absolute;inset:0;margin:0;border:0;padding:8px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:inherit;line-height:1.55;tab-size:2;-moz-tab-size:2;white-space:pre;word-wrap:normal;overflow:auto;background:transparent}",
             ".isf-editor .isf-highlight{pointer-events:none;color:var(--isf-code-text);z-index:1;overflow:hidden}",
             ".isf-editor .isf-highlight code{display:block;padding:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:inherit;white-space:inherit}",
             ".isf-editor .isf-input{z-index:2;color:transparent;caret-color:#f0f1f3;resize:none;outline:none;box-shadow:none}",
@@ -1688,6 +1853,18 @@
             ".isf-active-line{position:absolute;left:0;right:0;top:0;height:0;background:rgba(255,255,255,.055);pointer-events:none;z-index:0;border-radius:2px}",
             ".isf-gutter-error{color:#ff7b72;font-weight:700}",
             ".isf-editor-pos{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--isf-muted);font-size:.7rem;white-space:nowrap}",
+            ".isf-editor-tabs{display:flex;gap:.2rem;flex:0 0 auto}",
+            ".isf-tab{opacity:.75}",
+            ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-template-select{border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;padding:.18rem .25rem;max-width:9.5rem}",
+            ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;padding:.35rem 0 .45rem;border-bottom:1px dashed var(--isf-border);margin-bottom:.2rem}",
+            ".isf-view-row{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;color:var(--isf-muted)}",
+            ".isf-view-label{text-transform:uppercase;letter-spacing:.03em;font-size:.66rem}",
+            ".isf-view select{border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);font-size:.75rem;padding:.15rem .25rem;max-width:10rem}",
+            ".isf-import{display:flex;flex-direction:column;gap:.4rem;padding:.5rem .65rem}",
+            ".isf-import textarea{width:100%;min-height:140px;resize:vertical;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-code-bg);color:var(--isf-code-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:.5rem;white-space:pre;overflow:auto}",
+            ".isf-import-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}",
+            ".isf-import-status{flex:1 1 auto;font-size:.72rem;color:var(--isf-muted)}",
             ".isf-panel-close{padding:.18rem .4rem;font-size:.85rem;line-height:1}",
             ".isf-overlay-actions{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-top:.6rem}",
             ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
@@ -1733,6 +1910,7 @@
         reset: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         fullscreen: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         source: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        share: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         copy: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
         check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
     };
@@ -2049,28 +2227,174 @@
     }
 
     /* ==================================================================
+     * Editor templates and snippets
+     * ================================================================== */
+
+    var VERTEX_STARTER = [
+        "varying vec2 vUV;",
+        "",
+        "void main()",
+        "{",
+        "    isf_vertShaderInit();",
+        "    vUV = isf_FragNormCoord;",
+        "}"
+    ].join("\n") + "\n";
+
+    var INPUT_TEMPLATES = {
+        float: '        {\n            "NAME": "amount",\n            "TYPE": "float",\n            "LABEL": "Amount",\n            "DEFAULT": 0.5,\n            "MIN": 0.0,\n            "MAX": 1.0\n        }',
+        bool: '        {\n            "NAME": "toggle",\n            "TYPE": "bool",\n            "LABEL": "Toggle",\n            "DEFAULT": false\n        }',
+        color: '        {\n            "NAME": "tint",\n            "TYPE": "color",\n            "LABEL": "Tint",\n            "DEFAULT": [1.0, 1.0, 1.0, 1.0]\n        }',
+        point2D: '        {\n            "NAME": "center",\n            "TYPE": "point2D",\n            "LABEL": "Center",\n            "DEFAULT": [0.5, 0.5],\n            "MIN": [0.0, 0.0],\n            "MAX": [1.0, 1.0]\n        }',
+        event: '        {\n            "NAME": "trigger",\n            "TYPE": "event",\n            "LABEL": "Trigger"\n        }',
+        long: '        {\n            "NAME": "mode",\n            "TYPE": "long",\n            "LABEL": "Mode",\n            "DEFAULT": 0,\n            "VALUES": [0, 1, 2],\n            "LABELS": ["One", "Two", "Three"]\n        }',
+        image: '        {\n            "NAME": "inputImage",\n            "TYPE": "image",\n            "LABEL": "Input image"\n        }',
+        audioFFT: '        {\n            "NAME": "spectrum",\n            "TYPE": "audioFFT",\n            "LABEL": "Audio FFT",\n            "MAX": 512\n        }'
+    };
+
+    var SHADER_TEMPLATES = {
+        generator: [
+            "/*{",
+            '    "DESCRIPTION": "Starter generator.",',
+            '    "CREDIT": "by You",',
+            '    "ISFVSN": "2",',
+            '    "CATEGORIES": [ "Generator" ],',
+            '    "INPUTS": [',
+            '        {',
+            '            "NAME": "speed", "TYPE": "float", "LABEL": "Speed",',
+            '            "DEFAULT": 0.5, "MIN": 0.0, "MAX": 4.0',
+            "        }",
+            "    ]",
+            "}*/",
+            "",
+            "void main()",
+            "{",
+            "    vec2 uv = isf_FragNormCoord;",
+            "    float t = TIME * speed;",
+            "    vec3 color = 0.5 + 0.5 * cos(6.28318 * (uv.xyx * 2.0 + t + vec3(0.0, 0.33, 0.66)));",
+            "    gl_FragColor = vec4(color, 1.0);",
+            "}",
+            ""
+        ].join("\n"),
+        filter: [
+            "/*{",
+            '    "DESCRIPTION": "Starter image filter.",',
+            '    "CREDIT": "by You",',
+            '    "ISFVSN": "2",',
+            '    "CATEGORIES": [ "Filter" ],',
+            '    "INPUTS": [',
+            '        { "NAME": "inputImage", "TYPE": "image", "LABEL": "Input image" }',
+            "    ]",
+            "}*/",
+            "",
+            "void main()",
+            "{",
+            "    gl_FragColor = IMG_NORM_PIXEL(inputImage, isf_FragNormCoord);",
+            "}",
+            ""
+        ].join("\n"),
+        transition: [
+            "/*{",
+            '    "DESCRIPTION": "Starter transition.",',
+            '    "CREDIT": "by You",',
+            '    "ISFVSN": "2",',
+            '    "CATEGORIES": [ "Transition" ],',
+            '    "INPUTS": [',
+            '        { "NAME": "startImage", "TYPE": "image", "LABEL": "Start" },',
+            '        { "NAME": "endImage", "TYPE": "image", "LABEL": "End" },',
+            '        { "NAME": "progress", "TYPE": "float", "LABEL": "Progress", "DEFAULT": 0.0, "MIN": 0.0, "MAX": 1.0 }',
+            "    ]",
+            "}*/",
+            "",
+            "void main()",
+            "{",
+            "    vec4 start = IMG_NORM_THIS_PIXEL(startImage);",
+            "    vec4 end = IMG_NORM_THIS_PIXEL(endImage);",
+            "    gl_FragColor = mix(start, end, clamp(progress, 0.0, 1.0));",
+            "}",
+            ""
+        ].join("\n"),
+        multipass: [
+            "/*{",
+            '    "DESCRIPTION": "Starter multi-pass shader (bufferA then output).",',
+            '    "CREDIT": "by You",',
+            '    "ISFVSN": "2",',
+            '    "CATEGORIES": [ "Multi-pass" ],',
+            '    "INPUTS": [',
+            '        { "NAME": "inputImage", "TYPE": "image", "LABEL": "Input image" }',
+            "    ],",
+            '    "PASSES": [',
+            '        { "TARGET": "bufferA", "PERSISTENT": true, "FLOAT": true },',
+            '        {}',
+            "    ]",
+            "}*/",
+            "",
+            "void main()",
+            "{",
+            "    if (PASSINDEX == 0) {",
+            "        gl_FragColor = IMG_NORM_PIXEL(inputImage, isf_FragNormCoord);",
+            "    } else {",
+            "        gl_FragColor = IMG_NORM_THIS_PIXEL(bufferA);",
+            "    }",
+            "}",
+            ""
+        ].join("\n")
+    };
+
+    /* ==================================================================
      * GLSL editor (textarea over a syntax-highlighted layer)
      * ================================================================== */
 
     function createEditor(viewer, config) {
         var wrap = h("div", "isf-panel isf-editor-wrap");
         var toolbar = h("div", "isf-editor-toolbar");
+        var tabs = h("span", "isf-editor-tabs");
+        var fragmentTab = h("button", "isf-btn isf-tab is-active", { type: "button", text: "Fragment", "aria-pressed": "true" });
+        var vertexTab = h("button", "isf-btn isf-tab", { type: "button", text: "Vertex", "aria-pressed": "false" });
+        tabs.appendChild(fragmentTab);
+        tabs.appendChild(vertexTab);
+        if (config.vertexShader === false) vertexTab.classList.add("isf-hidden");
         var status = h("span", "isf-editor-status", { text: "Ready", "aria-live": "polite" });
+        var posLabel = h("span", "isf-editor-pos", { text: "Ln 1, Col 1" });
         var actions = h("span", "isf-editor-actions");
         var applyButton = h("button", "isf-btn", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
         var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
         var copyButton = h("button", "isf-btn", { type: "button", text: "Copy", title: "Copy source" });
+        var importButton = h("button", "isf-btn", { type: "button", text: "Import", title: "Import from Shadertoy / GLSL Sandbox" });
+        var templateSelect = h("select", "isf-template-select", {
+            "aria-label": "Insert a snippet or start from a template",
+            title: "Insert an input snippet or start from a template"
+        });
+        templateSelect.appendChild(h("option", null, { value: "", text: "Templates…" }));
+        var inputGroup = document.createElement("optgroup");
+        inputGroup.label = "Insert input";
+        [
+            ["float", "float"], ["bool", "bool"], ["color", "color"], ["point2D", "point2D"],
+            ["event", "event"], ["long", "long"], ["image", "image"], ["audioFFT", "audioFFT"]
+        ].forEach(function (entry) {
+            inputGroup.appendChild(h("option", null, { value: "input:" + entry[0], text: entry[1] + " input" }));
+        });
+        templateSelect.appendChild(inputGroup);
+        var newGroup = document.createElement("optgroup");
+        newGroup.label = "New shader";
+        [
+            ["generator", "Generator"], ["filter", "Filter"], ["transition", "Transition"], ["multipass", "Multi-pass"]
+        ].forEach(function (entry) {
+            newGroup.appendChild(h("option", null, { value: "template:" + entry[0], text: entry[1] }));
+        });
+        templateSelect.appendChild(newGroup);
+        var editorClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close editor", title: "Close", text: "×" });
         actions.appendChild(applyButton);
         actions.appendChild(revertButton);
         actions.appendChild(copyButton);
-        var editorClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close editor", title: "Close", text: "×" });
+        actions.appendChild(importButton);
+        actions.appendChild(templateSelect);
         actions.appendChild(editorClose);
         editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
+        importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
+        toolbar.appendChild(tabs);
         toolbar.appendChild(status);
+        toolbar.appendChild(posLabel);
         toolbar.appendChild(actions);
-
-        var posLabel = h("span", "isf-editor-pos", { text: "Ln 1, Col 1" });
-        toolbar.insertBefore(posLabel, actions);
         var editor = h("div", "isf-editor");
         var activeLine = h("div", "isf-active-line", { "aria-hidden": "true" });
         var gutter = h("div", "isf-gutter", { "aria-hidden": "true", text: "1" });
@@ -2107,6 +2431,10 @@
         var caretCache = { pos: 0, line: 1, column: 1 };
         var indentSize = numberOr(config.editorIndent, 2);
         var indentUnit = indentSize <= 0 ? "\t" : new Array(Math.max(1, Math.round(indentSize)) + 1).join(" ");
+        var buffers = { fragment: "", vertex: viewer.vertexSource || null };
+        var activeBuffer = "fragment";
+        var vertexEnabled = !!viewer.vertexSource;
+        var fontSize = clamp(numberOr(viewer.layout && viewer.layout.editorFontSize, 12), 9, 28);
 
         function lineCount(text) {
             var count = 1;
@@ -2210,7 +2538,10 @@
 
         function setValue(text, options) {
             options = options || {};
-            textarea.value = String(text == null ? "" : text);
+            buffers.fragment = String(text == null ? "" : text);
+            activeBuffer = "fragment";
+            textarea.value = buffers.fragment;
+            updateTabs();
             try { textarea.setSelectionRange(0, 0); } catch (err) { /* ignore */ }
             errorLine = 0;
             caretCache = { pos: 0, line: 1, column: 1 };
@@ -2223,7 +2554,11 @@
             }
         }
 
-        function markError(line) {
+        function markError(line, buffer) {
+            if (buffer && buffer !== activeBuffer) {
+                if (buffer === "vertex" && buffers.vertex === null) buffers.vertex = VERTEX_STARTER;
+                setActiveBuffer(buffer);
+            }
             errorLine = line || 0;
             renderGutter(textarea.value);
             if (errorLine > 0) {
@@ -2279,7 +2614,83 @@
         }
 
         function notifyInput() {
+            if (activeBuffer === "vertex") vertexEnabled = true;
             viewer.onEditorInput();
+        }
+
+        function updateTabs() {
+            fragmentTab.classList.toggle("is-active", activeBuffer === "fragment");
+            fragmentTab.setAttribute("aria-pressed", activeBuffer === "fragment" ? "true" : "false");
+            vertexTab.classList.toggle("is-active", activeBuffer === "vertex");
+            vertexTab.setAttribute("aria-pressed", activeBuffer === "vertex" ? "true" : "false");
+        }
+
+        function setActiveBuffer(name) {
+            if (name === activeBuffer) return;
+            buffers[activeBuffer] = textarea.value;
+            activeBuffer = name;
+            textarea.value = buffers[name] || "";
+            errorLine = 0;
+            caretCache = { pos: 0, line: 1, column: 1 };
+            try { textarea.setSelectionRange(0, 0); } catch (err) { /* ignore */ }
+            updateTabs();
+            scheduleHighlight();
+            scheduleCaret();
+            syncScroll();
+        }
+
+        // Ctrl/Cmd+/ comments or uncomments the selected lines.
+        function toggleComment() {
+            var value = textarea.value;
+            var start = textarea.selectionStart;
+            var end = textarea.selectionEnd;
+            var lineStart = value.lastIndexOf("\n", start - 1) + 1;
+            var lineEnd = value.indexOf("\n", end);
+            if (lineEnd === -1) lineEnd = value.length;
+            var block = value.slice(lineStart, lineEnd);
+            var lines = block.split("\n");
+            var allCommented = lines.every(function (line) { return !line.trim() || /^\s*\/\//.test(line); });
+            var changed = lines.map(function (line) {
+                if (!line.trim()) return line;
+                return allCommented ? line.replace(/^(\s*)\/\/ ?/, "$1") : line.replace(/^(\s*)/, "$1// ");
+            }).join("\n");
+            textarea.value = value.slice(0, lineStart) + changed + value.slice(lineEnd);
+            textarea.selectionStart = lineStart;
+            textarea.selectionEnd = lineStart + changed.length;
+            scheduleHighlight();
+            scheduleCaret();
+            notifyInput();
+        }
+
+        // Ctrl/Cmd +/-/0 zooms the editor (persisted with the pane sizes).
+        function applyFontSize(size, persist) {
+            fontSize = clamp(size, 9, 28);
+            editor.style.fontSize = fontSize + "px";
+            measureMetrics();
+            if (persist) viewer.saveLayout({ editorFontSize: fontSize });
+        }
+
+        function insertInputTemplate(type) {
+            var snippet = INPUT_TEMPLATES[type];
+            if (!snippet) return;
+            insertText(snippet);
+            setStatus("Inserted a " + type + " input — place it inside INPUTS, then Apply", "");
+        }
+
+        function applyShaderTemplate(name) {
+            var template = SHADER_TEMPLATES[name];
+            if (!template) return;
+            if (textarea.value.trim() && typeof window !== "undefined" && !window.confirm("Replace the current source with the " + name + " template?")) return;
+            buffers.fragment = template;
+            activeBuffer = "fragment";
+            textarea.value = template;
+            errorLine = 0;
+            caretCache = { pos: 0, line: 1, column: 1 };
+            updateTabs();
+            scheduleHighlight();
+            scheduleCaret();
+            syncScroll();
+            setStatus(name + " template loaded — press Apply", "");
         }
 
         textarea.addEventListener("input", function () {
@@ -2307,10 +2718,34 @@
                 viewer.applySource();
                 return;
             }
+            if ((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?")) {
+                event.preventDefault();
+                toggleComment();
+                return;
+            }
+            if ((event.ctrlKey || event.metaKey) && (event.key === "=" || event.key === "+" || event.key === "-" || event.key === "0")) {
+                event.preventDefault();
+                if (event.key === "0") applyFontSize(12, true);
+                else applyFontSize(fontSize + (event.key === "-" ? -1 : 1), true);
+                return;
+            }
             if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
                 event.preventDefault();
                 viewer.applySource();
             }
+        });
+        fragmentTab.addEventListener("click", function () { setActiveBuffer("fragment"); });
+        vertexTab.addEventListener("click", function () {
+            if (buffers.vertex === null) buffers.vertex = VERTEX_STARTER;
+            vertexEnabled = true;
+            setActiveBuffer("vertex");
+        });
+        templateSelect.addEventListener("change", function () {
+            var choice = templateSelect.value;
+            templateSelect.value = "";
+            if (!choice) return;
+            if (choice.indexOf("input:") === 0) insertInputTemplate(choice.slice(6));
+            else if (choice.indexOf("template:") === 0) applyShaderTemplate(choice.slice(9));
         });
         var selectionHandler = function () {
             if (document.activeElement === textarea) scheduleCaret();
@@ -2369,6 +2804,7 @@
         });
         var storedEditorHeight = viewer.layout && viewer.layout.editorHeight;
         if (storedEditorHeight && config.persistLayout !== false) applyEditorHeight(storedEditorHeight, false);
+        applyFontSize(fontSize, false);
         requestAnimationFrame(measureMetrics);
         applyButton.addEventListener("click", function () { viewer.applySource(); });
         revertButton.addEventListener("click", function () { viewer.revertSource(); });
@@ -2402,6 +2838,24 @@
         return {
             el: wrap,
             setValue: setValue,
+            setVertex: function (text) {
+                buffers.vertex = text || null;
+                vertexEnabled = !!text;
+                if (activeBuffer === "vertex") textarea.value = text || VERTEX_STARTER;
+                updateTabs();
+            },
+            getFragment: function () {
+                buffers[activeBuffer] = textarea.value;
+                return buffers.fragment;
+            },
+            getVertex: function () {
+                buffers[activeBuffer] = textarea.value;
+                return vertexEnabled ? buffers.vertex : null;
+            },
+            activeBuffer: function () { return activeBuffer; },
+            setBuffer: setActiveBuffer,
+            toggleComment: toggleComment,
+            applyFontSize: applyFontSize,
             value: function () { return textarea.value; },
             setStatus: setStatus,
             markError: markError,
@@ -2669,14 +3123,66 @@
         this.lastPassTarget = null;
         this.lastLog = 0;
         this.warnedSizes = {};
+        this.mouse = [0, 0, 0, 0];
+        this.pointerDown = false;
+        this.previewTarget = null;
+        this.qualityScale = null;
         var self = this;
         this._tick = function (now) { self.tick(now); };
         this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
         gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
         this.setupGeometry();
         this.setupPaint();
+        this.bindPointer();
         this.resize(true);
     }
+
+    // docsify-isf pointer extension: `_isfMouse` is a vec4 with Shadertoy
+    // semantics (xy = position in pixels, zw = click position, z negative when
+    // the button is up) so imported shaders are interactive out of the box.
+    ISFRuntime.prototype.bindPointer = function () {
+        var self = this;
+        var stage = this.viewer.dom.stage;
+        function point(event) {
+            var canvas = self.viewer.dom.canvas;
+            var rect = canvas.getBoundingClientRect();
+            var width = Math.max(1, rect.width);
+            var height = Math.max(1, rect.height);
+            var x = (event.clientX - rect.left) / width * self.destWidth;
+            var y = (1 - (event.clientY - rect.top) / height) * self.destHeight;
+            return [clamp(x, 0, self.destWidth), clamp(y, 0, self.destHeight)];
+        }
+        this._onPointerMove = function (event) {
+            var p = point(event);
+            self.mouse[0] = p[0];
+            self.mouse[1] = p[1];
+            self.mouse[2] = self.pointerDown ? self._clickX : -Math.abs(self._clickX);
+            self.mouse[3] = self._clickY;
+            self.needsRender = true;
+        };
+        this._onPointerDown = function (event) {
+            var p = point(event);
+            self.pointerDown = true;
+            self._clickX = p[0];
+            self._clickY = p[1];
+            self.mouse = [p[0], p[1], p[0], p[1]];
+            self.needsRender = true;
+            event.preventDefault();
+        };
+        this._onPointerUp = function () {
+            self.pointerDown = false;
+            self.mouse[2] = -Math.abs(self._clickX);
+            self.needsRender = true;
+        };
+        this._onPointerLeave = function () {
+            self.pointerDown = false;
+            self.mouse[2] = -Math.abs(self._clickX);
+        };
+        stage.addEventListener("pointermove", this._onPointerMove);
+        stage.addEventListener("pointerdown", this._onPointerDown);
+        stage.addEventListener("pointerleave", this._onPointerLeave);
+        window.addEventListener("pointerup", this._onPointerUp);
+    };
 
     ISFRuntime.prototype.setupGeometry = function () {
         var gl = this.gl;
@@ -2717,6 +3223,7 @@
             this.locations["_" + image.name + "_imgSize"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgSize"), type: "vec2" };
             if (image.kind === "audio") this.setupAudioTexture(image.input);
         }
+        this.locations._isfMouse = { location: gl.getUniformLocation(this.program, "_isfMouse"), type: "vec4" };
         this.locations.TIME = { location: gl.getUniformLocation(this.program, "TIME"), type: "float" };
         this.locations.TIMEDELTA = { location: gl.getUniformLocation(this.program, "TIMEDELTA"), type: "float" };
         this.locations.DATE = { location: gl.getUniformLocation(this.program, "DATE"), type: "vec4" };
@@ -2774,9 +3281,10 @@
         var cssWidth = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || 1));
         var cssHeight = Math.max(1, Math.round((rect && rect.height) || canvas.clientHeight || 1));
         var dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+        var resolution = this.qualityScale !== null && this.qualityScale !== undefined ? this.qualityScale : this.config.resolution;
         var scale;
-        if (this.config.resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
-        else scale = Number(this.config.resolution) || 1;
+        if (resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
+        else scale = Number(resolution) || 1;
         if (!isFinite(scale) || scale <= 0) scale = 1;
         var maxSize = 0;
         try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { maxSize = 4096; }
@@ -2985,13 +3493,17 @@
         this.setNumber("TIME", this.time, "float");
         this.setNumber("TIMEDELTA", delta || 0, "float");
         this.setNumber("DATE", [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()], "vec4");
+        this.setNumber("_isfMouse", this.mouse, "vec4");
         this.setNumber("FRAMEINDEX", this.frameIndex, "int");
 
         this.lastPassTarget = null;
         for (var p = 0; p < this.passes.length; p++) this.renderPass(p);
 
-        // If the final pass rendered into a target, paint it to the canvas.
-        if (this.lastPassTarget) this.paintToScreen(this.lastPassTarget.readTexture());
+        // Preview a specific pass target when one is selected (the official
+        // ISF Editor's per-pass output view); otherwise paint the final target.
+        var previewBuffer = this.previewTarget && this.passBuffers[this.previewTarget];
+        if (previewBuffer) this.paintToScreen(previewBuffer.readTexture());
+        else if (this.lastPassTarget) this.paintToScreen(this.lastPassTarget.readTexture());
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindTexture(gl.TEXTURE_2D, null);
@@ -3094,6 +3606,16 @@
         this.raf = requestAnimationFrame(this._tick);
     };
 
+    ISFRuntime.prototype.snapshot = function () {
+        if (!this.program || !this.gl) return null;
+        try {
+            this.draw(0);
+            return this.gl.canvas.toDataURL("image/png");
+        } catch (err) {
+            return null;
+        }
+    };
+
     ISFRuntime.prototype.stop = function () {
         this.running = false;
         if (this.raf) cancelAnimationFrame(this.raf);
@@ -3110,6 +3632,13 @@
         this.stop();
         var gl = this.gl;
         if (!gl) return;
+        try {
+            var stage = this.viewer.dom.stage;
+            if (this._onPointerMove) stage.removeEventListener("pointermove", this._onPointerMove);
+            if (this._onPointerDown) stage.removeEventListener("pointerdown", this._onPointerDown);
+            if (this._onPointerLeave) stage.removeEventListener("pointerleave", this._onPointerLeave);
+            if (this._onPointerUp) window.removeEventListener("pointerup", this._onPointerUp);
+        } catch (err) { /* ignore */ }
         try { gl.canvas.removeEventListener("webglcontextlost", this._contextLost, false); } catch (err) { /* ignore */ }
         this.cleanupProgram();
         if (this.paint) { gl.deleteProgram(this.paint.program); this.paint = null; }
@@ -3241,6 +3770,9 @@
         viewer.source = "";
         viewer.lastErrorText = "";
         viewer.layout = loadLayout();
+        viewer.qualityChoice = (viewer.layout && viewer.layout.quality) || config.resolution || "auto";
+        viewer.urlFlags = readUrlFlags();
+        VIEWERS.push(viewer);
         viewer.saveLayout = function (patch) {
             if (config.persistLayout === false) return;
             for (var key in patch) {
@@ -3279,12 +3811,14 @@
             "aria-label": "Open source file"
         }) : null;
         if (sourceButton) sourceButton.innerHTML = ICONS.source;
+        var shareButton = config.share !== false ? iconButton("share", "share", "Copy a link with the current parameters") : null;
         actions.appendChild(paramsButton);
         if (editorButton) actions.appendChild(editorButton);
         actions.appendChild(playButton);
         actions.appendChild(resetButton);
         actions.appendChild(fullscreenButton);
         if (sourceButton) actions.appendChild(sourceButton);
+        if (shareButton) actions.appendChild(shareButton);
         header.appendChild(titleEl);
         header.appendChild(actions);
 
@@ -3326,6 +3860,25 @@
             editor.el.classList.add("isf-hidden");
             sideInner.appendChild(editor.el);
         }
+        var importPanel = h("div", "isf-panel isf-import isf-hidden", { id: uid + "-import", role: "region", "aria-label": "Import Shadertoy or GLSL Sandbox" });
+        var importTitle = h("div", "isf-panel-title");
+        importTitle.appendChild(h("span", null, { text: "Import Shadertoy / GLSL Sandbox" }));
+        var importClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close import", title: "Close", text: "×" });
+        importTitle.appendChild(importClose);
+        var importArea = h("textarea", null, {
+            spellcheck: "false",
+            placeholder: "Paste a Shadertoy mainImage() shader or a GLSL Sandbox shader…",
+            "aria-label": "Shader source to import"
+        });
+        var importStatus = h("span", "isf-import-status", { "aria-live": "polite" });
+        var importActions = h("div", "isf-import-actions");
+        var importConvert = h("button", "isf-btn", { type: "button", text: "Convert & Load" });
+        importActions.appendChild(importConvert);
+        importActions.appendChild(importStatus);
+        importPanel.appendChild(importTitle);
+        importPanel.appendChild(importArea);
+        importPanel.appendChild(importActions);
+        sideInner.appendChild(importPanel);
         side.appendChild(resizeX);
         side.appendChild(sideInner);
 
@@ -3356,10 +3909,12 @@
             paramsButton: paramsButton,
             editorButton: editorButton,
             editorPanel: editor ? editor.el : null,
+            importPanel: importPanel,
             playButton: playButton,
             resetButton: resetButton,
             fullscreenButton: fullscreenButton,
             sourceButton: sourceButton,
+            shareButton: shareButton,
             status: status
         };
         viewer.editor = editor;
@@ -3486,6 +4041,62 @@
             overlayInner.innerHTML = html || "";
             overlay.style.display = show ? "flex" : "none";
         };
+        viewer.openImport = function () {
+            viewer.setPanel(importPanel, true);
+            try { importArea.focus(); } catch (err) { /* ignore */ }
+        };
+        viewer.exportPng = function () {
+            if (!viewer.runtime) { viewer.warn("The shader is not running yet"); return; }
+            var data = viewer.runtime.snapshot();
+            if (!data) { viewer.warn("Could not export the current frame"); return; }
+            var link = document.createElement("a");
+            link.href = data;
+            link.download = (viewer.title.replace(/[^A-Za-z0-9._-]+/g, "_") || "shader") + ".png";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            viewer.setState("Frame exported as " + link.download, "ok");
+        };
+        viewer.copyLink = function () {
+            var url = new URL(window.location.href);
+            var editorOpen = !!(viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
+            var paramsOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden");
+            url.searchParams.set("isf-editor", editorOpen ? "1" : "0");
+            url.searchParams.set("isf-controls", paramsOpen ? "1" : "0");
+            var values = {};
+            for (var i = 0; i < VIEWERS.length; i++) {
+                var other = VIEWERS[i];
+                if (!other || other.disposed) continue;
+                var current = other.nonDefaultValues();
+                if (Object.keys(current).length) values[other.url] = current;
+            }
+            if (Object.keys(values).length) url.searchParams.set("isf-values", encodeBase64Url(JSON.stringify(values)));
+            else url.searchParams.delete("isf-values");
+            var link = url.toString();
+            var done = function () { viewer.setState("Link copied to the clipboard", "ok"); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(link).then(done, function () { window.prompt("Copy this link", link); });
+            } else {
+                window.prompt("Copy this link", link);
+            }
+        };
+        if (shareButton) shareButton.addEventListener("click", function () { viewer.copyLink(); });
+        importClose.addEventListener("click", function () { viewer.setPanel(importPanel, false); });
+        importConvert.addEventListener("click", function () {
+            var result = convertToISF(importArea.value);
+            if (!result.ok) {
+                importStatus.textContent = result.error || "Could not convert this source.";
+                importStatus.className = "isf-import-status is-error";
+                return;
+            }
+            importStatus.textContent = "";
+            importStatus.className = "isf-import-status";
+            viewer.editor.setValue(result.source);
+            viewer.setPanel(importPanel, false);
+            viewer.setPanel(viewer.dom.editorPanel, true);
+            viewer.editor.setStatus("Imported " + result.format + (result.warnings.length ? " — " + result.warnings.join(" ") : ""), result.warnings.length ? "" : "ok");
+            viewer.applySource(false);
+        });
         viewer.errorOverlay = function (title, message, rawLine) {
             viewer.lastErrorText = String(message || "");
             var html = "<strong>" + escapeHtml(title || "Shader error") + "</strong>";
@@ -3504,7 +4115,8 @@
             panel.classList.toggle("isf-hidden", !open);
             var paramsOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden");
             var editorOpen = !!(viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
-            var anyOpen = paramsOpen || editorOpen;
+            var importOpen = !!(viewer.dom.importPanel && !viewer.dom.importPanel.classList.contains("isf-hidden"));
+            var anyOpen = paramsOpen || editorOpen || importOpen;
             side.classList.toggle("isf-hidden", !anyOpen);
             block.classList.toggle("isf-wide", anyOpen);
             paramsButton.setAttribute("aria-expanded", paramsOpen ? "true" : "false");
@@ -3590,6 +4202,16 @@
             }
             return defaults;
         };
+        viewer.nonDefaultValues = function () {
+            var defaults = viewer.defaultValues();
+            var out = {};
+            for (var name in viewer.values) {
+                if (!Object.prototype.hasOwnProperty.call(viewer.values, name)) continue;
+                if (defaults[name] === undefined) continue;
+                if (JSON.stringify(viewer.values[name]) !== JSON.stringify(defaults[name])) out[name] = viewer.values[name];
+            }
+            return out;
+        };
         viewer.mergeValues = function () {
             var next = viewer.defaultValues();
             for (var name in next) {
@@ -3609,6 +4231,8 @@
                     viewer.runtime.transitionTime = clamp(applied, 0, 1) * duration;
                 }
                 BUDGET.touch(viewer);
+                clearTimeout(viewer._storeTimer);
+                viewer._storeTimer = setTimeout(function () { storeValues(viewer); }, 400);
             }
             return applied;
         };
@@ -3657,9 +4281,61 @@
 
         /* -------------------------------------------------- params panel */
 
+        viewer.buildViewControls = function (inputs) {
+            var section = h("div", "isf-view");
+            var targets = viewer.built ? viewer.built.passes.filter(function (pass) { return !!pass.target; }).map(function (pass) { return pass.target; }) : [];
+            if (targets.length) {
+                var passRow = h("label", "isf-view-row");
+                passRow.appendChild(h("span", "isf-view-label", { text: "View" }));
+                var passSelect = h("select", null, { "aria-label": "Preview a render pass" });
+                passSelect.appendChild(h("option", null, { value: "", text: "Output" }));
+                targets.forEach(function (name) { passSelect.appendChild(h("option", null, { value: name, text: name })); });
+                if (viewer.runtime && viewer.runtime.previewTarget && targets.indexOf(viewer.runtime.previewTarget) !== -1) {
+                    passSelect.value = viewer.runtime.previewTarget;
+                }
+                passSelect.addEventListener("change", function () {
+                    if (viewer.runtime) {
+                        viewer.runtime.previewTarget = passSelect.value || null;
+                        viewer.runtime.needsRender = true;
+                    }
+                });
+                passRow.appendChild(passSelect);
+                section.appendChild(passRow);
+                viewer.dom.passSelect = passSelect;
+            } else {
+                viewer.dom.passSelect = null;
+            }
+            var qualityRow = h("label", "isf-view-row");
+            qualityRow.appendChild(h("span", "isf-view-label", { text: "Quality" }));
+            var qualitySelect = h("select", null, { "aria-label": "Render quality" });
+            [["auto", "Auto"], ["1", "1×"], ["0.5", "0.5×"], ["0.25", "0.25×"], ["2", "2×"]].forEach(function (entry) {
+                qualitySelect.appendChild(h("option", null, { value: entry[0], text: entry[1] }));
+            });
+            qualitySelect.value = viewer.qualityChoice != null ? String(viewer.qualityChoice) : "auto";
+            qualitySelect.addEventListener("change", function () {
+                viewer.qualityChoice = qualitySelect.value;
+                viewer.saveLayout({ quality: qualitySelect.value });
+                if (viewer.runtime) {
+                    viewer.runtime.qualityScale = qualitySelect.value;
+                    viewer.runtime.resize(true);
+                    viewer.runtime.needsRender = true;
+                }
+            });
+            qualityRow.appendChild(qualitySelect);
+            section.appendChild(qualityRow);
+            var exportButton = h("button", "isf-btn", { type: "button", text: "Export PNG", title: "Download the current frame as a PNG" });
+            exportButton.addEventListener("click", function () { viewer.exportPng(); });
+            section.appendChild(exportButton);
+            return section;
+        };
+
         viewer.rebuildParams = function () {
             var inputs = viewer.built ? viewer.built.inputs : [];
-            buildControls(paramsList, inputs, viewer);
+            paramsList.innerHTML = "";
+            paramsList.appendChild(viewer.buildViewControls(inputs));
+            var controlsHost = h("div", "isf-params-controls");
+            paramsList.appendChild(controlsHost);
+            buildControls(controlsHost, inputs, viewer);
             viewer.controls = {};
             for (var ci = 0; ci < viewer.controlsList.length; ci++) {
                 var controlEntry = viewer.controlsList[ci];
@@ -3673,6 +4349,7 @@
             else if (config.params === "open") open = true;
             else if (config.params === "closed") open = false;
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
+            if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
             viewer.setPanel(viewer.dom.paramsPanel, open);
             paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
             paramsButton.classList.toggle("is-active", open);
@@ -3712,6 +4389,7 @@
                 }
                 return vertexPromise.then(function (vertexSource) {
                     viewer.vertexSource = vertexSource;
+                    if (viewer.editor) viewer.editor.setVertex(vertexSource);
                     return null;
                 });
             }).then(function () {
@@ -3728,6 +4406,23 @@
                 viewer.transition = isTransitionShader(built.inputs);
                 viewer.source = viewer.rawSource;
                 viewer.values = viewer.defaultValues();
+                var restoreInput = null;
+                var stored = loadStoredValues(viewer.url);
+                if (stored) {
+                    for (var storedName in stored) {
+                        restoreInput = null;
+                        for (var si = 0; si < built.inputs.length; si++) if (built.inputs[si].name === storedName) restoreInput = built.inputs[si];
+                        if (restoreInput) viewer.values[storedName] = clampInputValue(restoreInput, stored[storedName]);
+                    }
+                }
+                if (viewer.urlFlags && viewer.urlFlags.values && viewer.urlFlags.values[viewer.url]) {
+                    var flagged = viewer.urlFlags.values[viewer.url];
+                    for (var flagName in flagged) {
+                        restoreInput = null;
+                        for (var fi = 0; fi < built.inputs.length; fi++) if (built.inputs[fi].name === flagName) restoreInput = built.inputs[fi];
+                        if (restoreInput) viewer.values[flagName] = clampInputValue(restoreInput, flagged[flagName]);
+                    }
+                }
                 if (built.unresolved && built.unresolved.length) {
                     var first = built.unresolved[0];
                     var unresolvedError = new Error(first.name + "(" + first.image + ") at line " + first.line + ": " + first.reason);
@@ -3740,6 +4435,7 @@
                     viewer.editor.setStatus("Loaded · " + built.inputs.length + " input(s)", "ok");
                 }
                 viewer.initRuntime();
+                if (config.editorOpen || (viewer.urlFlags && viewer.urlFlags.editor)) viewer.toggleEditor();
             }).catch(function (error) {
                 if (viewer.disposed) return;
                 viewer.state = "error";
@@ -3783,6 +4479,7 @@
                 viewer.runtimeError(compileError, viewer.built);
                 return;
             }
+            viewer.runtime.qualityScale = viewer.qualityChoice;
             viewer.runtime.visible = viewer.visible;
             viewer.runtime.start();
             viewer.state = "live";
@@ -3823,7 +4520,9 @@
             var firstMessage = null;
             if (error && error.messages && error.messages.length) {
                 firstMessage = error.messages[0];
-                rawLine = firstMessage.line && built ? built.lineMap(firstMessage.line) : null;
+                var isVertexError = error.label === "vertex shader";
+                var lineMap = built ? (isVertexError ? built.vertexLineMap : built.lineMap) : null;
+                rawLine = firstMessage.line && lineMap ? lineMap(firstMessage.line) : null;
                 message = (error.label ? error.label + ": " : "") + firstMessage.severity + " at line " + firstMessage.line + ": " + firstMessage.message;
                 if (rawLine) message += " (file line " + rawLine + ")";
             }
@@ -3832,7 +4531,7 @@
             viewer.errorOverlay("Shader error", message, rawLine);
             if (viewer.editor) {
                 viewer.editor.setStatus(message, "error");
-                viewer.editor.markError(rawLine || null);
+                viewer.editor.markError(rawLine || null, error && error.label === "vertex shader" ? "vertex" : null);
             }
             debugLog(config, "compile failed", error);
         };
@@ -3847,7 +4546,7 @@
 
         viewer.applySource = function (live) {
             if (!viewer.editor || !viewer.runtime) return false;
-            var text = viewer.editor.value();
+            var text = viewer.editor.getFragment();
             var parsed = parseISF(text);
             if (!parsed.valid) {
                 var headerMessage = parsed.error && parsed.error.message ? parsed.error.message : "Invalid ISF header";
@@ -3858,7 +4557,7 @@
             }
             var built;
             try {
-                built = buildShader(parsed, { vertexShader: viewer.vertexSource, imports: config.imports });
+                built = buildShader(parsed, { vertexShader: viewer.editor.getVertex(), imports: config.imports });
             } catch (buildError) {
                 viewer.editor.setStatus(buildError.message, "error");
                 return false;
@@ -3878,6 +4577,7 @@
                 return false;
             }
             var compileMs = Math.max(1, Math.round(performance.now() - compileStarted));
+            viewer.vertexSource = viewer.editor.getVertex();
             viewer.parse = parsed;
             viewer.built = built;
             viewer.transition = isTransitionShader(built.inputs);
@@ -3901,6 +4601,7 @@
         viewer.revertSource = function () {
             if (!viewer.editor || !viewer.originalSource) return;
             viewer.editor.setValue(viewer.originalSource);
+            viewer.editor.setVertex(viewer.vertexSource);
             viewer.editor.setStatus("Reverted — press Apply", "");
             viewer.applySource(false);
         };
@@ -3972,6 +4673,9 @@
         viewer.dispose = function () {
             viewer.disposed = true;
             clearTimeout(viewer._liveTimer);
+            clearTimeout(viewer._storeTimer);
+            var viewerIndex = VIEWERS.indexOf(viewer);
+            if (viewerIndex !== -1) VIEWERS.splice(viewerIndex, 1);
             if (observer) observer.disconnect();
             if (viewer.runtime) { viewer.runtime.dispose(); viewer.runtime = null; }
             BUDGET.release(viewer);
@@ -4078,6 +4782,8 @@
         normalizeInputs: normalizeInputs,
         normalizePasses: normalizePasses,
         normalizeImports: normalizeImports,
+        detectShaderDialect: detectShaderDialect,
+        convertToISF: convertToISF,
         rewriteSpecialFunctions: rewriteSpecialFunctions,
         tokenizeGLSL: tokenizeGLSL,
         highlightGLSL: highlightGLSL,

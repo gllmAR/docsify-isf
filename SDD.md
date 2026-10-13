@@ -216,6 +216,32 @@ probes the same base name with `.vs`; if it exists, its `main()` is spliced
 into the same skeleton (with `vv_vertShaderInit`/`vv_FragNormCoord` aliased).
 The probe 404 is expected and silent.
 
+### 5.6 Shadertoy / GLSL Sandbox importer
+
+`convertToISF()` mirrors the official ISF Editor's converter:
+
+| Source | Mapping |
+|---|---|
+| Shadertoy | `iTime`/`iGlobalTime`, `iChannelTime[n]`→`TIME`; `iTimeDelta`→`TIMEDELTA`; `iResolution`→`RENDERSIZE`; `iFrame`→`FRAMEINDEX`; `iDate`→`DATE`; `iChannelResolution[n]`→`IMG_SIZE(iChannelN)`; `textureLod`/`textureGrad`/`texture`→`texture2D`; `texelFetch`→`IMG_PIXEL`; used `iChannelN` become image inputs; the body is wrapped with `void main(){ mainImage(gl_FragColor, gl_FragCoord.xy); }` |
+| GLSL Sandbox | `time`→`TIME`; `resolution`→`RENDERSIZE`; `mouse`→`_isfMouse.xy`; environment `uniform` declarations that collide with ISF built-ins are removed |
+| Either | a fresh `/*{ … }*/` metadata block (credit, ISFVSN 2, `Converted` category, generated `INPUTS`); already-ISF sources are refused with an explanation |
+
+`iMouse` is mapped to the **docsify-isf pointer extension**: the fragment
+prelude always declares `uniform vec4 _isfMouse` and the runtime feeds it from
+pointer events with Shadertoy semantics (`xy` position in pixels, origin
+bottom-left; `zw` click position; `z` negative while the button is up).
+Imported shaders are therefore interactive without an input control, and
+`.xy`/`.zw` both work.
+
+### 5.7 Pass preview, quality and export
+
+`runtime.previewTarget` makes the paint program blit any pass target instead
+of the final output (the official editor's per-pass debug view); the
+parameters panel builds a `View` selector whenever the shader has targets.
+`runtime.qualityScale` overrides the render multiplier (Auto/1×/0.5×/0.25×/2×)
+and `runtime.snapshot()` draws synchronously and returns a PNG data URL for
+the export button.
+
 ## 6. WebGL runtime
 
 ### 6.1 Context
@@ -321,6 +347,10 @@ through `clampInputValue()`, so `MIN`/`MAX` are respected for `float`,
 to the declared `VALUES`, and the number field reports invalid input with
 `aria-invalid` while the user is still typing.
 
+The parameters panel also carries the view row: a **View** selector for pass
+targets, a **Quality** selector (persisted with the layout) and **Export
+PNG**.
+
 ### 7.3 Editor
 
 The editor is a `<textarea>` over a highlighted `<pre><code>` layer (the
@@ -333,6 +363,16 @@ comment/preprocessor/string/number/keyword/type/builtin/ISF/operator.
   bracket); Tab/Shift+Tab indent and dedent the selection; Ctrl/Cmd+Enter or
   **Apply** compiles; **Revert** restores the fetched file; **Copy** copies
   the buffer. Indentation follows `editorIndent`.
+- **Fragment/Vertex tabs**: a fetched `.vs` lands in the Vertex tab; an empty
+  Vertex tab prefills `VERTEX_STARTER` and becomes the applied vertex shader.
+  `buildShader()` returns `vertexLineMap`, so vertex compile errors switch to
+  that tab and highlight the right line.
+- **Shortcuts**: Ctrl/Cmd+Enter or Ctrl/Cmd+S apply, Ctrl/Cmd+/ toggles
+  comments, Ctrl/Cmd +/-/0 zooms (persisted), Enter auto-indents, Tab indents.
+- **Templates menu**: inserts `INPUTS` snippets (float, bool, color, point2D,
+  event, long, image, audioFFT) at the caret or replaces the buffer with a
+  starter generator/filter/transition/multi-pass shader.
+- **Import** opens the Shadertoy/GLSL Sandbox paste box (5.6).
 - `editorLive` recompiles after `editorDebounce` ms of inactivity and the
   status line reports the measured compile time.
 - The gutter is rebuilt only when the line count or the error line changes;
@@ -415,7 +455,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Unit | `tests/run.js` | tolerant JSON (comments, trailing commas, quotes, escapes, leading comments), expression evaluator, `IMG_*`/`vv_*` rewriting (nesting, comments, `#define`), shader assembly (uniforms, passes, `#version`, line mapping), highlighting/escaping, URL resolution/fallback, link detection |
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all 758 bundled `.fs` materials parse and assemble cleanly |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, and the View/Quality/Export controls work, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

@@ -412,6 +412,89 @@ test("custom vertex shader is paired", () => {
     assert(built.vertex.indexOf("void main()") !== -1);
 });
 
+/* ------------------------------------------------------------ importer */
+
+console.log("\n# Shadertoy / GLSL Sandbox importer");
+
+test("detectShaderDialect", () => {
+    equal(isf.detectShaderDialect("void mainImage(out vec4 o, in vec2 p) {}"), "shadertoy");
+    equal(isf.detectShaderDialect("uniform float time;\nvoid main(){ gl_FragColor = vec4(1.0); }"), "glslsandbox");
+    equal(isf.detectShaderDialect('/*{"ISFVSN":"2"}*/ void main(){}'), "isf");
+});
+
+test("Shadertoy conversion maps uniforms, textures and wraps mainImage", () => {
+    const source = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord)",
+        "{",
+        "    vec2 uv = fragCoord / iResolution.xy;",
+        "    vec4 tex = texture(iChannel0, uv) + textureLod(iChannel1, uv, 0.0);",
+        "    tex += IMG_PIXEL_NEVER_USED;",
+        "    fragColor = tex * (0.5 + 0.5 * sin(iTime)) + iMouse.x;",
+        "}"
+    ].join("\n");
+    const result = isf.convertToISF(source);
+    assert(result.ok, result.error);
+    equal(result.format, "shadertoy");
+    assert(result.source.indexOf('"NAME": "iChannel0"') !== -1);
+    assert(result.source.indexOf('"NAME": "iChannel1"') !== -1);
+    assert(result.source.indexOf("#define iMouse _isfMouse") !== -1);
+    assert(result.source.indexOf("texture2D(iChannel0, uv)") !== -1);
+    assert(result.source.indexOf("texture2D(iChannel1, uv)") !== -1);
+    assert(result.source.indexOf("fragCoord / RENDERSIZE.xy") !== -1);
+    assert(result.source.indexOf("sin(TIME)") !== -1);
+    assert(result.source.indexOf("mainImage(gl_FragColor, gl_FragCoord.xy)") !== -1);
+    const parsed = isf.parseISF(result.source);
+    assert(parsed.valid, parsed.error && parsed.error.message);
+    const built = isf.buildShader(parsed, {});
+    equal(built.unresolved, []);
+    equal(built.inputs.map((input) => input.name), ["iChannel0", "iChannel1"]);
+});
+
+test("Shadertoy output parameter naming does not matter", () => {
+    const source = "void mainImage(out vec4 O, in vec2 p) { O = vec4(p / iResolution.xy, 0.0, 1.0); }";
+    const result = isf.convertToISF(source);
+    assert(result.source.indexOf("mainImage(gl_FragColor, gl_FragCoord.xy)") !== -1);
+});
+
+test("Shadertoy channel resolution and texelFetch conversions", () => {
+    const source = "void mainImage(out vec4 o, in vec2 p) { vec2 s = iChannelResolution[0].xy; o = texelFetch(iChannel0, ivec2(p), 0) + vec4(s, 0.0, 1.0); }";
+    const result = isf.convertToISF(source);
+    assert(result.source.indexOf("IMG_SIZE(iChannel0)") !== -1);
+    assert(result.source.indexOf("IMG_PIXEL(iChannel0, vec2(ivec2(p)))") !== -1);
+});
+
+test("GLSL Sandbox conversion strips the environment uniforms", () => {
+    const source = [
+        "uniform float time;",
+        "uniform vec2 resolution;",
+        "void main() { gl_FragColor = vec4(gl_FragCoord.xy / resolution, sin(time + mouse.x), 1.0); }"
+    ].join("\n");
+    const result = isf.convertToISF(source);
+    assert(result.ok, result.error);
+    equal(result.format, "glslsandbox");
+    assert(result.source.indexOf("uniform float TIME") === -1);
+    assert(result.source.indexOf("uniform vec2 RENDERSIZE") === -1);
+    assert(result.source.indexOf("sin(TIME") !== -1);
+    assert(result.source.indexOf("_isfMouse.xy") !== -1);
+    const parsed = isf.parseISF(result.source);
+    assert(parsed.valid, parsed.error && parsed.error.message);
+    equal(isf.buildShader(parsed, {}).unresolved, []);
+});
+
+test("already-ISF sources are refused with an explanation", () => {
+    const result = isf.convertToISF('/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){ gl_FragColor = vec4(1.0); }');
+    assert(!result.ok);
+    assert(/already looks like ISF/.test(result.error));
+});
+
+test("vertex line map points into the user vertex shader", () => {
+    const vertex = "varying vec2 vUV;\nvoid main() { isf_vertShaderInit(); vUV = isf_FragNormCoord; }\n";
+    const built = isf.buildShader(isf.parseISF('/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){}'), { vertexShader: vertex });
+    equal(built.vertexLineMap(built.vertexPreludeLines + 1), 1);
+    equal(built.vertexLineMap(built.vertexPreludeLines + 2), 2);
+    equal(built.vertexLineMap(1), null);
+});
+
 /* ------------------------------------------------------------ corpus test */
 
 const corpusRoots = [
