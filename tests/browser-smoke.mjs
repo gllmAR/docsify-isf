@@ -123,7 +123,7 @@ try {
     });
 
     await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
-    await page.waitForFunction(() => document.querySelectorAll(".isf-block").length >= 10, { timeout: 30000, polling: 100 });
+    await page.waitForFunction(() => document.querySelectorAll(".isf-block").length >= 12, { timeout: 30000, polling: 100 });
 
     // Scroll every lazy viewer into view so the intersection observer starts it.
     await page.evaluate(async () => {
@@ -272,7 +272,7 @@ try {
         await page.waitForFunction(() => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
             const editor = block && block.querySelector(".isf-editor");
-            return editor && !block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") &&
+            return editor && !block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") &&
                 editor.querySelectorAll(".isf-tok-isf, .isf-tok-kw, .isf-tok-type").length > 10;
         }, { timeout: 10000, polling: 100 }).catch(() => problems.push("editor did not open / highlight"));
 
@@ -283,17 +283,17 @@ try {
             const active = block.querySelector(".isf-active-line");
             const resizeY = block.querySelector(".isf-resize-y");
             const resizeX = block.querySelector(".isf-resize-x");
-            const side = block.querySelector(".isf-side");
+            const drawer = block.querySelector(".isf-drawer-left");
 
             const heightBefore = editor.getBoundingClientRect().height;
             resizeY.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 80));
             const heightAfter = editor.getBoundingClientRect().height;
 
-            const sideBefore = side.getBoundingClientRect().width;
-            resizeX.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+            const sideBefore = drawer.getBoundingClientRect().width;
+            resizeX.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 80));
-            const sideAfter = side.getBoundingClientRect().width;
+            const sideAfter = drawer.getBoundingClientRect().width;
 
             const scaleRow = Array.from(block.querySelectorAll(".isf-param")).find((row) => row.dataset.isfParam === "scale");
             const numberInput = scaleRow && scaleRow.querySelector('input[type="number"]');
@@ -322,9 +322,9 @@ try {
         if (!editorAudit.activeLineVisible) problems.push("editor active-line marker not visible");
         if (!(editorAudit.heightAfter < editorAudit.heightBefore)) problems.push("editor pane did not resize: " + JSON.stringify(editorAudit));
         if (editorAudit.resizeXDisplay === "none") problems.push("side pane resizer hidden while the panel is open");
-        if (!(editorAudit.sideAfter > editorAudit.sideBefore)) problems.push("side pane did not resize: " + JSON.stringify(editorAudit));
+        if (!(editorAudit.sideAfter < editorAudit.sideBefore)) problems.push("drawer did not resize: " + JSON.stringify(editorAudit));
         if (editorAudit.scaleValue !== editorAudit.scaleMax) problems.push("out-of-range parameter was not clamped: " + JSON.stringify(editorAudit));
-        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.sideWidth == null) {
+        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.leftWidth == null) {
             problems.push("pane sizes were not persisted: " + JSON.stringify(editorAudit.layout));
         }
 
@@ -336,11 +336,11 @@ try {
         // The close button must collapse the pane again.
         const closed = await page.evaluate(async () => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-            const close = block.querySelector(".isf-editor-wrap .isf-panel-close");
+            const close = block.querySelector('.isf-editor-wrap .isf-btn[aria-label="Close editor"]');
             if (!close) return { missing: true };
             close.click();
             await new Promise((resolve) => setTimeout(resolve, 50));
-            return { hidden: block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") };
+            return { hidden: block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") };
         });
         if (closed.missing) problems.push("editor close button missing");
         else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
@@ -352,7 +352,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden")) byTitle(block, "Source editor").click();
+        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) byTitle(block, "Source editor").click();
         await wait(300);
         const textarea = block.querySelector(".isf-input");
         Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Vertex/i.test(t.textContent)).click();
@@ -388,7 +388,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden")) byTitle(block, "Source editor").click();
+        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) byTitle(block, "Source editor").click();
         await wait(250);
         byText(block, "Import").click();
         await wait(250);
@@ -451,6 +451,85 @@ try {
     if (!viewControls.qualityShrunk) problems.push("quality selector did not resize the canvas: " + JSON.stringify(viewControls));
     if (viewControls.passOptions.indexOf("halfImage") === -1) problems.push("pass preview selector missing halfImage: " + JSON.stringify(viewControls.passOptions));
     if (viewControls.exportLength < 100) problems.push("PNG export produced no data");
+
+    // WebGL2 / ES3 fallback: the dynamic-indexing sample must compile in
+    // compatibility mode (headless Chrome has WebGL2).
+    const es3 = await page.evaluate(() => {
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /ES3 fallback/i.test(title.textContent);
+        });
+        if (!block) return { missing: true };
+        const status = block.querySelector(".isf-status");
+        const canvas = block.querySelector("canvas");
+        return { missing: false, status: status ? status.textContent : "", canvas: canvas ? canvas.width + "x" + canvas.height : "" };
+    });
+    if (es3.missing) problems.push("ES3 fallback sample not found");
+    else if (!/Compatibility mode/.test(es3.status)) problems.push("ES3 fallback did not activate: " + JSON.stringify(es3));
+
+    // Live controls: randomize, time scrub, Ctrl+B, shortcut overlay, drop.
+    const liveControls = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
+        const titleOf = (block) => (block.querySelector(".isf-title") || {}).textContent || "";
+        const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(titleOf(b)));
+        const speedValue = () => {
+            const row = Array.from(plasma.querySelectorAll(".isf-param")).find((r) => r.dataset.isfParam === "speed");
+            return row && row.querySelector('input[type="range"]') ? Number(row.querySelector('input[type="range"]').value) : null;
+        };
+        const before = speedValue();
+        byText(plasma, "Randomize").click();
+        await wait(250);
+        const randomized = before !== speedValue();
+
+        const timeRange = plasma.querySelector(".isf-time-row input[type=\"range\"]");
+        timeRange.value = "12.5";
+        timeRange.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(180);
+        const timeScrubbed = Number(timeRange.value) >= 12;
+
+        const editorWrap = plasma.querySelector(".isf-editor-wrap");
+        const leftDrawer = plasma.querySelector(".isf-drawer-left");
+        const editorWasHidden = leftDrawer.classList.contains("isf-drawer-closed");
+        plasma.dispatchEvent(new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true }));
+        await wait(180);
+        const editorToggled = leftDrawer.classList.contains("isf-drawer-closed") !== editorWasHidden;
+
+        const keysButton = Array.from(plasma.querySelectorAll(".isf-editor-wrap .isf-btn")).find((b) => b.textContent.trim() === "?");
+        let shortcutsShown = false;
+        if (keysButton) {
+            keysButton.click();
+            await wait(180);
+            shortcutsShown = /Keyboard shortcuts/.test(plasma.querySelector(".isf-overlay").textContent);
+            const close = plasma.querySelector('.isf-overlay [data-isf-overlay="close"]');
+            if (close) close.click();
+            await wait(100);
+        }
+
+        // Drag & drop an image onto a filter viewer.
+        const kaleido = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Kaleidoscope/i.test(titleOf(b)));
+        kaleido.scrollIntoView({ block: "center" });
+        await wait(700);
+        const overlay = kaleido.querySelector(".isf-overlay");
+        if (overlay && overlay.style.display !== "none") { overlay.click(); await wait(700); }
+        const canvas = document.createElement("canvas");
+        canvas.width = 2;
+        canvas.height = 2;
+        canvas.getContext("2d").fillRect(0, 0, 2, 2);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], "drop-test.png", { type: "image/png" }));
+        kaleido.querySelector(".isf-stage").dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        await wait(800);
+        const dropStatus = kaleido.querySelector(".isf-status").textContent;
+
+        return { randomized: randomized, timeScrubbed: timeScrubbed, editorToggled: editorToggled, shortcutsShown: shortcutsShown, dropStatus: dropStatus };
+    });
+    if (!liveControls.randomized) problems.push("randomize did not change a parameter");
+    if (!liveControls.timeScrubbed) problems.push("time scrubber did not move the clock");
+    if (!liveControls.editorToggled) problems.push("Ctrl+B did not toggle the editor");
+    if (!liveControls.shortcutsShown) problems.push("shortcut overlay did not open");
+    if (!/Loaded drop-test\.png/.test(liveControls.dropStatus)) problems.push("drag & drop did not load the image: " + JSON.stringify(liveControls.dropStatus));
 
     // Context budget: scroll a released viewer into view and wait for the pump.
     const recovery = await page.evaluate(async () => {

@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.2.0
+ * docsify-isf v1.3.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.2.0";
+    var VERSION = "1.3.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -69,6 +69,8 @@
         transitionDuration: 4.0,
         resolution: "auto",         // "auto" | 2 | 1 | 0.5
         maxPixelRatio: 2,
+        maxFps: 0,                  // 0 = unlimited, otherwise cap the render loop
+        includePaths: [],           // extra directories for #include "file.glsl"
         maxContexts: 8,
         editor: true,
         editorOpen: false,
@@ -1310,6 +1312,37 @@
         return out;
     }
 
+    // MadMapper GENERATORS: named values computed on the CPU each frame and
+    // exposed to the shader as uniforms (mostly `time_base` clocks).
+    function normalizeGenerators(rawGenerators, inputs, warnings) {
+        var out = [];
+        if (!Array.isArray(rawGenerators)) return out;
+        var inputByName = {};
+        for (var i = 0; i < inputs.length; i++) inputByName[inputs[i].name] = inputs[i];
+        for (var g = 0; g < rawGenerators.length; g++) {
+            var raw = rawGenerators[g];
+            if (!isObject(raw)) continue;
+            var name = trim(raw.NAME);
+            if (!name || !/^[A-Za-z_]\w*$/.test(name)) {
+                if (warnings) warnings.push({ message: "Generator #" + g + " has an invalid NAME" });
+                continue;
+            }
+            if (inputByName[name]) {
+                if (warnings) warnings.push({ message: "Generator " + name + " collides with an input and was ignored" });
+                continue;
+            }
+            var type = trim(String(raw.TYPE || "pass_thru")).toLowerCase();
+            var params = isObject(raw.PARAMS) ? raw.PARAMS : (isObject(raw.Params) ? raw.Params : {});
+            var uniform = "float";
+            if (type === "pass_thru" || type === "multiplier") {
+                var reference = trim(String(firstDefined(params.value, params.input, params.input1, "")));
+                if (reference && inputByName[reference] && inputByName[reference].uniform === "bool") uniform = "bool";
+            }
+            out.push({ name: name, type: type, params: params, uniform: uniform });
+        }
+        return out;
+    }
+
     function normalizeImports(rawImports, warnings) {
         var out = [];
         if (!rawImports) return out;
@@ -1393,6 +1426,202 @@
         return String(source == null ? "" : source).replace(/^[ \t]*#version[^\n]*\n?/m, "");
     }
 
+    function collectIncludes(source) {
+        var names = [];
+        var re = /^[ \t]*#include[ \t]+["']([^"']+)["'][ \t]*(?:\/\/[^\n]*)?$/gm;
+        var match;
+        while ((match = re.exec(String(source || "")))) {
+            if (names.indexOf(match[1]) === -1) names.push(match[1]);
+        }
+        return names;
+    }
+
+    // Known case/spelling variants of the bundled MadMapper includes.
+    var INCLUDE_ALIASES = {
+        "madnoise.glsl": "MadNoise.glsl",
+        "madcommon.glsl": "MadCommon.glsl",
+        "madsdf.glsl": "MadSDF.glsl"
+    };
+
+    function includeNameVariants(name) {
+        var variants = [name];
+        var alias = INCLUDE_ALIASES[String(name).toLowerCase()];
+        if (alias && variants.indexOf(alias) === -1) variants.push(alias);
+        return variants;
+    }
+
+    // Inline `#include "file.glsl"` with the text resolved by the viewer
+    // (relative to the .fs file, then any configured includePaths). Missing or
+    // cyclic includes become comments so the compile error stays near the use.
+    function expandIncludes(source, includes, warnings, stack) {
+        var map = includes || {};
+        stack = stack || {};
+        return String(source == null ? "" : source).replace(/^[ \t]*#include[ \t]+["']([^"']+)["'][ \t]*(?:\/\/[^\n]*)?$/gm, function (match, name) {
+            var key = name.trim();
+            if (stack[key]) {
+                if (warnings) warnings.push({ message: "Cyclic include \"" + key + "\" was skipped" });
+                return "// cyclic include: " + key;
+            }
+            var text = map[key];
+            if (!text) {
+                var variants = includeNameVariants(key);
+                for (var v = 1; v < variants.length && !text; v++) text = map[variants[v]];
+            }
+            if (!text) {
+                if (warnings) warnings.push({ message: "Missing include \"" + key + "\"" });
+                return "// missing include: " + key;
+            }
+            stack[key] = true;
+            var expanded = expandIncludes(text, map, warnings, stack);
+            delete stack[key];
+            return "// ---- " + key + " ----\n" + expanded + "\n// ---- end " + key + " ----";
+        });
+    }
+
+    function stripComments(source) {
+        return String(source || "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    }
+
+    // GLSL ES forbids non-constant global initialisers, but desktop/MadMapper
+    // shaders commonly write `float t = mat_time_source;` at file scope.
+    // Split those into a declaration plus an assignment hoisted into the entry
+    // point. Only simple single-line declarations are touched.
+    // Last-resort compatibility transform: GI and GLSL ES are stricter than
+    // desktop GLSL about mixing integer literals with floats (`TIME * 2`).
+    // Promote bare integer literals to floats on lines that are in a float
+    // context, skipping integer-only lines. `floatNames` seeds the set of
+    // known float identifiers (inputs, built-ins); `const float` / float-valued
+    // `#define`s are learned from the source (including inlined includes).
+    // Only ever used as a retry after a shader has already failed to compile,
+    // so working shaders are untouched.
+    function promoteIntegerLiterals(source, floatNames, intNames) {
+        var text = String(source == null ? "" : source);
+        var names = floatNames || {};
+        var integers = intNames || {};
+
+        // 1. Float `const int` declarations whose name is only used in
+        //    arithmetic (never as an array index, loop bound or bit operand).
+        var intConstRe = /const\s+(?:lowp\s+|mediump\s+|highp\s+)?int\s+([A-Za-z_]\w*)\s*=\s*([0-9]+)\s*;/g;
+        var match;
+        var conversions = [];
+        while ((match = intConstRe.exec(text))) {
+            var constantName = escapeRegExp(match[1]);
+            var risky = new RegExp("\\[\\s*" + constantName + "\\b|\\b" + constantName + "\\s*]|[%]\\s*" + constantName + "\\b|\\b" + constantName + "\\s*[%]").test(text)
+                || new RegExp("\\b(for|while)\\s*\\([^)]*\\b" + constantName + "\\b").test(text);
+            if (!risky) conversions.push({ name: match[1], value: match[2] });
+        }
+        for (var c = 0; c < conversions.length; c++) {
+            var declaration = new RegExp("const\\s+(?:lowp\\s+|mediump\\s+|highp\\s+)?int\\s+" + escapeRegExp(conversions[c].name) + "\\s*=\\s*" + conversions[c].value + "\\s*;");
+            text = text.replace(declaration, "const float " + conversions[c].name + " = " + conversions[c].value + ".0;");
+        }
+
+        // 2. Learn float identifiers from `const float` / float `#define`s.
+        var declarationRe = /const\s+(?:lowp\s+|mediump\s+|highp\s+)?(?:float|vec[234]|mat[234])\s+([A-Za-z_]\w*)|#\s*define\s+([A-Za-z_]\w*)\s+[-+]?(?:\d+\.\d*|\.\d+)/g;
+        var declaration;
+        while ((declaration = declarationRe.exec(text))) {
+            var declared = declaration[1] || declaration[2];
+            if (declared) names[declared] = true;
+        }
+
+        // 3. Collect every int/uint identifier declared anywhere (inputs were
+        //    seeded by the caller); their lines must not be promoted.
+        var intDeclRe = /\b(?:int|uint|ivec[234]|uvec[234])\s+([A-Za-z_]\w*)/g;
+        var intDecl;
+        while ((intDecl = intDeclRe.exec(text))) {
+            if (intDecl[1]) integers[intDecl[1]] = true;
+        }
+        var intKeys = Object.keys(integers);
+        var intRe = intKeys.length
+            ? new RegExp("(^|[^A-Za-z0-9_])(" + intKeys.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)")
+            : null;
+
+        // 4. Promote bare integer literals on every line that is not an
+        //    integer context.
+        var lines = text.split("\n");
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var code = line.replace(/\/\/[^\n]*/g, "");
+            if (/^[ \t]*#/.test(code)) continue;
+            if (/\b(for|while|switch|case|default)\b/.test(code)) continue;
+            if (/\b(int|uint|ivec[234]|uvec[234]|bvec[234])\b/.test(code)) continue;
+            if (/[%]|<<|>>|\[|\]/.test(code)) continue;
+            // Bitwise operators are an int context, but logical `&&`/`||` are not.
+            if (/[&|^]/.test(code.replace(/&&/g, "").replace(/\|\|/g, ""))) continue;
+            if (intRe && intRe.test(code)) continue;
+            lines[i] = line.replace(/(^|[^\w.])(\d+)(?![\w.])(?!\.\d)/g, function (match, prefix, digits, offset, whole) {
+                // Never touch the digits of an exponent (`1e-3`, `2E+4`).
+                var before = whole.slice(0, offset + prefix.length);
+                if (/[eE][+-]?$/.test(before)) return match;
+                return prefix + digits + ".0";
+            });
+        }
+        return lines.join("\n");
+    }
+
+    function hoistGlobalInitializers(source) {
+        var lines = String(source || "").split("\n");
+        var out = [];
+        var assignments = [];
+        var depth = 0;
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var withoutComment = line.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+            var declaration = /^([ \t]*)((?:(?:const|uniform|varying|attribute|lowp|mediump|highp)[ \t]+)*)([A-Za-z_]\w*)[ \t]+([A-Za-z_]\w*)[ \t]*=[ \t]*([^;]+);[ \t]*$/.exec(withoutComment);
+            var isConst = declaration && /\bconst\b/.test(declaration[2]);
+            if (depth === 0 && declaration && !isConst) {
+                assignments.push(declaration[4] + " = " + declaration[5] + ";");
+                out.push(declaration[1] + declaration[2] + declaration[3] + " " + declaration[4] + ";");
+                continue;
+            }
+            out.push(line);
+            var opens = (withoutComment.match(/\{/g) || []).length;
+            var closes = (withoutComment.match(/\}/g) || []).length;
+            depth = Math.max(0, depth + opens - closes);
+        }
+        return { body: out.join("\n"), assignments: assignments };
+    }
+
+    // Optional WebGL2 / GLSL ES 3.00 variant of an assembled ES 1.00 shader.
+    // Used as a second compile attempt when the legacy source is rejected
+    // (dynamic indexing, non-constant loops, texture functions, …).
+    function toES3Fragment(source) {
+        var body = String(source || "")
+            .replace(/^[ \t]*#extension\s+GL_OES_standard_derivatives[^\n]*\n?/gm, "")
+            .replace(/^[ \t]*#extension\s+GL_EXT_shader_texture_lod[^\n]*\n?/gm, "")
+            .replace(/^[ \t]*#extension\s+GL_EXT_frag_depth[^\n]*\n?/gm, "");
+        return [
+            "#version 300 es",
+            "#ifdef GL_FRAGMENT_PRECISION_HIGH",
+            "precision highp float;",
+            "precision highp int;",
+            "#else",
+            "precision mediump float;",
+            "precision mediump int;",
+            "#endif",
+            "#define varying in",
+            "#define texture2D texture",
+            "#define texture2DProj textureProj",
+            "#define texture2DLod textureLod",
+            "#define textureCube texture",
+            "#define textureCubeLod textureLod",
+            "#define gl_FragColor _isfFragColor",
+            "out vec4 _isfFragColor;",
+            body
+        ].join("\n") + "\n";
+    }
+
+    function toES3Vertex(source) {
+        var body = String(source || "").replace(/^[ \t]*#version[^\n]*\n?/, "");
+        return [
+            "#version 300 es",
+            "precision highp float;",
+            "precision highp int;",
+            "#define attribute in",
+            "#define varying out",
+            body
+        ].join("\n") + "\n";
+    }
+
     function buildVertexShader(userVertexShader, uniformDeclarations) {
         if (!userVertexShader) return { source: defaultVertexShader(), preludeLines: 0 };
         var body = stripVersionDirective(userVertexShader);
@@ -1425,6 +1654,7 @@
         var meta = parsed && parsed.valid ? parsed.metadata : {};
         var inputs = normalizeInputs(meta.INPUTS, warnings);
         var passes = normalizePasses(meta.PASSES, warnings);
+        var generators = normalizeGenerators(meta.GENERATORS, inputs, warnings);
         var imports = options.imports === false ? [] : normalizeImports(meta.IMPORTED, warnings);
 
         var imageNames = [];
@@ -1447,7 +1677,19 @@
             imageInfo.push({ name: imports[m].name, kind: "import", import: imports[m] });
         }
 
+        // Known float identifiers for the last-resort literal promotion.
+        var floatNames = { PI: true, TIME: true, TIMEDELTA: true, RENDERSIZE: true, DATE: true, isf_FragNormCoord: true, gl_FragCoord: true, _isfMouse: true };
+        var intNames = {};
+        for (var fn = 0; fn < inputs.length; fn++) {
+            if (/^(float|vec[234])$/.test(inputs[fn].uniform)) floatNames[inputs[fn].name] = true;
+            else if (inputs[fn].uniform === "int") intNames[inputs[fn].name] = true;
+        }
+        for (var fg = 0; fg < generators.length; fg++) {
+            if (generators[fg].uniform === "float") floatNames[generators[fg].name] = true;
+        }
+
         var body = stripVersionDirective(parsed.body || "");
+        body = expandIncludes(body, options.includes, warnings);
         var rewritten = rewriteSpecialFunctions(body, imageNames);
         var bodyOffset = (parsed.bodyStartLine || 1) - 1;
         var rewriteWarnings = rewritten.warnings || [];
@@ -1460,6 +1702,22 @@
             if (unresolved[ur].line) unresolved[ur].line += bodyOffset;
         }
 
+        // MadMapper materials use materialColorForPixel() instead of main(),
+        // and both entry points may need hoisted global initialisers.
+        var cleaned = stripComments(rewritten.source);
+        var hasMain = /\bvoid\s+main\s*\(/.test(cleaned);
+        var isMadMapper = /\bmaterialColorForPixel\s*\(/.test(cleaned);
+        var hoisted = hoistGlobalInitializers(rewritten.source);
+        var finalBody = hoisted.body;
+        if (isMadMapper && !hasMain) {
+            var preludeAssignments = hoisted.assignments.length ? "    " + hoisted.assignments.join("\n    ") + "\n" : "";
+            finalBody += "\n\nvoid main() {\n" + preludeAssignments + "    gl_FragColor = materialColorForPixel(isf_FragNormCoord);\n}\n";
+        } else if (hasMain && hoisted.assignments.length) {
+            finalBody = finalBody.replace(/void\s+main\s*\([^)]*\)\s*\{/, function (match) {
+                return match + "\n    " + hoisted.assignments.join("\n    ");
+            });
+        }
+
         var uniformLines = [];
         for (var u = 0; u < inputs.length; u++) {
             if (BUILTIN_NAMES[inputs[u].name]) {
@@ -1469,26 +1727,42 @@
             if (inputs[u].uniform === "sampler2D") continue; // declared with the image helpers below
             uniformLines.push("uniform " + inputs[u].uniform + " " + inputs[u].name + ";");
         }
+        for (var gg = 0; gg < generators.length; gg++) {
+            if (BUILTIN_NAMES[generators[gg].name]) continue;
+            uniformLines.push("uniform " + generators[gg].uniform + " " + generators[gg].name + ";");
+        }
         for (var n = 0; n < imageInfo.length; n++) {
             uniformLines.push("uniform sampler2D " + imageInfo[n].name + ";");
             uniformLines.push("uniform vec2 _" + imageInfo[n].name + "_imgSize;");
+            uniformLines.push("uniform vec4 _" + imageInfo[n].name + "_imgRect;");
+            uniformLines.push("uniform bool _" + imageInfo[n].name + "_flip;");
         }
 
         var prelude = FRAGMENT_PRELUDE + (uniformLines.length ? uniformLines.join("\n") + "\n" : "");
-        var fragment = prelude + rewritten.source;
+        var fragment = prelude + finalBody;
         var preludeLines = (prelude.match(/\n/g) || []).length;
 
-        var vertexInfo = buildVertexShader(options.vertexShader, uniformLines.join("\n"));
+        var vertexSource = options.vertexShader;
+        if (vertexSource) vertexSource = expandIncludes(vertexSource, options.includes, warnings);
+        var vertexInfo = buildVertexShader(vertexSource, uniformLines.join("\n"));
         var vertex = vertexInfo.source;
 
         return {
             ok: true,
             fragment: fragment,
             vertex: vertex,
+            fragmentES3: toES3Fragment(fragment),
+            vertexES3: toES3Vertex(vertex),
+            fragmentLoose: promoteIntegerLiterals(fragment, assign({}, floatNames), assign({}, intNames)),
+            vertexLoose: promoteIntegerLiterals(vertex, assign({}, floatNames), assign({}, intNames)),
+            fragmentES3Loose: promoteIntegerLiterals(toES3Fragment(fragment), assign({}, floatNames), assign({}, intNames)),
+            vertexES3Loose: promoteIntegerLiterals(toES3Vertex(vertex), assign({}, floatNames), assign({}, intNames)),
             inputs: inputs,
             passes: passes,
+            generators: generators,
             imports: imports,
             images: imageInfo,
+            includes: options.includes || {},
             warnings: warnings,
             unresolved: unresolved,
             preludeLines: preludeLines,
@@ -1741,6 +2015,54 @@
         return attempt(null);
     }
 
+    // Resolve `#include` files recursively: first next to the .fs file, then in
+    // each configured includePaths directory. Fetched text is cached for the
+    // session so navigating between materials only downloads each helper once.
+    var INCLUDE_CACHE = {};
+
+    function fetchInclude(url) {
+        if (!INCLUDE_CACHE[url]) {
+            INCLUDE_CACHE[url] = fetchText(url).catch(function (error) {
+                delete INCLUDE_CACHE[url];
+                throw error;
+            });
+        }
+        return INCLUDE_CACHE[url];
+    }
+
+    function loadIncludes(names, fromUrl, config, result, visited) {
+        var list = names || [];
+        if (!list.length) return Promise.resolve(result);
+        var tasks = [];
+        for (var i = 0; i < list.length; i++) {
+            (function (name) {
+                if (visited[name]) return;
+                visited[name] = true;
+                var candidates = [];
+                var variants = includeNameVariants(name);
+                for (var v = 0; v < variants.length; v++) {
+                    var variant = variants[v];
+                    candidates.push(new URL(variant, fromUrl).toString());
+                    (config.includePaths || []).forEach(function (base) {
+                        var root = resolveAssetUrl(String(base).replace(/\/?$/, "/") + variant, "");
+                        if (candidates.indexOf(root) === -1) candidates.push(root);
+                    });
+                }
+                tasks.push((function tryCandidate(index) {
+                    if (index >= candidates.length) return Promise.resolve(null);
+                    return fetchInclude(candidates[index]).then(function (text) {
+                        result[name] = text;
+                        if (variants[0] !== name) result[variants[0]] = text;
+                        return loadIncludes(collectIncludes(text), new URL(name, fromUrl), config, result, visited);
+                    }).catch(function () {
+                        return tryCandidate(index + 1);
+                    });
+                })(0).catch(function () { /* reported as a missing include when expanded */ }));
+            })(list[i]);
+        }
+        return Promise.all(tasks).then(function () { return result; });
+    }
+
     /* ==================================================================
      * Styles
      * ================================================================== */
@@ -1753,8 +2075,8 @@
         var style = document.createElement("style");
         style.id = STYLE_ID;
         style.textContent = [
-            ".isf-block{--isf-bg:#fff;--isf-surface:#f6f7f9;--isf-surface-2:#eceef2;--isf-border:#e2e4e9;--isf-text:#1c1e22;--isf-muted:#6b7280;--isf-accent:var(--theme-color,#d374d6);--isf-accent-contrast:#fff;--isf-danger:#e5484d;--isf-code-bg:#16181d;--isf-code-text:#c8ccd4;--isf-code-com:#6b7280;--isf-code-kw:#c678dd;--isf-code-type:#e5c07b;--isf-code-fn:#61afef;--isf-code-isf:#56b6c2;--isf-code-num:#d19a66;--isf-code-str:#98c379;--isf-code-var:#e06c75;position:relative;margin:1.1rem 0;border:1px solid var(--isf-border);border-radius:12px;background:var(--isf-bg);overflow:hidden;box-shadow:0 6px 18px rgba(15,18,25,.06);contain:content}",
-            "@media (prefers-color-scheme:dark){.isf-block{--isf-bg:#1e1f22;--isf-surface:#24262b;--isf-surface-2:#2b2d33;--isf-border:#34373e;--isf-text:#f0f1f3;--isf-muted:#9aa0a6;--isf-danger:#ff6369;--isf-code-bg:#131418}}",
+            ".isf-block{--isf-bg:#fff;--isf-drawer-bg:rgba(255,255,255,.74);--isf-surface:#f6f7f9;--isf-surface-2:#eceef2;--isf-border:#e2e4e9;--isf-text:#1c1e22;--isf-muted:#6b7280;--isf-accent:var(--theme-color,#d374d6);--isf-accent-contrast:#fff;--isf-danger:#e5484d;--isf-code-bg:#16181d;--isf-code-text:#c8ccd4;--isf-code-com:#6b7280;--isf-code-kw:#c678dd;--isf-code-type:#e5c07b;--isf-code-fn:#61afef;--isf-code-isf:#56b6c2;--isf-code-num:#d19a66;--isf-code-str:#98c379;--isf-code-var:#e06c75;position:relative;margin:1.1rem 0;border:1px solid var(--isf-border);border-radius:12px;background:var(--isf-bg);overflow:hidden;box-shadow:0 6px 18px rgba(15,18,25,.06);contain:content}",
+            "@media (prefers-color-scheme:dark){.isf-block{--isf-bg:#1e1f22;--isf-drawer-bg:rgba(24,25,28,.72);--isf-surface:#24262b;--isf-surface-2:#2b2d33;--isf-border:#34373e;--isf-text:#f0f1f3;--isf-muted:#9aa0a6;--isf-danger:#ff6369;--isf-code-bg:#131418}}",
             ".isf-block *{box-sizing:border-box}",
             ".isf-header{display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
             ".isf-title{flex:1 1 auto;min-width:0;color:var(--isf-text);font-weight:600;font-size:.92rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -1769,15 +2091,22 @@
             ".isf-body{position:relative;display:grid;grid-template-columns:minmax(0,1fr)}",
             ".isf-stage{position:relative;background:#0b0c10;min-height:110px;overflow:hidden}",
             ".isf-canvas{display:block;width:100%;height:100%}",
-            ".isf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;background:rgba(10,11,14,.72);color:#f5f6f8;font-size:.82rem;z-index:3}",
+            ".isf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;background:rgba(10,11,14,.72);color:#f5f6f8;font-size:.82rem;z-index:7}",
             ".isf-overlay-inner{max-width:34rem}",
             ".isf-overlay strong{display:block;margin-bottom:.3rem;font-size:.92rem}",
             ".isf-overlay code{background:rgba(255,255,255,.12);padding:.1rem .3rem;border-radius:4px;font-size:.78rem;word-break:break-all}",
             ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-badge{position:absolute;right:.5rem;bottom:.45rem;z-index:2;background:rgba(10,11,14,.6);color:#e7e9ee;border-radius:5px;padding:.12rem .35rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em}",
-            ".isf-side{border-top:1px solid var(--isf-border);background:var(--isf-bg);max-height:min(46vh,420px);overflow:hidden;position:relative;display:flex;flex-direction:column}",
-            ".isf-side-inner{flex:1 1 auto;min-height:0;overflow:auto}",
+            ".isf-drawer{position:absolute;top:0;bottom:0;z-index:5;display:flex;flex-direction:column;width:min(380px,46%);max-width:92%;background:var(--isf-drawer-bg);-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);transition:transform .18s ease,opacity .18s ease;box-shadow:0 0 24px rgba(0,0,0,.18)}",
+            ".isf-drawer-left{left:0;border-right:1px solid var(--isf-border)}",
+            ".isf-drawer-right{right:0;border-left:1px solid var(--isf-border)}",
+            ".isf-drawer.isf-drawer-closed{opacity:0;visibility:hidden;pointer-events:none}",
+            ".isf-drawer-left.isf-drawer-closed{transform:translateX(-12px)}",
+            ".isf-drawer-right.isf-drawer-closed{transform:translateX(12px)}",
+            ".isf-drawer-inner{flex:1 1 auto;min-height:0;overflow:auto}",
+            ".isf-drawer .isf-panel{background:transparent;border-bottom:1px solid var(--isf-border)}",
+            ".isf-drawer .isf-editor-wrap{background:rgba(0,0,0,.12)}",
             ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
             ".isf-panel:last-child{border-bottom:0}",
             ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.4rem .65rem;font-size:.78rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
@@ -1835,10 +2164,10 @@
             ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
             ".isf-block:fullscreen .isf-stage{height:100%;min-height:0}",
             ".isf-block:fullscreen .isf-stage{height:100%!important;min-height:0}",
-            ".isf-block:fullscreen .isf-side{position:absolute;right:0;top:0;bottom:0;width:min(420px,42vw);max-height:none;border-top:0;border-left:1px solid rgba(255,255,255,.12);background:var(--isf-bg);z-index:4;overflow:hidden}",
+            ".isf-block:fullscreen .isf-drawer{top:0;bottom:0;width:min(480px,44vw)}",
             ".isf-block:fullscreen .isf-editor{height:46vh;min-height:220px}",
             ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
-            "@media (min-width:900px){.isf-block.isf-wide .isf-body{grid-template-columns:minmax(0,1fr) minmax(280px,34%)}.isf-block.isf-wide .isf-side{border-top:0;border-left:1px solid var(--isf-border);max-height:none}.isf-block.isf-wide .isf-editor{height:340px}}",
+
             "/* audit: focus, resizers, caret line, touch and reduced motion */",
             ".isf-block :focus-visible{outline:2px solid var(--isf-accent);outline-offset:2px;border-radius:4px}",
             ".isf-btn:focus-visible{outline-offset:1px}",
@@ -1846,10 +2175,11 @@
             ".isf-resize-y{position:relative;flex:0 0 auto;height:9px;cursor:ns-resize;touch-action:none;background:var(--isf-surface);border-bottom:1px solid var(--isf-border);z-index:3}",
             ".isf-resize-y::after{content:'';position:absolute;left:50%;top:3px;width:34px;height:2px;transform:translateX(-50%);border-radius:2px;background:var(--isf-border)}",
             ".isf-resize-y:hover::after,.isf-resize-y:focus-visible::after,.isf-resize-y.is-dragging::after{background:var(--isf-accent)}",
-            ".isf-resize-x{position:absolute;top:0;bottom:0;left:0;width:8px;cursor:ew-resize;touch-action:none;z-index:5;display:none}",
+            ".isf-resize-x{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none;z-index:6;display:block}",
+            ".isf-resize-left{left:auto;right:-4px}",
+            ".isf-resize-right{left:-4px;right:auto}",
             ".isf-resize-x::after{content:'';position:absolute;top:50%;left:3px;width:2px;height:36px;transform:translateY(-50%);border-radius:2px;background:var(--isf-border)}",
             ".isf-resize-x:hover::after,.isf-resize-x:focus-visible::after,.isf-resize-x.is-dragging::after{background:var(--isf-accent)}",
-            ".isf-block.isf-wide .isf-resize-x,.isf-block:fullscreen .isf-resize-x{display:block}",
             ".isf-active-line{position:absolute;left:0;right:0;top:0;height:0;background:rgba(255,255,255,.055);pointer-events:none;z-index:0;border-radius:2px}",
             ".isf-gutter-error{color:#ff7b72;font-weight:700}",
             ".isf-editor-pos{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--isf-muted);font-size:.7rem;white-space:nowrap}",
@@ -1861,18 +2191,31 @@
             ".isf-view-row{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;color:var(--isf-muted)}",
             ".isf-view-label{text-transform:uppercase;letter-spacing:.03em;font-size:.66rem}",
             ".isf-view select{border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);font-size:.75rem;padding:.15rem .25rem;max-width:10rem}",
+            ".isf-view-value{font-variant-numeric:tabular-nums;font-size:.72rem;color:var(--isf-muted);min-width:3.6rem;text-align:right}",
+            ".isf-time-range{flex:1 1 7rem;min-width:0;max-width:12rem;accent-color:var(--isf-accent)}",
+            ".isf-stage.isf-dragover::after{content:'Drop image here';position:absolute;inset:8px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--isf-accent);border-radius:10px;background:rgba(0,0,0,.45);color:#fff;font-size:.9rem;z-index:4;pointer-events:none}",
+            ".isf-error-list{margin:.5rem 0 0;font-size:.76rem;text-align:left}",
+            ".isf-error-list summary{cursor:pointer;color:#f5c2c7}",
+            ".isf-error-list ul{margin:.3rem 0 0;padding-left:1.1rem}",
+            ".isf-error-list li{margin:.15rem 0}",
+            ".isf-error-jump{border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;border-radius:5px;padding:.05rem .3rem;font-size:.7rem;cursor:pointer;margin-right:.25rem}",
+            ".isf-shortcuts{display:grid;gap:.3rem;margin:.6rem 0 0;text-align:left;max-height:12rem;overflow:auto}",
+            ".isf-shortcut{display:flex;gap:.5rem;align-items:baseline;font-size:.78rem}",
+            ".isf-shortcut kbd{flex:0 0 auto;min-width:8.5rem;text-align:right;color:#f5c2c7;font-family:inherit}",
+            ".isf-shortcut span{color:#e7e9ee}",
             ".isf-import{display:flex;flex-direction:column;gap:.4rem;padding:.5rem .65rem}",
             ".isf-import textarea{width:100%;min-height:140px;resize:vertical;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-code-bg);color:var(--isf-code-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:.5rem;white-space:pre;overflow:auto}",
             ".isf-import-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}",
             ".isf-import-status{flex:1 1 auto;font-size:.72rem;color:var(--isf-muted)}",
             ".isf-panel-close{padding:.18rem .4rem;font-size:.85rem;line-height:1}",
+            ".isf-keys-btn{padding:.18rem .4rem;font-weight:700}",
             ".isf-overlay-actions{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-top:.6rem}",
             ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
             ".isf-spinner{width:22px;height:22px;margin:0 auto .5rem;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:isf-spin .8s linear infinite}",
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
             "@media (pointer:coarse){.isf-btn{padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem}.isf-param-control input[type=range]{height:26px}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}.isf-editor-pos{display:none}}"
+            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}.isf-editor-pos{display:none}.isf-drawer{width:min(100%,94vw)!important;max-width:94vw}.isf-resize-x{display:none}}"
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -2105,6 +2448,7 @@
 
     function buildControlRow(input, viewer) {
         var row = h("div", "isf-param", { dataset: { isfParam: input.name } });
+        var initial = viewer.values && viewer.values[input.name] !== undefined ? viewer.values[input.name] : input.default;
         row.appendChild(h("span", "isf-param-label", { title: input.name + " (" + input.type + ") — double-click to reset", text: input.label }));
         var control = h("span", "isf-param-control");
 
@@ -2118,11 +2462,11 @@
             var step = Math.max((input.max - input.min) / 1000, 1e-6);
             var range = h("input", null, {
                 type: "range", min: input.min, max: input.max, step: step,
-                value: clamp(input.default, input.min, input.max)
+                value: clamp(initial, input.min, input.max)
             });
             var number = h("input", null, {
                 type: "number", step: "any", min: input.min, max: input.max,
-                inputmode: "decimal", value: formatNumber(input.default),
+                inputmode: "decimal", value: formatNumber(clamp(initial, input.min, input.max)),
                 title: "Range: " + input.min + " … " + input.max
             });
             range.addEventListener("input", function () {
@@ -2144,7 +2488,7 @@
             viewer.controlsList.push({ name: input.name, range: range, number: number });
         } else if (input.type === "bool") {
             var checkbox = h("input", null, { type: "checkbox" });
-            checkbox.checked = !!input.default;
+            checkbox.checked = !!initial;
             checkbox.addEventListener("change", function () { viewer.setParameter(input.name, checkbox.checked); });
             control.appendChild(checkbox);
         } else if (input.type === "event") {
@@ -2157,7 +2501,7 @@
                 var option = h("option", null, { value: String(v), text: String(input.labels[v]) });
                 select.appendChild(option);
             }
-            var selectedIndex = input.values.indexOf(input.defaultValue);
+            var selectedIndex = input.values.indexOf(initial !== undefined ? initial : input.defaultValue);
             select.value = String(selectedIndex === -1 ? 0 : selectedIndex);
             select.addEventListener("change", function () {
                 var index = Number(select.value) || 0;
@@ -2165,7 +2509,7 @@
             });
             control.appendChild(select);
         } else if (input.type === "long") {
-            var intInput = h("input", null, { type: "number", step: "1", inputmode: "numeric", value: formatNumber(input.defaultValue) });
+            var intInput = h("input", null, { type: "number", step: "1", inputmode: "numeric", value: formatNumber(initial !== undefined ? initial : input.defaultValue) });
             if (input.min != null) intInput.min = input.min;
             if (input.max != null) intInput.max = input.max;
             intInput.addEventListener("change", function () {
@@ -2174,10 +2518,10 @@
             });
             control.appendChild(intInput);
         } else if (input.type === "color") {
-            var swatch = h("input", null, { type: "color", value: colorToHex(input.default) });
+            var swatch = h("input", null, { type: "color", value: colorToHex(Array.isArray(initial) ? initial : input.default) });
             var alpha = h("input", null, {
                 type: "range", min: 0, max: 1, step: 0.01,
-                value: clamp(input.default[3], 0, 1), title: "Alpha"
+                value: clamp(Array.isArray(initial) ? initial[3] : input.default[3], 0, 1), title: "Alpha"
             });
             function pushColor() {
                 var rgb = hexToColor(swatch.value) || [0, 0, 0];
@@ -2196,7 +2540,7 @@
                     var axisRange = h("input", "isf-axis-range", {
                         type: "range", min: input.min[axisIndex], max: input.max[axisIndex],
                         step: Math.max((input.max[axisIndex] - input.min[axisIndex]) / 1000, 1e-6),
-                        value: clamp(input.default[axisIndex], input.min[axisIndex], input.max[axisIndex]),
+                        value: clamp(Array.isArray(initial) ? initial[axisIndex] : input.default[axisIndex], input.min[axisIndex], input.max[axisIndex]),
                         title: axes[axisIndex] + ": " + input.min[axisIndex] + " … " + input.max[axisIndex]
                     });
                     axisRange.addEventListener("input", function () {
@@ -2219,7 +2563,18 @@
             control.appendChild(fileButton);
             control.appendChild(fileInput);
         } else if (input.type === "audio" || input.type === "audioFFT") {
-            control.appendChild(h("span", "isf-muted", { text: "synthetic " + (input.type === "audio" ? "waveform" : "spectrum") }));
+            var micEnabled = !!viewer.audioState;
+            var micButton = h("button", "isf-btn", {
+                type: "button",
+                text: micEnabled ? "Microphone" : "Use mic",
+                title: micEnabled ? "Switch back to the synthetic " + input.type + " source" : "Use the microphone for audio inputs"
+            });
+            micButton.addEventListener("click", function () {
+                if (viewer.audioState) viewer.disableMicrophone();
+                else viewer.enableMicrophone();
+            });
+            control.appendChild(micButton);
+            if (!micEnabled) control.appendChild(h("span", "isf-muted", { text: "synthetic " + (input.type === "audio" ? "waveform" : "spectrum") }));
         }
 
         row.appendChild(control);
@@ -2388,7 +2743,10 @@
         actions.appendChild(copyButton);
         actions.appendChild(importButton);
         actions.appendChild(templateSelect);
+        var keysButton = h("button", "isf-btn isf-keys-btn", { type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts" });
+        actions.appendChild(keysButton);
         actions.appendChild(editorClose);
+        keysButton.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
         editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
         importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
         toolbar.appendChild(tabs);
@@ -3105,6 +3463,8 @@
         this.images = [];
         this.inputs = [];
         this.passes = [];
+        this.generators = [];
+        this.generatorState = {};
         this.values = viewer.values;
         this.events = {};
         this.time = 0;
@@ -3120,6 +3480,8 @@
         this.frameCount = 0;
         this.statsAt = 0;
         this.fps = 0;
+        this.maxFps = Math.max(0, Number(this.config.maxFps) || 0);
+        this._lastDrawAt = 0;
         this.lastPassTarget = null;
         this.lastLog = 0;
         this.warnedSizes = {};
@@ -3203,8 +3565,41 @@
     ISFRuntime.prototype.compile = function (shader) {
         var gl = this.gl;
         var result = createProgram(gl, shader.vertex, shader.fragment);
-        if (!result.ok) return result.error;
+        var mode = "es1";
+        var lastError = result.error;
+        if (!result.ok) {
+            var fallbacks = this.isGL2 && shader.fragmentES3
+                ? [
+                    { mode: "es3", label: "ES 3.00", vertex: shader.vertexES3, fragment: shader.fragmentES3 },
+                    { mode: "es3-promoted", label: "ES 3.00 + literal promotion", vertex: shader.vertexES3Loose, fragment: shader.fragmentES3Loose }
+                ]
+                : [
+                    { mode: "es1-promoted", label: "literal promotion", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
+                ];
+            for (var f = 0; f < fallbacks.length; f++) {
+                var attempt = fallbacks[f];
+                if (!attempt.fragment || !attempt.vertex) continue;
+                var attemptResult = createProgram(gl, attempt.vertex, attempt.fragment);
+                if (attemptResult.ok) {
+                    result = attemptResult;
+                    mode = attempt.mode;
+                    break;
+                }
+                if (attemptResult.error) {
+                    attemptResult.error.context = attempt.label;
+                    lastError = attemptResult.error;
+                }
+                mode = attempt.mode;
+            }
+        }
+        if (!result.ok) return lastError || result.error;
 
+        this.compatibilityMode = mode;
+        this.usedES3 = mode.indexOf("es3") === 0;
+        this.compatibilityLabel = mode === "es3" ? "Compatibility mode · WebGL2 / GLSL ES 3.00"
+            : mode === "es3-promoted" ? "Compatibility mode · ES 3.00 + literal promotion"
+            : mode === "es1-promoted" ? "Compatibility mode · literal promotion"
+            : "";
         this.cleanupProgram();
         this.program = result.program;
         this.shader = shader;
@@ -3216,11 +3611,17 @@
         for (i = 0; i < this.inputs.length; i++) {
             this.locations[this.inputs[i].name] = { location: gl.getUniformLocation(this.program, this.inputs[i].name), type: this.inputs[i].uniform };
         }
+        this.generators = shader.generators || [];
+        for (i = 0; i < this.generators.length; i++) {
+            this.locations[this.generators[i].name] = { location: gl.getUniformLocation(this.program, this.generators[i].name), type: this.generators[i].uniform };
+        }
         this.positionLocation = gl.getAttribLocation(this.program, "isf_position");
         for (i = 0; i < this.images.length; i++) {
             var image = this.images[i];
             this.locations[image.name] = { location: gl.getUniformLocation(this.program, image.name), type: "sampler2D" };
             this.locations["_" + image.name + "_imgSize"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgSize"), type: "vec2" };
+            this.locations["_" + image.name + "_imgRect"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgRect"), type: "vec4" };
+            this.locations["_" + image.name + "_flip"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_flip"), type: "bool" };
             if (image.kind === "audio") this.setupAudioTexture(image.input);
         }
         this.locations._isfMouse = { location: gl.getUniformLocation(this.program, "_isfMouse"), type: "vec4" };
@@ -3272,6 +3673,76 @@
         var entry = this.locations[name];
         if (!entry || !this.program) return;
         setUniform(this.gl, entry.location, type || entry.type, value);
+    };
+
+    ISFRuntime.prototype.resolveGeneratorParam = function (params, key, fallback) {
+        if (!params || params[key] === undefined || params[key] === null) return fallback;
+        var raw = params[key];
+        if (typeof raw === "string") {
+            var input = this.viewer.inputByName && this.viewer.inputByName[raw];
+            var value = this.viewer.values ? this.viewer.values[raw] : undefined;
+            if (input && value !== undefined) {
+                if (input.type === "bool" || input.type === "event") return value ? 1 : 0;
+                if (isFiniteNumber(value)) return value;
+                if (Array.isArray(value)) return numberOr(value[0], fallback);
+            }
+            return fallback;
+        }
+        if (isFiniteNumber(raw)) return raw;
+        if (raw === true) return 1;
+        if (raw === false) return 0;
+        return fallback;
+    };
+
+    // Minimal MadMapper generator runtime: time clocks, pass-throughs,
+    // multipliers and one-pole smoothing. Unknown types hold their value and
+    // are reported once in the status bar by the viewer.
+    ISFRuntime.prototype.updateGenerators = function (delta) {
+        if (!this.generators || !this.generators.length) return;
+        for (var i = 0; i < this.generators.length; i++) {
+            var generator = this.generators[i];
+            var state = this.generatorState[generator.name];
+            if (!state) state = this.generatorState[generator.name] = { value: 0, warned: false };
+            var params = generator.params;
+            var speed = this.resolveGeneratorParam(params, "speed", 1);
+            var reverse = this.resolveGeneratorParam(params, "reverse", 0);
+            var reset = this.resolveGeneratorParam(params, "reset", 0) || this.resolveGeneratorParam(params, "restart", 0);
+            if (reset) state.value = 0;
+            switch (generator.type) {
+                case "time_base":
+                case "incrementer":
+                    state.value += (delta || 0) * speed * (reverse ? -1 : 1);
+                    break;
+                case "pass_thru":
+                    state.value = this.resolveGeneratorParam(params, "value", this.resolveGeneratorParam(params, "input", state.value));
+                    break;
+                case "multiplier":
+                    state.value = this.resolveGeneratorParam(params, "input1", 1) * this.resolveGeneratorParam(params, "input2", 1);
+                    break;
+                case "linear_filter":
+                case "damper": {
+                    var target = this.resolveGeneratorParam(params, "input", this.resolveGeneratorParam(params, "value", 0));
+                    var rate = Math.max(0.0001, this.resolveGeneratorParam(params, "rate", 1));
+                    var amount = Math.min(1, 1 - Math.exp(-rate * (delta || 0) * 4));
+                    state.value += (target - state.value) * amount;
+                    break;
+                }
+                case "ease_filter":
+                case "animator":
+                case "adsr":
+                    state.value = this.resolveGeneratorParam(params, "input", this.resolveGeneratorParam(params, "value", state.value));
+                    break;
+                default:
+                    if (!state.warned) {
+                        state.warned = true;
+                        if (this.viewer.warn) this.viewer.warn("Generator type \"" + generator.type + "\" is not simulated; " + generator.name + " stays 0");
+                    }
+                    state.value = 0;
+                    break;
+            }
+            if (generator.uniform === "bool") this.setNumber(generator.name, !!state.value, "bool");
+            else this.setNumber(generator.name, state.value, "float");
+        }
     };
 
     ISFRuntime.prototype.resize = function (force) {
@@ -3369,6 +3840,8 @@
 
     ISFRuntime.prototype.updateAudioTextures = function () {
         var gl = this.gl;
+        var analyser = this.viewer.audioState ? this.viewer.audioState.analyser : null;
+        var buffer = this.viewer.audioState ? this.viewer.audioState.data : null;
         for (var i = 0; i < this.images.length; i++) {
             var image = this.images[i];
             if (image.kind !== "audio" || !image.input) continue;
@@ -3376,27 +3849,47 @@
             var texture = this.audioTextures[input.name];
             var data = this.audioData[input.name];
             if (!texture || !data) {
-            texture = this.setupAudioTexture(input);
-            data = this.audioData[input.name];
-        }
-        if (!texture || !data) continue;
+                texture = this.setupAudioTexture(input);
+                data = this.audioData[input.name];
+            }
+            if (!texture || !data) continue;
             var samples = texture.__width;
             var time = this.time;
-            for (var x = 0; x < samples; x++) {
-                var t = x / samples;
-                var value;
-                if (input.type === "audio") {
-                    var envelope = Math.sin(Math.PI * t);
-                    value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
-                } else {
-                    var falloff = Math.pow(1 - t, 1.7);
-                    value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
+
+            if (analyser && buffer) {
+                // Live audio: time-domain data for `audio`, FFT bins for `audioFFT`.
+                if (buffer.length !== analyser.frequencyBinCount) {
+                    buffer = new Uint8Array(analyser.frequencyBinCount);
+                    this.viewer.audioState.data = buffer;
                 }
-                var byte = Math.max(0, Math.min(255, Math.round(value * 255)));
-                data[x * 4] = byte;
-                data[x * 4 + 1] = byte;
-                data[x * 4 + 2] = byte;
-                data[x * 4 + 3] = 255;
+                if (input.type === "audio") analyser.getByteTimeDomainData(buffer);
+                else analyser.getByteFrequencyData(buffer);
+                var binCount = buffer.length;
+                for (var m = 0; m < samples; m++) {
+                    var bin = Math.min(binCount - 1, Math.round(m / samples * binCount));
+                    var byte = buffer[bin];
+                    data[m * 4] = byte;
+                    data[m * 4 + 1] = byte;
+                    data[m * 4 + 2] = byte;
+                    data[m * 4 + 3] = 255;
+                }
+            } else {
+                for (var x = 0; x < samples; x++) {
+                    var t = x / samples;
+                    var value;
+                    if (input.type === "audio") {
+                        var envelope = Math.sin(Math.PI * t);
+                        value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
+                    } else {
+                        var falloff = Math.pow(1 - t, 1.7);
+                        value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
+                    }
+                    var synthByte = Math.max(0, Math.min(255, Math.round(value * 255)));
+                    data[x * 4] = synthByte;
+                    data[x * 4 + 1] = synthByte;
+                    data[x * 4 + 2] = synthByte;
+                    data[x * 4 + 3] = 255;
+                }
             }
             gl.bindTexture(gl.TEXTURE_2D, texture);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, samples, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
@@ -3445,6 +3938,8 @@
         gl.bindTexture(gl.TEXTURE_2D, texture);
         this.setNumber(image.name, unit, "sampler2D");
         this.setNumber("_" + image.name + "_imgSize", [width, height], "vec2");
+        this.setNumber("_" + image.name + "_imgRect", [0, 0, 1, 1], "vec4");
+        this.setNumber("_" + image.name + "_flip", false, "bool");
         return unit + 1;
     };
 
@@ -3494,6 +3989,7 @@
         this.setNumber("TIMEDELTA", delta || 0, "float");
         this.setNumber("DATE", [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()], "vec4");
         this.setNumber("_isfMouse", this.mouse, "vec4");
+        this.updateGenerators(delta || 0);
         this.setNumber("FRAMEINDEX", this.frameIndex, "int");
 
         this.lastPassTarget = null;
@@ -3517,6 +4013,7 @@
             this.frameCount = 0;
             this.statsAt = nowMs;
             this.viewer.updateBadge(this.fps + " fps · " + this.destWidth + "×" + this.destHeight + (this.passes.length > 1 ? " · " + this.passes.length + " passes" : ""));
+            if (this.viewer.syncClock) this.viewer.syncClock(this.time, this.playing);
         }
     };
 
@@ -3584,6 +4081,10 @@
             return;
         }
         if (!this.playing && !this.needsRender) return;
+        if (this.playing && this.maxFps > 0 && this._lastDrawAt && now - this._lastDrawAt < 1000 / this.maxFps) {
+            return; // capped frame rate; lastNow keeps the elapsed time for the next draw
+        }
+        this._lastDrawAt = now;
         var delta = 0;
         if (this.playing) {
             delta = Math.max(0, Math.min(0.1, (now - this.lastNow) / 1000));
@@ -3769,9 +4270,11 @@
         viewer.rawSource = "";
         viewer.source = "";
         viewer.lastErrorText = "";
+        viewer.audioState = null;
         viewer.layout = loadLayout();
         viewer.qualityChoice = (viewer.layout && viewer.layout.quality) || config.resolution || "auto";
         viewer.urlFlags = readUrlFlags();
+        viewer.includes = {};
         VIEWERS.push(viewer);
         viewer.saveLayout = function (patch) {
             if (config.persistLayout === false) return;
@@ -3785,7 +4288,7 @@
 
         ensureStyle();
 
-        // Header + stage + side panel
+        // Header + stage + overlay drawers
         var block = h("div", "isf-block", { dataset: { isfUrl: viewer.url } });
         var header = h("div", "isf-header");
         var titleEl = h("a", "isf-title", {
@@ -3835,14 +4338,7 @@
         stage.appendChild(badge);
 
         var uid = "isf-" + (++VIEWER_SEQ);
-        var side = h("aside", "isf-side isf-hidden");
-        var sideInner = h("div", "isf-side-inner");
-        var resizeX = h("div", "isf-resize-x", {
-            role: "separator", "aria-orientation": "vertical",
-            "aria-label": "Resize the side panel", tabindex: "0",
-            title: "Drag to resize the panel — double-click to reset"
-        });
-        var paramsPanel = h("div", "isf-panel isf-params isf-hidden", {
+        var paramsPanel = h("div", "isf-panel isf-params", {
             id: uid + "-params", role: "region", "aria-label": "Parameters"
         });
         var paramsTitle = h("div", "isf-panel-title");
@@ -3852,13 +4348,28 @@
         paramsPanel.appendChild(paramsTitle);
         var paramsList = h("div", "isf-params-list");
         paramsPanel.appendChild(paramsList);
-        sideInner.appendChild(paramsPanel);
+        var rightResize = h("div", "isf-resize-x isf-resize-right", {
+            role: "separator", "aria-orientation": "vertical",
+            "aria-label": "Resize the parameters drawer", tabindex: "0",
+            title: "Drag to resize the parameters drawer — double-click to reset"
+        });
+        var rightInner = h("div", "isf-drawer-inner");
+        rightInner.appendChild(paramsPanel);
+        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-drawer-closed");
+        rightDrawer.appendChild(rightResize);
+        rightDrawer.appendChild(rightInner);
 
+        var leftResize = h("div", "isf-resize-x isf-resize-left", {
+            role: "separator", "aria-orientation": "vertical",
+            "aria-label": "Resize the code drawer", tabindex: "0",
+            title: "Drag to resize the code drawer — double-click to reset"
+        });
+        var leftInner = h("div", "isf-drawer-inner");
         var editor = null;
         if (config.editor) {
             editor = createEditor(viewer, config);
             editor.el.classList.add("isf-hidden");
-            sideInner.appendChild(editor.el);
+            leftInner.appendChild(editor.el);
         }
         var importPanel = h("div", "isf-panel isf-import isf-hidden", { id: uid + "-import", role: "region", "aria-label": "Import Shadertoy or GLSL Sandbox" });
         var importTitle = h("div", "isf-panel-title");
@@ -3878,12 +4389,14 @@
         importPanel.appendChild(importTitle);
         importPanel.appendChild(importArea);
         importPanel.appendChild(importActions);
-        sideInner.appendChild(importPanel);
-        side.appendChild(resizeX);
-        side.appendChild(sideInner);
+        leftInner.appendChild(importPanel);
+        var leftDrawer = h("div", "isf-drawer isf-drawer-left isf-drawer-closed");
+        leftDrawer.appendChild(leftResize);
+        leftDrawer.appendChild(leftInner);
 
+        stage.appendChild(leftDrawer);
+        stage.appendChild(rightDrawer);
         body.appendChild(stage);
-        body.appendChild(side);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         block.appendChild(header);
         block.appendChild(body);
@@ -3899,9 +4412,10 @@
             overlay: overlay,
             overlayInner: overlayInner,
             badge: badge,
-            side: side,
-            sideInner: sideInner,
-            resizeX: resizeX,
+            leftDrawer: leftDrawer,
+            rightDrawer: rightDrawer,
+            leftResize: leftResize,
+            rightResize: rightResize,
             body: body,
             paramsPanel: paramsPanel,
             paramsList: paramsList,
@@ -3928,10 +4442,6 @@
             return fullscreenElement === block;
         }
 
-        function wideMode() {
-            return isFullscreenActive() || (typeof window !== "undefined" && window.innerWidth >= 900 && block.classList.contains("isf-wide"));
-        }
-
         function applyStageLayout() {
             if (config.aspectRatio) {
                 stage.style.aspectRatio = String(config.aspectRatio).replace(":", "/");
@@ -3943,74 +4453,79 @@
             if (config.width && config.width !== "100%") block.style.maxWidth = config.width;
         }
 
-        function maxSideWidth() {
-            return Math.max(280, Math.min(640, (typeof window !== "undefined" ? window.innerWidth : 1200) * 0.75));
+        function maxDrawerWidth() {
+            var stageWidth = stage.getBoundingClientRect().width || (typeof window !== "undefined" ? window.innerWidth : 1200);
+            // Two drawers must always leave the render visible between them.
+            return Math.max(220, Math.min(760, stageWidth * 0.46));
         }
 
-        function applySideWidth(px, persist) {
-            var width = clamp(px, 240, maxSideWidth());
-            if (isFullscreenActive()) {
-                side.style.width = width + "px";
-            } else if (wideMode()) {
-                body.style.gridTemplateColumns = "minmax(0,1fr) " + width + "px";
+        function setDrawerWidth(drawer, px, key, persist) {
+            var width = clamp(px, 240, maxDrawerWidth());
+            drawer.style.width = width + "px";
+            if (persist) {
+                var patch = {};
+                patch[key] = width;
+                viewer.saveLayout(patch);
             }
-            if (persist) viewer.saveLayout({ sideWidth: width });
             return width;
         }
 
-        function syncSideLayout() {
-            var stored = viewer.layout && viewer.layout.sideWidth;
-            if (isFullscreenActive()) {
-                side.style.width = stored ? clamp(stored, 240, maxSideWidth()) + "px" : "";
-                body.style.gridTemplateColumns = "";
-            } else if (wideMode() && stored) {
-                side.style.width = "";
-                body.style.gridTemplateColumns = "minmax(0,1fr) " + clamp(stored, 240, maxSideWidth()) + "px";
-            } else {
-                side.style.width = "";
-                body.style.gridTemplateColumns = "";
-            }
+        // Drawers overlay the canvas on both edges; resizing them never
+        // changes the render size. The handle on the inner edge of each
+        // drawer drags it wider, and is keyboard-operable.
+        function bindDrawerResize(handle, drawer, key, direction) {
+            var startX = 0;
+            var startWidth = 0;
+            handle.addEventListener("pointerdown", function (event) {
+                event.preventDefault();
+                startX = event.clientX;
+                startWidth = drawer.getBoundingClientRect().width;
+                handle.classList.add("is-dragging");
+                try { handle.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+            });
+            handle.addEventListener("pointermove", function (event) {
+                if (!handle.classList.contains("is-dragging")) return;
+                setDrawerWidth(drawer, startWidth + (event.clientX - startX) * direction, key, false);
+            });
+            var endDrag = function (event) {
+                if (!handle.classList.contains("is-dragging")) return;
+                handle.classList.remove("is-dragging");
+                try { handle.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+                var patch = {};
+                patch[key] = drawer.getBoundingClientRect().width;
+                viewer.saveLayout(patch);
+            };
+            handle.addEventListener("pointerup", endDrag);
+            handle.addEventListener("pointercancel", endDrag);
+            handle.addEventListener("dblclick", function () {
+                drawer.style.width = "";
+                var patch = {};
+                patch[key] = null;
+                viewer.saveLayout(patch);
+            });
+            handle.addEventListener("keydown", function (event) {
+                var current = drawer.getBoundingClientRect().width;
+                var delta = event.shiftKey ? 64 : 16;
+                if (event.key === "ArrowRight") { event.preventDefault(); setDrawerWidth(drawer, current + delta * direction, key, true); }
+                else if (event.key === "ArrowLeft") { event.preventDefault(); setDrawerWidth(drawer, current - delta * direction, key, true); }
+                else if (event.key === "Home") { event.preventDefault(); setDrawerWidth(drawer, 240, key, true); }
+                else if (event.key === "End") { event.preventDefault(); setDrawerWidth(drawer, maxDrawerWidth(), key, true); }
+            });
         }
 
         applyStageLayout();
-        if (viewer.layout.sideWidth && config.persistLayout !== false) syncSideLayout();
-
-        var sideDragX = 0;
-        var sideDragWidth = 0;
-        resizeX.addEventListener("pointerdown", function (event) {
-            event.preventDefault();
-            sideDragX = event.clientX;
-            sideDragWidth = side.getBoundingClientRect().width;
-            resizeX.classList.add("is-dragging");
-            try { resizeX.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
-        });
-        resizeX.addEventListener("pointermove", function (event) {
-            if (!resizeX.classList.contains("is-dragging")) return;
-            applySideWidth(sideDragWidth + (sideDragX - event.clientX), false);
-        });
-        var endSideDrag = function (event) {
-            if (!resizeX.classList.contains("is-dragging")) return;
-            resizeX.classList.remove("is-dragging");
-            try { resizeX.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
-            viewer.saveLayout({ sideWidth: side.getBoundingClientRect().width });
+        bindDrawerResize(leftResize, leftDrawer, "leftWidth", 1);
+        bindDrawerResize(rightResize, rightDrawer, "paramsWidth", -1);
+        var storedLeft = viewer.layout.leftWidth || viewer.layout.editorWidth || viewer.layout.sideWidth;
+        var storedRight = viewer.layout.paramsWidth || viewer.layout.sideWidth;
+        if (storedLeft && config.persistLayout !== false) setDrawerWidth(leftDrawer, storedLeft, "leftWidth", false);
+        if (storedRight && config.persistLayout !== false) setDrawerWidth(rightDrawer, storedRight, "paramsWidth", false);
+        var drawerMetricsHandler = function () {
+            if (leftDrawer.style.width) leftDrawer.style.width = clamp(parseFloat(leftDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
+            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
         };
-        resizeX.addEventListener("pointerup", endSideDrag);
-        resizeX.addEventListener("pointercancel", endSideDrag);
-        resizeX.addEventListener("dblclick", function () {
-            viewer.saveLayout({ sideWidth: null });
-            syncSideLayout();
-        });
-        resizeX.addEventListener("keydown", function (event) {
-            var current = side.getBoundingClientRect().width;
-            var delta = event.shiftKey ? 64 : 16;
-            if (event.key === "ArrowLeft") { event.preventDefault(); applySideWidth(current + delta, true); }
-            else if (event.key === "ArrowRight") { event.preventDefault(); applySideWidth(current - delta, true); }
-            else if (event.key === "Home") { event.preventDefault(); applySideWidth(240, true); }
-            else if (event.key === "End") { event.preventDefault(); applySideWidth(maxSideWidth(), true); }
-        });
-        var sideMetricsHandler = function () { syncSideLayout(); };
-        window.addEventListener("resize", sideMetricsHandler);
-        viewer.listeners.push(function () { window.removeEventListener("resize", sideMetricsHandler); });
+        window.addEventListener("resize", drawerMetricsHandler);
+        viewer.listeners.push(function () { window.removeEventListener("resize", drawerMetricsHandler); });
         paramsClose.addEventListener("click", function () { viewer.toggleParams(); });
         stage.addEventListener("dblclick", function (event) {
             if (event.target === canvas) viewer.toggleFullscreen();
@@ -4020,6 +4535,38 @@
                 event.preventDefault();
                 viewer.toggleFullscreen();
             }
+        });
+        block.addEventListener("keydown", function (event) {
+            if ((event.ctrlKey || event.metaKey) && (event.key === "b" || event.key === "B")) {
+                event.preventDefault();
+                viewer.toggleEditor();
+            } else if ((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
+                event.preventDefault();
+                viewer.toggleParams();
+            }
+        });
+        function imageDropTarget() {
+            if (!viewer.built) return null;
+            var names = viewer.built.inputs.filter(function (input) { return input.type === "image"; }).map(function (input) { return input.name; });
+            if (!names.length) return null;
+            return names.indexOf("inputImage") !== -1 ? "inputImage" : names[0];
+        }
+        stage.addEventListener("dragover", function (event) {
+            if (!imageDropTarget()) return;
+            event.preventDefault();
+            stage.classList.add("isf-dragover");
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        });
+        stage.addEventListener("dragleave", function () { stage.classList.remove("isf-dragover"); });
+        stage.addEventListener("drop", function (event) {
+            stage.classList.remove("isf-dragover");
+            var name = imageDropTarget();
+            if (!name) { viewer.warn("This shader has no image input"); return; }
+            event.preventDefault();
+            var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+            if (!file || !/^image\//.test(file.type)) { viewer.warn("Drop a PNG, JPEG or WebP image"); return; }
+            viewer.setInputImage(name, file);
+            viewer.setState("Loaded " + (file.name || "image") + " into " + name, "ok");
         });
 
         /* ---------------------------------------------------------- UI */
@@ -4041,8 +4588,14 @@
             overlayInner.innerHTML = html || "";
             overlay.style.display = show ? "flex" : "none";
         };
+        function showEditorPanel() {
+            importPanel.classList.add("isf-hidden");
+            if (viewer.editor) viewer.editor.el.classList.remove("isf-hidden");
+        }
         viewer.openImport = function () {
-            viewer.setPanel(importPanel, true);
+            importPanel.classList.remove("isf-hidden");
+            if (viewer.editor) viewer.editor.el.classList.add("isf-hidden");
+            viewer.setDrawer(leftDrawer, true);
             try { importArea.focus(); } catch (err) { /* ignore */ }
         };
         viewer.exportPng = function () {
@@ -4059,8 +4612,8 @@
         };
         viewer.copyLink = function () {
             var url = new URL(window.location.href);
-            var editorOpen = !!(viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
-            var paramsOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden");
+            var editorOpen = viewer.isDrawerOpen(leftDrawer);
+            var paramsOpen = viewer.isDrawerOpen(rightDrawer);
             url.searchParams.set("isf-editor", editorOpen ? "1" : "0");
             url.searchParams.set("isf-controls", paramsOpen ? "1" : "0");
             var values = {};
@@ -4081,7 +4634,7 @@
             }
         };
         if (shareButton) shareButton.addEventListener("click", function () { viewer.copyLink(); });
-        importClose.addEventListener("click", function () { viewer.setPanel(importPanel, false); });
+        importClose.addEventListener("click", function () { showEditorPanel(); });
         importConvert.addEventListener("click", function () {
             var result = convertToISF(importArea.value);
             if (!result.ok) {
@@ -4092,15 +4645,22 @@
             importStatus.textContent = "";
             importStatus.className = "isf-import-status";
             viewer.editor.setValue(result.source);
-            viewer.setPanel(importPanel, false);
-            viewer.setPanel(viewer.dom.editorPanel, true);
+            showEditorPanel();
             viewer.editor.setStatus("Imported " + result.format + (result.warnings.length ? " — " + result.warnings.join(" ") : ""), result.warnings.length ? "" : "ok");
             viewer.applySource(false);
         });
-        viewer.errorOverlay = function (title, message, rawLine) {
+        viewer.errorOverlay = function (title, message, rawLine, items) {
             viewer.lastErrorText = String(message || "");
+            viewer.lastErrorItems = items || [];
             var html = "<strong>" + escapeHtml(title || "Shader error") + "</strong>";
             html += "<pre>" + escapeHtml(viewer.lastErrorText) + "</pre>";
+            if (items && items.length > 1) {
+                html += '<details class="isf-error-list"><summary>' + (items.length - 1) + " more message(s)</summary><ul>";
+                for (var i = 1; i < items.length; i++) {
+                    html += "<li>" + (items[i].rawLine ? '<button class="isf-error-jump" type="button" data-isf-overlay="goto" data-index="' + i + '">line ' + items[i].rawLine + "</button> " : "") + escapeHtml(items[i].message) + "</li>";
+                }
+                html += "</ul></details>";
+            }
             html += '<div class="isf-overlay-actions">';
             html += '<a class="isf-overlay-btn" href="' + escapeHtml(viewer.url) + '" target="_blank" rel="noopener">Open source</a>';
             if (viewer.editor) {
@@ -4111,29 +4671,54 @@
             html += "</div>";
             viewer.showOverlay(html, true);
         };
+        viewer.showShortcuts = function () {
+            var rows = [
+                ["Ctrl/Cmd + Enter / S", "Apply the shader"],
+                ["Ctrl/Cmd + /", "Comment / uncomment"],
+                ["Ctrl/Cmd + + / - / 0", "Zoom the editor"],
+                ["Tab / Shift+Tab", "Indent / dedent"],
+                ["Enter", "Auto-indent"],
+                ["Ctrl/Cmd + B", "Show / hide the editor"],
+                ["Ctrl/Cmd + K", "Show / hide the parameters"],
+                ["Enter / Space", "Fullscreen the preview"],
+                ["Drag the dividers", "Resize the editor and panel"]
+            ];
+            var html = "<strong>Keyboard shortcuts</strong><div class=\"isf-shortcuts\">";
+            rows.forEach(function (row) {
+                html += '<div class="isf-shortcut"><kbd>' + escapeHtml(row[0]) + "</kbd><span>" + escapeHtml(row[1]) + "</span></div>";
+            });
+            html += '</div><div class="isf-overlay-actions"><button class="isf-overlay-btn" type="button" data-isf-overlay="close">Close</button></div>';
+            viewer.showOverlay(html, true);
+        };
+        viewer.setDrawer = function (drawer, open) {
+            drawer.classList.toggle("isf-drawer-closed", !open);
+        };
+        viewer.isDrawerOpen = function (drawer) {
+            return !drawer.classList.contains("isf-drawer-closed");
+        };
         viewer.setPanel = function (panel, open) {
-            panel.classList.toggle("isf-hidden", !open);
-            var paramsOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden");
-            var editorOpen = !!(viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
-            var importOpen = !!(viewer.dom.importPanel && !viewer.dom.importPanel.classList.contains("isf-hidden"));
-            var anyOpen = paramsOpen || editorOpen || importOpen;
-            side.classList.toggle("isf-hidden", !anyOpen);
-            block.classList.toggle("isf-wide", anyOpen);
-            paramsButton.setAttribute("aria-expanded", paramsOpen ? "true" : "false");
-            if (viewer.dom.editorButton) editorButton.setAttribute("aria-expanded", editorOpen ? "true" : "false");
-            syncSideLayout();
+            if (panel === viewer.dom.paramsPanel) viewer.setDrawer(rightDrawer, open);
+            else if (panel === viewer.dom.editorPanel) {
+                viewer.setDrawer(leftDrawer, open);
+                if (open) showEditorPanel();
+            } else {
+                panel.classList.toggle("isf-hidden", !open);
+            }
         };
         viewer.toggleParams = function () {
-            var open = viewer.dom.paramsPanel.classList.contains("isf-hidden");
-            viewer.setPanel(viewer.dom.paramsPanel, open);
+            var open = !viewer.isDrawerOpen(rightDrawer);
+            viewer.setDrawer(rightDrawer, open);
             paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
+            paramsButton.setAttribute("aria-expanded", open ? "true" : "false");
             paramsButton.classList.toggle("is-active", open);
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
-            var open = viewer.dom.editorPanel.classList.contains("isf-hidden");
-            viewer.setPanel(viewer.dom.editorPanel, open);
+            var open = !viewer.isDrawerOpen(leftDrawer);
+            viewer.setDrawer(leftDrawer, open);
+            if (open) showEditorPanel();
             editorButton.setAttribute("aria-pressed", open ? "true" : "false");
+            editorButton.setAttribute("aria-expanded", open ? "true" : "false");
             editorButton.classList.toggle("is-active", open);
             if (open && viewer.editor) viewer.editor.focus();
         };
@@ -4169,7 +4754,6 @@
             var active = isFullscreenActive();
             block.classList.toggle("isf-fullscreen", active);
             viewer.dom.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
-            syncSideLayout();
             applyStageLayout();
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) viewer.setState("");
@@ -4219,6 +4803,46 @@
                 if (viewer.values[name] !== undefined) next[name] = viewer.values[name];
             }
             viewer.values = next;
+        };
+        viewer.syncClock = function (time, playing) {
+            if (!viewer.dom.timeRange || viewer._clockDragging) return;
+            var shown = time % 60;
+            viewer.dom.timeRange.value = shown;
+            if (viewer.dom.timeLabel) viewer.dom.timeLabel.textContent = (playing ? "▶ " : "⏸ ") + shown.toFixed(1) + " s";
+        };
+        viewer.randomizeParameters = function () {
+            if (!viewer.built) return;
+            for (var i = 0; i < viewer.built.inputs.length; i++) {
+                var input = viewer.built.inputs[i];
+                var value = null;
+                if (input.type === "float") {
+                    value = input.min + Math.random() * (input.max - input.min);
+                } else if (input.type === "bool") {
+                    value = Math.random() < 0.5;
+                } else if (input.type === "event") {
+                    continue;
+                } else if (input.type === "long") {
+                    if (input.values && input.values.length) {
+                        value = input.values[Math.floor(Math.random() * input.values.length)];
+                    } else {
+                        var lo = input.min != null ? input.min : 0;
+                        var hi = input.max != null ? input.max : lo + 10;
+                        value = Math.round(lo + Math.random() * (hi - lo));
+                    }
+                } else if (input.type === "color") {
+                    value = [Math.random(), Math.random(), Math.random(), 1];
+                } else if (input.type === "point2D") {
+                    value = [
+                        input.min[0] + Math.random() * (input.max[0] - input.min[0]),
+                        input.min[1] + Math.random() * (input.max[1] - input.min[1])
+                    ];
+                } else {
+                    continue;
+                }
+                viewer.setParameter(input.name, value);
+            }
+            viewer.rebuildParams();
+            viewer.setState("Parameters randomized", "");
         };
         viewer.setParameter = function (name, value) {
             var input = viewer.inputByName && viewer.inputByName[name];
@@ -4278,6 +4902,46 @@
             };
             image.src = url;
         };
+        viewer.enableMicrophone = function () {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                viewer.warn("Microphone capture is not available in this browser");
+                return;
+            }
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+                if (viewer.disposed) {
+                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    return;
+                }
+                var Context = window.AudioContext || window.webkitAudioContext;
+                if (!Context) {
+                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    viewer.warn("Web Audio is not available in this browser");
+                    return;
+                }
+                var context = new Context();
+                var analyser = context.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.smoothingTimeConstant = 0.75;
+                context.createMediaStreamSource(stream).connect(analyser);
+                viewer.audioState = { context: context, stream: stream, analyser: analyser, data: new Uint8Array(analyser.frequencyBinCount) };
+                viewer.rebuildParams();
+                if (viewer.runtime) { viewer.runtime.needsRender = true; BUDGET.touch(viewer); }
+                viewer.setState("Microphone input enabled", "ok");
+            }).catch(function (error) {
+                viewer.warn("Microphone unavailable: " + (error && error.message ? error.message : error));
+            });
+        };
+        viewer.disableMicrophone = function () {
+            if (!viewer.audioState) return;
+            try {
+                viewer.audioState.stream.getTracks().forEach(function (track) { track.stop(); });
+                viewer.audioState.context.close();
+            } catch (err) { /* ignore */ }
+            viewer.audioState = null;
+            viewer.rebuildParams();
+            if (viewer.runtime) viewer.runtime.needsRender = true;
+            viewer.setState("Synthetic audio", "");
+        };
 
         /* -------------------------------------------------- params panel */
 
@@ -4323,6 +4987,30 @@
             });
             qualityRow.appendChild(qualitySelect);
             section.appendChild(qualityRow);
+            var timeRow = h("label", "isf-view-row isf-time-row");
+            timeRow.appendChild(h("span", "isf-view-label", { text: "Time" }));
+            var timeRange = h("input", "isf-time-range", {
+                type: "range", min: 0, max: 60, step: 0.05, value: 0,
+                "aria-label": "Scrub time", title: "Scrub the shader clock (0–60 s)"
+            });
+            var timeLabel = h("span", "isf-view-value", { text: "0.0 s" });
+            timeRange.addEventListener("input", function () {
+                viewer._clockDragging = true;
+                if (viewer.runtime) {
+                    viewer.runtime.time = Number(timeRange.value);
+                    viewer.runtime.needsRender = true;
+                }
+                timeLabel.textContent = Number(timeRange.value).toFixed(1) + " s";
+            });
+            timeRange.addEventListener("change", function () { viewer._clockDragging = false; });
+            timeRow.appendChild(timeRange);
+            timeRow.appendChild(timeLabel);
+            section.appendChild(timeRow);
+            viewer.dom.timeRange = timeRange;
+            viewer.dom.timeLabel = timeLabel;
+            var randomButton = h("button", "isf-btn", { type: "button", text: "Randomize", title: "Randomize every parameter within its declared range" });
+            randomButton.addEventListener("click", function () { viewer.randomizeParameters(); });
+            section.appendChild(randomButton);
             var exportButton = h("button", "isf-btn", { type: "button", text: "Export PNG", title: "Download the current frame as a PNG" });
             exportButton.addEventListener("click", function () { viewer.exportPng(); });
             section.appendChild(exportButton);
@@ -4350,8 +5038,9 @@
             else if (config.params === "closed") open = false;
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
             if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
-            viewer.setPanel(viewer.dom.paramsPanel, open);
+            viewer.setDrawer(rightDrawer, open);
             paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
+            paramsButton.setAttribute("aria-expanded", open ? "true" : "false");
             paramsButton.classList.toggle("is-active", open);
             paramsButton.setAttribute("aria-controls", viewer.dom.paramsPanel.id);
             var hasControls = config.controls && inputs.length > 0;
@@ -4380,23 +5069,30 @@
                 }
                 viewer.parse = parsed;
                 viewer.originalSource = result.text;
+                var vertexUrl = null;
                 var vertexPromise = Promise.resolve(null);
                 if (config.vertexShader !== false) {
-                    var vertexUrl = result.url.replace(/\.fs(\?|#|$)/i, ".vs$1");
+                    vertexUrl = result.url.replace(/\.fs(\?|#|$)/i, ".vs$1");
                     if (vertexUrl !== result.url) {
                         vertexPromise = fetchText(vertexUrl).catch(function () { return null; });
                     }
                 }
-                return vertexPromise.then(function (vertexSource) {
-                    viewer.vertexSource = vertexSource;
-                    if (viewer.editor) viewer.editor.setVertex(vertexSource);
+                var includeMap = {};
+                var includePromise = loadIncludes(collectIncludes(result.text), result.url, config, includeMap, {});
+                return Promise.all([vertexPromise, includePromise]).then(function (values) {
+                    viewer.vertexSource = values[0];
+                    viewer.includes = includeMap;
+                    if (viewer.editor) viewer.editor.setVertex(values[0]);
+                    if (viewer.vertexSource && vertexUrl) {
+                        return loadIncludes(collectIncludes(viewer.vertexSource), vertexUrl, config, includeMap, {});
+                    }
                     return null;
                 });
             }).then(function () {
                 if (viewer.disposed) return;
                 var built;
                 try {
-                    built = buildShader(viewer.parse, { vertexShader: viewer.vertexSource, imports: config.imports });
+                    built = buildShader(viewer.parse, { vertexShader: viewer.vertexSource, imports: config.imports, includes: viewer.includes });
                 } catch (buildError) {
                     var error2 = new Error(buildError && buildError.message ? buildError.message : "Unable to build shader");
                     error2.isfLine = buildError && buildError.line;
@@ -4489,6 +5185,7 @@
                 warnings.push({ message: "Float buffers are not supported here; byte buffers are used instead" });
             }
             if (warnings.length) viewer.setState(warnings.map(function (w) { return w.message + (w.line ? " (line " + w.line + ")" : ""); }).join("\n"), "warn");
+            else if (viewer.runtime.compatibilityLabel) viewer.setState(viewer.runtime.compatibilityLabel, "");
             else viewer.setState("");
             viewer.updateBadge(viewer.runtime.playing ? "" : "paused");
             viewer.dom.playButton.innerHTML = viewer.runtime.playing ? ICONS.pause : ICONS.play;
@@ -4519,16 +5216,27 @@
             var rawLine = null;
             var firstMessage = null;
             if (error && error.messages && error.messages.length) {
-                firstMessage = error.messages[0];
                 var isVertexError = error.label === "vertex shader";
                 var lineMap = built ? (isVertexError ? built.vertexLineMap : built.lineMap) : null;
-                rawLine = firstMessage.line && lineMap ? lineMap(firstMessage.line) : null;
-                message = (error.label ? error.label + ": " : "") + firstMessage.severity + " at line " + firstMessage.line + ": " + firstMessage.message;
+                var items = [];
+                for (var mi = 0; mi < error.messages.length; mi++) {
+                    var msg = error.messages[mi];
+                    var mapped = msg.line && lineMap ? lineMap(msg.line) : null;
+                    items.push({
+                        message: msg.severity + " at line " + msg.line + ": " + msg.message,
+                        rawLine: mapped,
+                        buffer: isVertexError ? "vertex" : null
+                    });
+                }
+                firstMessage = error.messages[0];
+                rawLine = items[0].rawLine;
+                message = (error.context ? error.context + " — " : "") + (error.label ? error.label + ": " : "") + items[0].message;
                 if (rawLine) message += " (file line " + rawLine + ")";
+                viewer.lastErrorItems = items;
             }
             viewer.state = "error";
             viewer.setState(message, "error");
-            viewer.errorOverlay("Shader error", message, rawLine);
+            viewer.errorOverlay("Shader error", message, rawLine, viewer.lastErrorItems);
             if (viewer.editor) {
                 viewer.editor.setStatus(message, "error");
                 viewer.editor.markError(rawLine || null, error && error.label === "vertex shader" ? "vertex" : null);
@@ -4557,7 +5265,7 @@
             }
             var built;
             try {
-                built = buildShader(parsed, { vertexShader: viewer.editor.getVertex(), imports: config.imports });
+                built = buildShader(parsed, { vertexShader: viewer.editor.getVertex(), imports: config.imports, includes: viewer.includes });
             } catch (buildError) {
                 viewer.editor.setStatus(buildError.message, "error");
                 return false;
@@ -4592,6 +5300,8 @@
             viewer.state = "live";
             if (built.warnings && built.warnings.length) {
                 viewer.setState(built.warnings.map(function (w) { return w.message + (w.line ? " (line " + w.line + ")" : ""); }).join("\n"), "warn");
+            } else if (viewer.runtime && viewer.runtime.compatibilityLabel) {
+                viewer.setState(viewer.runtime.compatibilityLabel, "");
             } else {
                 viewer.setState("");
             }
@@ -4674,6 +5384,13 @@
             viewer.disposed = true;
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
+            if (viewer.audioState) {
+                try {
+                    viewer.audioState.stream.getTracks().forEach(function (track) { track.stop(); });
+                    viewer.audioState.context.close();
+                } catch (err) { /* ignore */ }
+                viewer.audioState = null;
+            }
             var viewerIndex = VIEWERS.indexOf(viewer);
             if (viewerIndex !== -1) VIEWERS.splice(viewerIndex, 1);
             if (observer) observer.disconnect();
@@ -4693,6 +5410,16 @@
                 if (kind === "editor") {
                     viewer.showOverlay("", false);
                     viewer.toggleEditor();
+                } else if (kind === "goto") {
+                    var item = viewer.lastErrorItems && viewer.lastErrorItems[Number(action.getAttribute("data-index"))];
+                    if (item) {
+                        viewer.showOverlay("", false);
+                        showEditorPanel();
+                        viewer.setDrawer(leftDrawer, true);
+                        if (viewer.editor) viewer.editor.markError(item.rawLine, item.buffer);
+                    }
+                } else if (kind === "close") {
+                    viewer.showOverlay("", false);
                 } else if (kind === "copy") {
                     var text = viewer.lastErrorText || "";
                     var markCopied = function () { action.textContent = "Copied"; };

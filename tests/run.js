@@ -495,6 +495,78 @@ test("vertex line map points into the user vertex shader", () => {
     equal(built.vertexLineMap(1), null);
 });
 
+test("literal promotion learns float constants from includes", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nconst float PI = 3.14159;\nvoid main(){\n    float t = 2*PI*TIME / 360;\n    gl_FragColor = vec4(t);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentLoose.indexOf("2.0*PI*TIME / 360.0") !== -1, built.fragmentLoose);
+});
+
+test("ES3 variants are generated for the WebGL2 fallback", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"a","TYPE":"float"}]}*/\nvoid main(){ float p[2]; p[0]=a; gl_FragColor=vec4(p[int(gl_FragCoord.x)%2]); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    equal(built.fragmentES3.indexOf("#version 300 es"), 0);
+    assert(built.fragmentES3.indexOf("#define varying in") !== -1);
+    assert(built.fragmentES3.indexOf("#define gl_FragColor _isfFragColor") !== -1);
+    assert(built.fragmentES3.indexOf("out vec4 _isfFragColor;") !== -1);
+    equal(built.vertexES3.indexOf("#version 300 es"), 0);
+    assert(built.vertexES3.indexOf("#define attribute in") !== -1);
+    assert(built.vertexES3.indexOf("#define varying out") !== -1);
+});
+
+test("literal promotion leaves floats, exponents and int contexts alone", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    float t = TIME * 2 + 1e-3 + 2E+4;\n    int i = 0;\n    gl_FragColor = vec4(t + float(i));\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentLoose.indexOf("TIME * 2.0") !== -1, built.fragmentLoose);
+    assert(built.fragmentLoose.indexOf("1e-3") !== -1, built.fragmentLoose);
+    assert(built.fragmentLoose.indexOf("2E+4") !== -1, built.fragmentLoose);
+    assert(built.fragmentLoose.indexOf("int i = 0;") !== -1, built.fragmentLoose);
+});
+
+test("#include expansion reports missing files", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\n#include "helper.glsl"\nvoid main(){ gl_FragColor = vec4(helperFn(0.5)); }';
+    const built = isf.buildShader(isf.parseISF(source), { includes: { "helper.glsl": "float helperFn(float x){ return x; }" } });
+    assert(built.fragment.indexOf("float helperFn(float x)") !== -1);
+    equal(built.warnings, []);
+    const missing = isf.buildShader(isf.parseISF(source), {});
+    assert(missing.warnings.some((warning) => /Missing include "helper.glsl"/.test(warning.message)));
+});
+
+test("#include aliases and trailing comments resolve recursively", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\n#include "MadNOISE.glsl" // helpers\nvoid main(){ gl_FragColor = vec4(madNoiseFn(0.5)); }';
+    const includes = {
+        "MadNoise.glsl": '#include "MadCommon.glsl"\nfloat madNoiseFn(float x){ return commonFn(x); }',
+        "MadCommon.glsl": "float commonFn(float x){ return x * 2.0; }"
+    };
+    const built = isf.buildShader(isf.parseISF(source), { includes: includes });
+    assert(built.fragment.indexOf("float commonFn(float x)") !== -1);
+    assert(built.fragment.indexOf("float madNoiseFn(float x)") !== -1);
+    equal(built.warnings, []);
+});
+
+test("materialColorForPixel gets a generated main()", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"inputImage","TYPE":"image"}]}*/\nvec4 materialColorForPixel(vec2 p){ return IMG_NORM_PIXEL(inputImage, p); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("gl_FragColor = materialColorForPixel(isf_FragNormCoord);") !== -1);
+});
+
+test("image uniforms declare _imgRect and _flip", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"inputImage","TYPE":"image"}]}*/\nvoid main(){ gl_FragColor = IMG_NORM_PIXEL(inputImage, isf_FragNormCoord) + vec4(_inputImage_imgRect.xy, _inputImage_imgSize); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("uniform vec4 _inputImage_imgRect;") !== -1);
+    assert(built.fragment.indexOf("uniform bool _inputImage_flip;") !== -1);
+});
+
+test("MadMapper GENERATORS are declared and exposed", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mat_speed","TYPE":"float","DEFAULT":1,"MIN":0,"MAX":4}],"GENERATORS":[{"NAME":"mat_time_source","TYPE":"time_base","PARAMS":{"speed":"mat_speed"}}]}*/\nvoid main(){ gl_FragColor = vec4(mat_time_source); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    equal(built.generators.length, 1);
+    equal(built.generators[0].name, "mat_time_source");
+    equal(built.generators[0].type, "time_base");
+    assert(built.fragment.indexOf("uniform float mat_time_source;") !== -1);
+    // The runtime state machine is pure enough to unit-test through the
+    // exported helpers only in the browser; the smoke test covers the render.
+});
+
 /* ------------------------------------------------------------ corpus test */
 
 const corpusRoots = [

@@ -242,6 +242,50 @@ parameters panel builds a `View` selector whenever the shader has targets.
 and `runtime.snapshot()` draws synchronously and returns a PNG data URL for
 the export button.
 
+### 5.8 Compatibility layers
+
+The body goes through a sequence of increasingly permissive transforms; each
+later one only runs when the previous compile attempts failed, so a shader
+that already works is never rewritten:
+
+| Layer | What it does |
+|---|---|
+| ES 1.00 | the assembled shader |
+| WebGL2 / ES 3.00 | `#version 300 es` + macros (`varying`→`in`, `texture2D`→`texture`, `gl_FragColor`→`_isfFragColor`); enables dynamic indexing and non-constant loops |
+| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), skipping integer-only lines |
+
+Besides those, `buildShader`/the loader implement:
+
+- **`#include "file.glsl"`** — `collectIncludes()` finds them, the loader fetches
+them relative to the `.fs` file and then from `config.includePaths` (recursive,
+cycle-safe); `expandIncludes()` inlines them. Missing includes become comments
+and warnings.
+- **MadMapper** — `materialColorForPixel()` gets a generated `main()`;
+non-constant global initialisers are hoisted into the entry point; `GENERATORS`
+(`time_base`, `incrementer`, `pass_thru`, `multiplier`, `linear_filter`,
+`damper`, pass-through easing/animator/adsr) are evaluated CPU-side every frame
+and bound as uniforms.
+- **Legacy helpers** — `_<image>_imgRect` / `_<image>_flip` are declared and
+set next to `_<image>_imgSize` for shaders ported from the reference JS host.
+
+Measured against the bundled library after the include/generator work
+(`npm run test:coverage`): 408 ES 1.00 + 43 ES 3.00 + 248 ES 3.00 with
+promotion = **699/910 browser-compilable (≈77 %)** — filters 169/171,
+transitions 156/157, sources 374/582. The remaining failures are unsupported
+feature families (laser materials, 3D/cube textures, …).
+
+### 5.9 Live controls and media
+
+- **Quality** (0.25×–2×/auto, persisted), **time scrubber**, **Randomize**
+  (constraint-respecting) and **Export PNG** live in the parameters drawer.
+- **Microphone** capture for `audio`/`audioFFT` inputs (`getUserMedia` +
+  `AnalyserNode`, time-domain and FFT data resampled to the declared `MAX`),
+  with the synthetic source as fallback.
+- **Drag & drop** an image onto the preview fills `inputImage` (or the first
+  image input).
+- The error overlay lists every compiler message with click-to-line; a
+  shortcut overlay documents the keyboard map.
+
 ## 6. WebGL runtime
 
 ### 6.1 Context
@@ -304,28 +348,33 @@ fullscreen and layout changes need no extra observer.
 .isf-block
 ├── .isf-header    title (source link) + params/editor/play/reset/fullscreen/source
 ├── .isf-body
-│   ├── .isf-stage  canvas, overlay (loading/error/released), fps badge
-│   └── .isf-side   .isf-params and .isf-editor panels
+│   └── .isf-stage  canvas, overlay (loading/error/released), fps badge
+│       ├── .isf-drawer-left   editor + import panel (overlay, translucent)
+│       └── .isf-drawer-right  parameters (overlay, translucent)
 └── .isf-status     warnings / errors / info
 ```
 
-Panels start collapsed according to `params: auto|open|closed` (auto opens up
-to `paramsOpenLimit` inputs). At ≥900 px viewport width the side panel sits
-next to the render; in fullscreen it becomes an overlay drawer. `width`,
-`height` and `aspectRatio` size the preview (`aspectRatio` wins over
+Below/over the canvas sit two **overlay drawers**: code on the left, the
+parameters on the right. They never resize the render — the canvas keeps its
+full size underneath — and they use a translucent, backdrop-blurred
+background so the shader stays visible. They start closed according to
+`params: auto|open|closed` (auto opens up to `paramsOpenLimit` inputs).
+`width`, `height` and `aspectRatio` size the preview (`aspectRatio` wins over
 `height`), and the block is capped at `width` when it is not `100%`.
 
-Both panes are resizable with a pointer or the keyboard:
+| Drawer | Toggle | Handle | Keys | Reset | Persisted |
+|---|---|---|---|---|---|
+| Code (left) | `</>` / Ctrl-Cmd+B | rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
+| Parameters (right) | sliders / Ctrl-Cmd+K | rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
+| Editor height | — | rail above the editor | ↑/↓, Home/End | double-click | `editorHeight` |
 
-| Pane | Handle | Keys | Reset | Persisted |
-|---|---|---|---|---|
-| Editor height | rail above the editor | ↑/↓ (Shift = ×4), Home/End | double-click | `docsify-isf:layout` |
-| Side width | rail on the panel's left edge | ←/→, Home/End | double-click | `docsify-isf:layout` |
-
-Handles are `role="separator"` with `aria-orientation` and are clamped to
-sane ranges (editor 120 px…85 vh, panel 240…640 px / 75 vw). Persistence is
-opt-out via `persistLayout: false`. The scrolling content lives in
-`.isf-side-inner`, so the rail never scrolls away.
+Widths are clamped to 240 px…46 % of the stage (two drawers always leave the
+render visible) and the editor height to 120 px…85 vh. Handles are
+`role="separator"` with `aria-orientation`; persistence is opt-out via
+`persistLayout: false`. The drawer scrolls its own `.isf-drawer-inner`, so the
+rail never scrolls away. In fullscreen the drawers stay as overlays over the
+full-viewport render; on narrow screens they take nearly the full width and
+the rails are hidden.
 
 ### 7.2 Controls
 

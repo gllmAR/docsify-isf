@@ -92,6 +92,15 @@ name is fetched automatically and paired with the fragment shader.
 The `IMPORTED` map loads [`isf-logo.png`](./samples/isf-logo.png) relative to
 the `.fs` file and samples it with `IMG_NORM_PIXEL()`.
 
+### WebGL2 / GLSL ES 3.00 fallback
+
+[ES3 fallback (dynamic indexing)](./samples/es3-fallback.fs)
+
+GLSL ES 1.00 rejects `palette[index]` with a non-constant `index`; on WebGL2
+the viewer automatically recompiles the shader as GLSL ES 3.00 and reports
+“Compatibility mode”. On WebGL1-only browsers the viewer shows the compile
+error instead (documented limitation).
+
 ### Negative tests — error reporting
 
 [Broken shader](./samples/broken.fs) · [Broken header](./samples/broken-header.fs)
@@ -99,6 +108,28 @@ the `.fs` file and samples it with `IMG_NORM_PIXEL()`.
 Both must show a readable error (`caption`/line number) instead of a blank
 canvas or a silent failure. Open the editor to see the offending line
 highlighted.
+
+### Provided include helper
+
+[Included helper demo](./samples/included.fs)
+
+`#include "included-helper.glsl"` is resolved relative to the `.fs` file and
+also through `$docsify.isf.includePaths` (this site points that at
+`/modules/src/isf-source/isf/glsl`, so the bundled MadMapper `MadCommon`,
+`MadNoise` and `MadSDF` ports resolve too). Includes are recursive, cycle-safe,
+cached for the session, understood in `.vs` files as well, and known case
+variants (`MadNOISE.glsl`, `MadCOMMON.glsl`) map to the shipped filenames.
+Missing includes are listed in the status bar.
+
+### MadMapper generators
+
+[MadMapper time_base generator](./samples/madmapper-generator.fs)
+
+MadMapper `GENERATORS` are simulated on the CPU: `time_base` clocks (plus
+`pass_thru`, `multiplier`, `linear_filter`, `damper` and easing/animator
+pass-throughs) become uniforms advanced every frame, so bundled materials
+using `mat_time_source`-style names work in the browser. Unknown generator
+types are reported once in the status bar.
 
 ### Shadertoy import — pointer extension
 
@@ -167,6 +198,8 @@ All keys are optional and live under `window.$docsify.isf`:
 | `lazy` | `"visible"` | `"visible"` (load near viewport), `"click"`, `"none"`. |
 | `width` / `height` | `"100%"` / `"360px"` | Preview size. |
 | `aspectRatio` | `null` | e.g. `"16/9"`; `null` uses `height`. |
+| `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
+| `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
@@ -181,7 +214,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
-| `persistLayout` | `true` | Remember editor height / side width across viewers and pages. |
+| `persistLayout` | `true` | Remember editor height / drawer widths across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
 | `share` | `true` | Show the “copy link” button (parameters + panel state). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
@@ -220,9 +253,12 @@ Press the `</>` button in the viewer header:
 - **Revert** returns to the file on disk; **Copy** puts the source on the
   clipboard.
 - **Drag the handle above the editor** to resize it (double-click to reset,
-  or focus it and use ↑/↓/Home/End). The panel width has the same handle on
-  its left edge. Both sizes persist in `localStorage` when `persistLayout` is
-  on.
+  or focus it and use ↑/↓/Home/End). The **code and parameter drawers are
+  overlays**: the code editor slides in from the left edge, the parameters
+  from the right, both translucent so the render stays visible behind them,
+  and neither resizes the canvas. Drag their inner edges to resize a drawer
+  (or focus the rail and use ←/→/Home/End; double-click resets). Sizes persist
+  when `persistLayout` is on.
 
 ## Import (Shadertoy / GLSL Sandbox)
 
@@ -248,9 +284,11 @@ current frame.
   values are clamped to `MIN`/`MAX`, `long` values snap to `VALUES`, and
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
-- `width`, `height` and `aspectRatio` actually size the preview; the panel
-  stacks below the canvas on narrow screens and docks beside it from 900 px
-  (and in fullscreen, resizable).
+- `width`, `height` and `aspectRatio` size the preview; the code and
+  parameter drawers overlay the canvas (left/right) at every width and never
+  change the render size. They are translucent/glassy (backdrop blur) so the
+  shader stays visible; on narrow screens they take nearly the full width and
+  the resize rails are hidden.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles
   fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
   `aria-expanded`, and the status regions are `aria-live`.
@@ -267,6 +305,10 @@ current frame.
 | Functions | `IMG_PIXEL`, `IMG_NORM_PIXEL`, `IMG_THIS_PIXEL`, `IMG_NORM_THIS_PIXEL`, `IMG_THIS_NORM_PIXEL`, `IMG_SIZE` |
 | Passes | `TARGET`, `PERSISTENT`, `FLOAT`, `WIDTH`/`HEIGHT` equations |
 | Imports | `IMPORTED` map (and the MadMapper array form) |
+| Includes | local `#include "file.glsl"` — relative to the shader, `includePaths`, recursive, cached, case-variant aliases, also honoured in `.vs` files |
+| Generators | MadMapper `GENERATORS` (`time_base`, `incrementer`, `pass_thru`, `multiplier`, filter/damper/ease/animator/adsr) simulated CPU-side |
+| Entry points | `void main()`, MadMapper `materialColorForPixel()` wrapper |
+| Compatibility | WebGL2 / GLSL ES 3.00 retry and last-resort literal promotion |
 | Vertex | default generated vertex shader, or a same-name `.vs` (editable tab) |
 | ISF v1 | `vv_FragNormCoord`, `vv_vertShaderInit` aliases |
 | docsify-isf | `_isfMouse` pointer `vec4` (Shadertoy semantics), pass-target preview, quality scaling, PNG export |

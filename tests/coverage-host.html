@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>docsify-isf coverage host</title>
+</head>
+
+<body>
+    <!-- Minimal host used by tests/es3-coverage.mjs: no Docsify, just the
+         plugin API and the site-like include search path for the bundled
+         MadMapper GLSL ports. -->
+    <script>
+        window.$docsify = {
+            isf: {
+                enabled: false,
+                includePaths: ["/modules/src/isf-source/isf/glsl"]
+            }
+        };
+    </script>
+    <script src="../docsify-isf.js"></script>
+</body>
+
+</html>
