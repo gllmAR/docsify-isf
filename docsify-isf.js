@@ -1,0 +1,3636 @@
+/*!
+ * docsify-isf v1.0.0
+ * Interactive Shader Format (ISF) viewer for Docsify.
+ *
+ * Converts markdown links to `.fs` files into interactive WebGL viewers with
+ * parameter controls, a live GLSL editor and fullscreen support, while leaving
+ * the original link untouched for plain markdown hosts (Codeberg/GitHub web).
+ *
+ * Specification: https://github.com/mrRay/ISF_Spec  (ISF 2.0)
+ * Docs:          https://docs.isf.video/
+ * Design:        SDD.md next to this file.
+ *
+ * License: MIT.
+ */
+(function (root, factory) {
+    "use strict";
+    if (typeof module === "object" && module.exports) {
+        module.exports = factory();
+    } else {
+        var api = factory();
+        root.DocsifyISF = api;
+        if (root.$docsify) {
+            root.$docsify.plugins = (root.$docsify.plugins || []).concat(api.plugin);
+        } else {
+            var install = function () {
+                if (root.$docsify) {
+                    root.$docsify.plugins = (root.$docsify.plugins || []).concat(api.plugin);
+                    return true;
+                }
+                return false;
+            };
+            if (!install()) {
+                var tries = 0;
+                var timer = setInterval(function () {
+                    if (install() || ++tries > 200) clearInterval(timer);
+                }, 10);
+                if (typeof document !== "undefined") {
+                    document.addEventListener("DOMContentLoaded", function () {
+                        install();
+                        clearInterval(timer);
+                    });
+                }
+            }
+        }
+    }
+})(typeof self !== "undefined" ? self : this, function () {
+    "use strict";
+
+    var VERSION = "1.0.0";
+
+    /* ==================================================================
+     * Configuration
+     * ================================================================== */
+
+    var DEFAULTS = {
+        enabled: true,
+        extensions: ["fs"],
+        mode: "replace",            // "replace" | "augment"
+        lazy: "visible",            // "visible" | "click" | "none"
+        width: "100%",
+        height: "360px",
+        aspectRatio: null,          // e.g. "16/9"
+        controls: true,
+        params: "auto",             // "auto" | "open" | "closed"
+        paramsOpenLimit: 6,
+        autoplay: true,
+        loopTransition: true,
+        transitionDuration: 4.0,
+        resolution: "auto",         // "auto" | 2 | 1 | 0.5
+        maxPixelRatio: 2,
+        maxContexts: 8,
+        editor: true,
+        editorOpen: false,
+        editorLive: true,
+        editorDebounce: 600,
+        imageUrl: null,
+        vertexShader: "auto",       // "auto" | false
+        imports: true,
+        showStats: true,
+        showSource: true,
+        sourceLabel: "Source",
+        debug: false,
+        silent: true
+    };
+
+    function getConfig() {
+        var base = (typeof window !== "undefined" && window.$docsify && window.$docsify.isf) || {};
+        var config = assign({}, DEFAULTS, base);
+        config.extensions = Array.isArray(config.extensions)
+            ? config.extensions.map(function (ext) {
+                return String(ext || "").toLowerCase().replace(/^\./, "");
+            }).filter(Boolean)
+            : DEFAULTS.extensions.slice();
+        if (config.mode !== "replace" && config.mode !== "augment") config.mode = DEFAULTS.mode;
+        if (config.lazy !== "visible" && config.lazy !== "click" && config.lazy !== "none") config.lazy = DEFAULTS.lazy;
+        if (config.params !== "auto" && config.params !== "open" && config.params !== "closed") config.params = DEFAULTS.params;
+        if (typeof config.enabled !== "boolean") config.enabled = DEFAULTS.enabled;
+        if (typeof config.controls !== "boolean") config.controls = DEFAULTS.controls;
+        if (typeof config.editor !== "boolean") config.editor = DEFAULTS.editor;
+        if (typeof config.editorOpen !== "boolean") config.editorOpen = DEFAULTS.editorOpen;
+        if (typeof config.editorLive !== "boolean") config.editorLive = DEFAULTS.editorLive;
+        if (typeof config.autoplay !== "boolean") config.autoplay = DEFAULTS.autoplay;
+        if (typeof config.showStats !== "boolean") config.showStats = DEFAULTS.showStats;
+        if (typeof config.showSource !== "boolean") config.showSource = DEFAULTS.showSource;
+        return config;
+    }
+
+    /* ==================================================================
+     * Small utilities
+     * ================================================================== */
+
+    function assign(target) {
+        for (var i = 1; i < arguments.length; i++) {
+            var src = arguments[i];
+            if (!src) continue;
+            for (var key in src) {
+                if (Object.prototype.hasOwnProperty.call(src, key)) target[key] = src[key];
+            }
+        }
+        return target;
+    }
+
+    function clamp(value, lo, hi) {
+        value = Number(value);
+        if (!isFinite(value)) return lo;
+        return Math.min(hi, Math.max(lo, value));
+    }
+
+    function isFiniteNumber(value) {
+        return typeof value === "number" && isFinite(value);
+    }
+
+    function numberOr(value, fallback) {
+        var n = Number(value);
+        return isFinite(n) ? n : fallback;
+    }
+
+    function escapeHtml(text) {
+        return String(text == null ? "" : text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function trim(value) {
+        return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
+    }
+
+    function basename(path) {
+        var clean = String(path || "").split("?")[0].split("#")[0].replace(/\/+$/, "");
+        var idx = clean.lastIndexOf("/");
+        return idx === -1 ? clean : clean.slice(idx + 1);
+    }
+
+    function dirname(path) {
+        var clean = String(path || "").split("?")[0].split("#")[0];
+        var idx = clean.lastIndexOf("/");
+        if (idx === -1) return "";
+        return clean.slice(0, idx + 1);
+    }
+
+    function debugLog(config, message, data) {
+        if (!config || !config.debug || typeof console === "undefined") return;
+        try { console.warn("[docsify-isf] " + message, data == null ? "" : data); } catch (err) { /* ignore */ }
+    }
+
+    function escapeRegExp(text) {
+        return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function lineOfOffset(source, offset) {
+        var line = 1;
+        for (var i = 0; i < offset && i < source.length; i++) {
+            if (source.charCodeAt(i) === 10) line++;
+        }
+        return line;
+    }
+
+    function isObject(value) {
+        return value !== null && typeof value === "object" && !Array.isArray(value);
+    }
+
+    /* ==================================================================
+     * Tolerant JSON parser
+     *
+     * The ISF corpus is not strict JSON: trailing commas, `//` and block
+     * comments inside the header, single quotes, bare keys, `.5` / `360.`
+     * numbers and unknown backslash escapes all occur in the wild. A strict
+     * JSON.parse (even with a regex sanitizer) is not enough, so this is a
+     * small recursive-descent reader with forgiving lexing.
+     * ================================================================== */
+
+    function parseJSONTolerant(text) {
+        var source = String(text == null ? "" : text);
+        var i = 0, line = 1, lineStart = 0, len = source.length;
+        var depth = 0;
+
+        function fail(message, at) {
+            var offset = at == null ? i : at;
+            return {
+                ok: false,
+                value: null,
+                error: {
+                    message: message,
+                    index: offset,
+                    line: line,
+                    column: offset - lineStart + 1
+                }
+            };
+        }
+
+        function peek(offset) {
+            return source.charAt(i + (offset || 0));
+        }
+
+        function skipWhitespaceAndComments() {
+            while (i < len) {
+                var c = source.charAt(i);
+                if (c === " " || c === "\t" || c === "\r" || c === "\f" || c === "\u00a0") {
+                    i++;
+                } else if (c === "\n") {
+                    i++;
+                    line++;
+                    lineStart = i;
+                } else if (c === "/" && peek(1) === "/") {
+                    while (i < len && source.charAt(i) !== "\n") i++;
+                } else if (c === "/" && peek(1) === "*") {
+                    i += 2;
+                    while (i < len && !(source.charAt(i) === "*" && source.charAt(i + 1) === "/")) {
+                        if (source.charAt(i) === "\n") { line++; lineStart = i + 1; }
+                        i++;
+                    }
+                    i = Math.min(len, i + 2);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function parseString() {
+            var quote = source.charAt(i);
+            var start = i;
+            i++;
+            var out = "";
+            while (i < len) {
+                var c = source.charAt(i);
+                if (c === "\\") {
+                    var esc = source.charAt(i + 1);
+                    i += 2;
+                    switch (esc) {
+                        case "n": out += "\n"; break;
+                        case "t": out += "\t"; break;
+                        case "r": out += "\r"; break;
+                        case "b": out += "\b"; break;
+                        case "f": out += "\f"; break;
+                        case "/": out += "/"; break;
+                        case "\\": out += "\\"; break;
+                        case "\"": out += "\""; break;
+                        case "'": out += "'"; break;
+                        case "u":
+                            var hex = source.substr(i, 4);
+                            if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                                out += String.fromCharCode(parseInt(hex, 16));
+                                i += 4;
+                            } else {
+                                out += "u";
+                            }
+                            break;
+                        default:
+                            // Unknown escapes (`\M`, Windows paths, …) are kept literal.
+                            out += esc;
+                            break;
+                    }
+                    if (esc === "\n") { line++; lineStart = i; }
+                } else if (c === "\n") {
+                    // A raw newline inside a string is invalid but tolerated.
+                    line++;
+                    lineStart = i + 1;
+                    out += c;
+                    i++;
+                } else if (c === quote) {
+                    i++;
+                    return out;
+                } else {
+                    out += c;
+                    i++;
+                }
+            }
+            var err = fail("Unterminated string starting at line " + lineOfOffset(source, start), start);
+            throw err;
+        }
+
+        function parseNumber() {
+            var start = i;
+            if (peek() === "+" || peek() === "-") i++;
+            if (peek() === "0" && (peek(1) === "x" || peek(1) === "X")) {
+                i += 2;
+                while (i < len && /[0-9a-fA-F]/.test(source.charAt(i))) i++;
+            } else {
+                while (i < len && /[0-9]/.test(source.charAt(i))) i++;
+                if (peek() === ".") {
+                    i++;
+                    while (i < len && /[0-9]/.test(source.charAt(i))) i++;
+                }
+                if (peek() === "e" || peek() === "E") {
+                    var j = i + 1;
+                    if (source.charAt(j) === "+" || source.charAt(j) === "-") j++;
+                    if (/[0-9]/.test(source.charAt(j))) {
+                        i = j;
+                        while (i < len && /[0-9]/.test(source.charAt(i))) i++;
+                    }
+                }
+            }
+            var raw = source.slice(start, i);
+            var value = Number(raw);
+            if (!isFinite(value)) {
+                // NaN / Infinity literals are not legal JSON but stray in some headers.
+                if (/^[+-]?nan$/i.test(raw)) value = NaN;
+                else if (/^[+-]?infinity$/i.test(raw)) value = raw.charAt(0) === "-" ? -Infinity : Infinity;
+                else throw fail("Invalid number '" + raw + "'", start);
+            }
+            return value;
+        }
+
+        function parseIdentifier() {
+            var start = i;
+            while (i < len && /[A-Za-z0-9_$.-]/.test(source.charAt(i))) i++;
+            return source.slice(start, i);
+        }
+
+        function parseValue() {
+            if (++depth > 128) throw fail("JSON nested too deeply");
+            skipWhitespaceAndComments();
+            var c = source.charAt(i);
+            var value;
+            if (c === "{") value = parseObject();
+            else if (c === "[") value = parseArray();
+            else if (c === "\"" || c === "'") value = parseString();
+            else if (c === "-" || c === "+" || c === "." || /[0-9]/.test(c)) value = parseNumber();
+            else {
+                var word = parseIdentifier();
+                if (/^true$/i.test(word)) value = true;
+                else if (/^false$/i.test(word)) value = false;
+                else if (/^null$/i.test(word)) value = null;
+                else if (/^(nan|infinity|[+-]?infinity)$/i.test(word)) value = Number(word);
+                else throw fail("Unexpected token '" + word + "'");
+            }
+            depth--;
+            return value;
+        }
+
+        function parseObject() {
+            var obj = {};
+            i++; // {
+            skipWhitespaceAndComments();
+            if (source.charAt(i) === "}") { i++; return obj; }
+            while (i < len) {
+                skipWhitespaceAndComments();
+                var key;
+                var c = source.charAt(i);
+                if (c === "\"" || c === "'") {
+                    key = parseString();
+                } else if (c === "}") {
+                    i++; // trailing comma
+                    return obj;
+                } else {
+                    key = parseIdentifier();
+                    if (!key) throw fail("Expected an object key");
+                }
+                skipWhitespaceAndComments();
+                if (source.charAt(i) !== ":") throw fail("Expected ':' after key '" + key + "'");
+                i++;
+                obj[key] = parseValue();
+                skipWhitespaceAndComments();
+                c = source.charAt(i);
+                if (c === ",") { i++; continue; }
+                if (c === "}") { i++; return obj; }
+                if (!c) throw fail("Unterminated object");
+                throw fail("Expected ',' or '}' in object");
+            }
+            throw fail("Unterminated object");
+        }
+
+        function parseArray() {
+            var arr = [];
+            i++; // [
+            skipWhitespaceAndComments();
+            if (source.charAt(i) === "]") { i++; return arr; }
+            while (i < len) {
+                skipWhitespaceAndComments();
+                if (source.charAt(i) === "]") { i++; return arr; } // trailing comma
+                arr.push(parseValue());
+                skipWhitespaceAndComments();
+                var c = source.charAt(i);
+                if (c === ",") { i++; continue; }
+                if (c === "]") { i++; return arr; }
+                if (!c) throw fail("Unterminated array");
+                throw fail("Expected ',' or ']' in array");
+            }
+            throw fail("Unterminated array");
+        }
+
+        try {
+            skipWhitespaceAndComments();
+            var value = parseValue();
+            skipWhitespaceAndComments();
+            return { ok: true, value: value, error: null };
+        } catch (err) {
+            if (err && err.ok === false) return err;
+            return {
+                ok: false,
+                value: null,
+                error: { message: (err && err.message) || "Invalid JSON", index: i, line: line, column: i - lineStart + 1 }
+            };
+        }
+    }
+
+    /* ==================================================================
+     * ISF header extraction
+     * ================================================================== */
+
+    var HEADER_HINT = /"(INPUTS|ISFVSN|PASSES|CATEGORIES|IMPORTED|DESCRIPTION|CREDIT|RESOURCE_TYPE|GENERATORS)"\s*:/;
+
+    // A block comment scanner that tracks nesting, because ISF headers may
+    // contain their own `/* ... */` comments (the corpus does).
+    function scanBlockComments(text) {
+        var out = [];
+        var i = 0, n = text.length;
+        while (i < n - 1) {
+            if (text.charAt(i) === "/" && text.charAt(i + 1) === "*") {
+                var start = i;
+                i += 2;
+                var depth = 1;
+                while (i < n && depth > 0) {
+                    if (text.charAt(i) === "/" && text.charAt(i + 1) === "*") { depth++; i += 2; continue; }
+                    if (text.charAt(i) === "*" && text.charAt(i + 1) === "/") { depth--; i += 2; continue; }
+                    i++;
+                }
+                out.push({
+                    start: start,
+                    end: Math.min(i, n),
+                    content: text.slice(start + 2, depth === 0 ? i - 2 : i)
+                });
+                continue;
+            }
+            i++;
+        }
+        return out;
+    }
+
+    function parseISFMetadata(source) {
+        var text = String(source == null ? "" : source);
+        var comments = scanBlockComments(text);
+        var parseable = null;
+        var hinted = null;
+        for (var c = 0; c < comments.length; c++) {
+            var match = comments[c];
+            var content = match.content;
+            var looksLikeHeader = HEADER_HINT.test(content) || /^\s*\{/.test(content);
+            var result = parseJSONTolerant(content);
+            if (result.ok && isObject(result.value)) {
+                var candidate = {
+                    ok: true,
+                    data: result.value,
+                    error: null,
+                    start: match.start,
+                    end: match.end,
+                    content: content
+                };
+                if (HEADER_HINT.test(content)) return candidate;
+                if (!parseable) parseable = candidate;
+            } else if (!hinted && looksLikeHeader) {
+                hinted = {
+                    ok: false,
+                    data: null,
+                    error: result.error,
+                    start: match.start,
+                    end: match.end,
+                    content: content
+                };
+            }
+        }
+        if (parseable) return parseable;
+        if (hinted) {
+            if (hinted.error) {
+                var fileLine = lineOfOffset(text, hinted.start + 2) + (hinted.error.line - 1);
+                hinted.error.fileLine = fileLine;
+                hinted.error.fileColumn = hinted.error.column;
+                hinted.error.message = "Invalid ISF header JSON: " + hinted.error.message;
+            }
+            return hinted;
+        }
+        return {
+            ok: false,
+            data: null,
+            error: { message: "No ISF metadata comment found (expected /*{ ... }*/ at the top of the file)", line: 1, column: 1, fileLine: 1 },
+            start: -1,
+            end: -1,
+            content: ""
+        };
+    }
+
+    function parseISF(source) {
+        var text = String(source == null ? "" : source);
+        var header = parseISFMetadata(text);
+        var out = {
+            valid: false,
+            raw: text,
+            metadata: {},
+            header: null,
+            body: "",
+            bodyStart: 0,
+            bodyStartLine: 1,
+            error: null
+        };
+        if (!header.ok) {
+            out.error = header.error || { message: "Invalid ISF header" };
+            return out;
+        }
+        out.valid = true;
+        out.header = header;
+        out.metadata = header.data;
+        out.bodyStart = header.end;
+        out.body = text.slice(header.end);
+        out.bodyStartLine = lineOfOffset(text, header.end);
+        return out;
+    }
+
+    /* ==================================================================
+     * Safe math expression evaluator (pass WIDTH/HEIGHT equations)
+     *
+     * The ISF spec delegates these equations to DDMathParser. Supporting the
+     * full language is out of scope; this covers the constants, operators and
+     * functions used by the shipped corpus and by the spec examples without
+     * ever calling eval().
+     * ================================================================== */
+
+    var EXPR_CONSTANTS = {
+        pi: Math.PI,
+        PI: Math.PI,
+        e: Math.E,
+        E: Math.E,
+        infinity: Infinity,
+        infinity_: Infinity
+    };
+
+    function evalExpression(expression, variables) {
+        var src = String(expression == null ? "" : expression);
+        var vars = variables || {};
+        var i = 0, len = src.length;
+
+        function fail(message) {
+            return { ok: false, value: NaN, error: message };
+        }
+
+        function skip() {
+            while (i < len && /\s/.test(src.charAt(i))) i++;
+        }
+
+        function peek() { return src.charAt(i); }
+
+        function parseNumber() {
+            var start = i;
+            if (peek() === "+" || peek() === "-") i++;
+            while (i < len && /[0-9]/.test(src.charAt(i))) i++;
+            if (peek() === ".") {
+                i++;
+                while (i < len && /[0-9]/.test(src.charAt(i))) i++;
+            }
+            if (peek() === "e" || peek() === "E") {
+                var j = i + 1;
+                if (src.charAt(j) === "+" || src.charAt(j) === "-") j++;
+                if (/[0-9]/.test(src.charAt(j))) {
+                    i = j;
+                    while (i < len && /[0-9]/.test(src.charAt(i))) i++;
+                }
+            }
+            var raw = src.slice(start, i);
+            var value = Number(raw);
+            if (!isFinite(value) && raw !== "0") return null;
+            return value;
+        }
+
+        function parseIdentifierName() {
+            var start = i;
+            if (peek() === "$") i++;
+            while (i < len && /[A-Za-z0-9_.]/.test(src.charAt(i))) i++;
+            return src.slice(start, i);
+        }
+
+        function binary(op, next, leftAssoc) {
+            return function () {
+                var left = next();
+                if (left === null) return null;
+                while (true) {
+                    skip();
+                    var symbol = null;
+                    for (var k = 0; k < op.length; k++) {
+                        var candidate = op[k];
+                        if (src.substr(i, candidate.length) === candidate) { symbol = candidate; break; }
+                    }
+                    if (symbol === null) return left;
+                    i += symbol.length;
+                    var right = next();
+                    if (right === null) return null;
+                    switch (symbol) {
+                        case "+": left = left + right; break;
+                        case "-": left = left - right; break;
+                        case "*": left = left * right; break;
+                        case "/": left = left / right; break;
+                        case "%": left = left % right; break;
+                        case "^": left = Math.pow(left, right); break;
+                        default: return null;
+                    }
+                }
+            };
+        }
+
+        var parseAddSub, parseMulDiv, parsePower, parseUnary, parsePrimary;
+
+        parsePrimary = function () {
+            skip();
+            var c = peek();
+            if (c === "(") {
+                i++;
+                var inner = parseAddSub();
+                skip();
+                if (peek() !== ")") return null;
+                i++;
+                return inner;
+            }
+            if (/[0-9.]/.test(c) || ((c === "-" || c === "+") && /[0-9.]/.test(src.charAt(i + 1)))) {
+                return parseNumber();
+            }
+            if (/[A-Za-z_$]/.test(c)) {
+                var name = parseIdentifierName();
+                skip();
+                if (peek() === "(") {
+                    i++;
+                    var args = [];
+                    skip();
+                    if (peek() !== ")") {
+                        while (true) {
+                            var arg = parseAddSub();
+                            if (arg === null) return null;
+                            args.push(arg);
+                            skip();
+                            if (peek() === ",") { i++; continue; }
+                            break;
+                        }
+                    }
+                    skip();
+                    if (peek() !== ")") return null;
+                    i++;
+                    return callFunction(name, args);
+                }
+                return identifierValue(name);
+            }
+            return null;
+        };
+
+        parseUnary = function () {
+            skip();
+            var c = peek();
+            if (c === "-") { i++; var v = parseUnary(); return v === null ? null : -v; }
+            if (c === "+") { i++; return parseUnary(); }
+            return parsePrimary();
+        };
+
+        parsePower = function () {
+            var base = parseUnary();
+            if (base === null) return null;
+            skip();
+            if (peek() === "^") {
+                i++;
+                var exp = parsePower(); // right associative
+                if (exp === null) return null;
+                return Math.pow(base, exp);
+            }
+            return base;
+        };
+
+        parseMulDiv = binary(["*", "/", "%"], parsePower, true);
+        parseAddSub = binary(["+", "-"], parseMulDiv, true);
+
+        function identifierValue(name) {
+            if (Object.prototype.hasOwnProperty.call(vars, name)) {
+                var value = Number(vars[name]);
+                return isFinite(value) ? value : null;
+            }
+            var bare = name.charAt(0) === "$" ? name.slice(1) : name;
+            if (Object.prototype.hasOwnProperty.call(vars, bare)) {
+                var value2 = Number(vars[bare]);
+                return isFinite(value2) ? value2 : null;
+            }
+            if (Object.prototype.hasOwnProperty.call(EXPR_CONSTANTS, name)) return EXPR_CONSTANTS[name];
+            if (Object.prototype.hasOwnProperty.call(EXPR_CONSTANTS, bare)) return EXPR_CONSTANTS[bare];
+            return null;
+        }
+
+        function callFunction(name, args) {
+            var lower = name.toLowerCase();
+            var arity = args.length;
+            function need(n) { return arity === n && args.every(function (a) { return isFinite(a); }); }
+            switch (lower) {
+                case "abs": return need(1) ? Math.abs(args[0]) : null;
+                case "sign": return need(1) ? Math.sign(args[0]) : null;
+                case "floor": return need(1) ? Math.floor(args[0]) : null;
+                case "ceil": return need(1) ? Math.ceil(args[0]) : null;
+                case "round": return need(1) ? Math.round(args[0]) : null;
+                case "trunc": return need(1) ? Math.trunc(args[0]) : null;
+                case "sqrt": return need(1) ? Math.sqrt(args[0]) : null;
+                case "exp": return need(1) ? Math.exp(args[0]) : null;
+                case "log": return need(1) ? Math.log(args[0]) : null;
+                case "log2": return need(1) ? Math.log2(args[0]) : null;
+                case "log10": return need(1) ? Math.log10(args[0]) : null;
+                case "sin": return need(1) ? Math.sin(args[0]) : null;
+                case "cos": return need(1) ? Math.cos(args[0]) : null;
+                case "tan": return need(1) ? Math.tan(args[0]) : null;
+                case "asin": return need(1) ? Math.asin(args[0]) : null;
+                case "acos": return need(1) ? Math.acos(args[0]) : null;
+                case "atan": return need(1) ? Math.atan(args[0]) : (need(2) ? Math.atan2(args[0], args[1]) : null);
+                case "radians": return need(1) ? args[0] * Math.PI / 180 : null;
+                case "degrees": return need(1) ? args[0] * 180 / Math.PI : null;
+                case "pow": return need(2) ? Math.pow(args[0], args[1]) : null;
+                case "atan2": return need(2) ? Math.atan2(args[0], args[1]) : null;
+                case "min": return arity >= 2 ? Math.min.apply(Math, args) : null;
+                case "max": return arity >= 2 ? Math.max.apply(Math, args) : null;
+                case "mod": return need(2) ? args[0] - args[1] * Math.floor(args[0] / args[1]) : null;
+                case "fract": return need(1) ? args[0] - Math.floor(args[0]) : null;
+                case "clamp": return need(3) ? Math.min(args[2], Math.max(args[1], args[0])) : null;
+                case "mix": return need(3) ? args[0] * (1 - args[2]) + args[1] * args[2] : null;
+                case "step": return need(2) ? (args[1] >= args[0] ? 1 : 0) : null;
+                case "smoothstep": return need(3) ? smoothstep(args[0], args[1], args[2]) : null;
+                case "length": return arity >= 1 ? Math.sqrt(args.reduce(function (sum, a) { return sum + a * a; }, 0)) : null;
+                case "hypot": return arity >= 1 ? Math.hypot.apply(Math, args) : null;
+                default: return null;
+            }
+        }
+
+        function smoothstep(edge0, edge1, x) {
+            if (edge0 === edge1) return x < edge0 ? 0 : 1;
+            var t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+            return t * t * (3 - 2 * t);
+        }
+
+        try {
+            var value = parseAddSub();
+            skip();
+            if (value === null || i < len) return { ok: false, value: NaN, error: "Unsupported expression: " + src };
+            if (!isFinite(value)) return { ok: false, value: NaN, error: "Expression is not finite: " + src };
+            return { ok: true, value: value, error: null };
+        } catch (err) {
+            return { ok: false, value: NaN, error: (err && err.message) || "Invalid expression" };
+        }
+    }
+
+    /* ==================================================================
+     * GLSL tokenizer
+     *
+     * One scanner feeds both the syntax highlighter and the IMG_* rewriter,
+     * so comments/strings are always treated as opaque and never rewritten.
+     * ================================================================== */
+
+    var GLSL_IDENT_START = /[A-Za-z_]/;
+    var GLSL_IDENT_PART = /[A-Za-z0-9_]/;
+    var GLSL_DIGIT = /[0-9]/;
+    var OPS3 = { "<<=": 1, ">>=": 1, "...": 1 };
+    var OPS2 = {
+        "==": 1, "!=": 1, "<=": 1, ">=": 1, "&&": 1, "||": 1, "++": 1, "--": 1,
+        "+=": 1, "-=": 1, "*=": 1, "/=": 1, "%=": 1, "&=": 1, "|=": 1, "^=": 1,
+        "<<": 1, ">>": 1, "->": 1, "##": 1
+    };
+
+    function tokenizeGLSL(source, options) {
+        var src = String(source == null ? "" : source);
+        var noPreproc = !!(options && options.noPreproc);
+        var tokens = [];
+        var i = 0, n = src.length, lineStart = true;
+
+        function push(type, start, end) {
+            tokens.push({ type: type, text: src.slice(start, end), start: start, end: end });
+            i = end;
+        }
+
+        while (i < n) {
+            var c = src.charAt(i);
+            if (c === "\n") { push("newline", i, i + 1); lineStart = true; continue; }
+            if (c === " " || c === "\t" || c === "\r" || c === "\f" || c === "\u00a0") {
+                var spaceStart = i;
+                while (i < n && /[ \t\r\f\u00a0]/.test(src.charAt(i))) i++;
+                push("space", spaceStart, i);
+                continue;
+            }
+            if (c === "/" && src.charAt(i + 1) === "/") {
+                var lineStartPos = i;
+                while (i < n && src.charAt(i) !== "\n") i++;
+                push("comment", lineStartPos, i);
+                continue;
+            }
+            if (c === "/" && src.charAt(i + 1) === "*") {
+                var blockStart = i;
+                i += 2;
+                while (i < n && !(src.charAt(i) === "*" && src.charAt(i + 1) === "/")) i++;
+                i = Math.min(n, i + 2);
+                push("comment", blockStart, i);
+                continue;
+            }
+            if (c === "#" && lineStart && !noPreproc) {
+                var preStart = i;
+                while (i < n) {
+                    if (src.charAt(i) === "\\" && (src.charAt(i + 1) === "\n" || src.charAt(i + 1) === "\r")) {
+                        i += 2;
+                        if (src.charAt(i - 1) === "\r" && src.charAt(i) === "\n") i++;
+                        continue;
+                    }
+                    if (src.charAt(i) === "\n") break;
+                    i++;
+                }
+                push("preproc", preStart, i);
+                continue;
+            }
+            if (c === "\"" || c === "'") {
+                var quote = c;
+                var strStart = i;
+                i++;
+                while (i < n && src.charAt(i) !== quote) {
+                    if (src.charAt(i) === "\\") i++;
+                    i++;
+                }
+                i = Math.min(n, i + 1);
+                push("string", strStart, i);
+                continue;
+            }
+            if (GLSL_DIGIT.test(c) || (c === "." && GLSL_DIGIT.test(src.charAt(i + 1)))) {
+                if (c === "0" && (src.charAt(i + 1) === "x" || src.charAt(i + 1) === "X")) {
+                    i += 2;
+                    while (i < n && /[0-9a-fA-F]/.test(src.charAt(i))) i++;
+                    push("number", i - 2, i);
+                    continue;
+                }
+                var numStart = i;
+                while (i < n && GLSL_DIGIT.test(src.charAt(i))) i++;
+                if (src.charAt(i) === ".") {
+                    i++;
+                    while (i < n && GLSL_DIGIT.test(src.charAt(i))) i++;
+                }
+                if (src.charAt(i) === "e" || src.charAt(i) === "E") {
+                    var j = i + 1;
+                    if (src.charAt(j) === "+" || src.charAt(j) === "-") j++;
+                    if (GLSL_DIGIT.test(src.charAt(j))) {
+                        i = j;
+                        while (i < n && GLSL_DIGIT.test(src.charAt(i))) i++;
+                    }
+                }
+                push("number", numStart, i);
+                continue;
+            }
+            if (GLSL_IDENT_START.test(c)) {
+                var identStart = i;
+                i++;
+                while (i < n && GLSL_IDENT_PART.test(src.charAt(i))) i++;
+                push("ident", identStart, i);
+                continue;
+            }
+            var three = src.substr(i, 3);
+            if (OPS3[three]) { push("op", i, i + 3); continue; }
+            var two = src.substr(i, 2);
+            if (OPS2[two]) { push("op", i, i + 2); continue; }
+            push("op", i, i + 1);
+        }
+        return tokens;
+    }
+
+    /* ==================================================================
+     * GLSL syntax highlighting
+     * ================================================================== */
+
+    var GLSL_KEYWORDS = words("attribute const uniform varying break continue do for while if else in out inout return discard struct switch case default true false precision lowp mediump highp invariant centroid flat smooth noperspective layout");
+    var GLSL_TYPES = words("void bool int uint float vec2 vec3 vec4 ivec2 ivec3 ivec4 bvec2 bvec3 bvec4 uvec2 uvec3 uvec4 mat2 mat3 mat4 mat2x2 mat2x3 mat2x4 mat3x2 mat3x3 mat3x4 mat4x2 mat4x3 mat4x4 sampler2D samplerCube sampler3D sampler2DArray");
+    var GLSL_BUILTINS = words("radians degrees sin cos tan asin acos atan sinh cosh tanh pow exp log exp2 log2 sqrt inversesqrt abs sign floor trunc round ceil fract mod min max clamp mix step smoothstep length distance dot cross normalize faceforward reflect refract matrixCompMult outerProduct transpose determinant inverse lessThan lessThanEqual greaterThan greaterThanEqual equal notEqual any all not texture2D texture2DProj texture2DLod textureCube textureCubeLod dFdx dFdy fwidth");
+    var GLSL_BUILTIN_VARS = words("gl_Position gl_PointSize gl_FragCoord gl_FrontFacing gl_PointCoord gl_FragColor gl_FragData gl_FragDepth gl_MaxVertexAttribs");
+    var ISF_FUNCTIONS = words("IMG_PIXEL IMG_NORM_PIXEL IMG_THIS_PIXEL IMG_NORM_THIS_PIXEL IMG_THIS_NORM_PIXEL IMG_SIZE isf_vertShaderInit");
+    var ISF_VARS = words("RENDERSIZE TIME TIMEDELTA DATE FRAMEINDEX PASSINDEX isf_FragNormCoord isf_FragCoord vv_FragNormCoord");
+
+    function words(list) {
+        var out = {};
+        var parts = String(list).split(/\s+/);
+        for (var i = 0; i < parts.length; i++) if (parts[i]) out[parts[i]] = true;
+        return out;
+    }
+
+    function highlightGLSL(source) {
+        var tokens = tokenizeGLSL(source);
+        var html = [];
+        for (var i = 0; i < tokens.length; i++) {
+            var token = tokens[i];
+            var cls = null;
+            if (token.type === "comment") cls = "isf-tok-com";
+            else if (token.type === "preproc") cls = "isf-tok-pre";
+            else if (token.type === "string") cls = "isf-tok-str";
+            else if (token.type === "number") cls = "isf-tok-num";
+            else if (token.type === "ident") {
+                var name = token.text;
+                if (ISF_FUNCTIONS[name] || ISF_VARS[name]) cls = "isf-tok-isf";
+                else if (GLSL_KEYWORDS[name]) cls = "isf-tok-kw";
+                else if (GLSL_TYPES[name]) cls = "isf-tok-type";
+                else if (GLSL_BUILTIN_VARS[name]) cls = "isf-tok-var";
+                else if (GLSL_BUILTINS[name]) cls = "isf-tok-fn";
+                else if (nextNonSpaceIsParen(tokens, i)) cls = "isf-tok-fn";
+            } else if (token.type === "op") cls = "isf-tok-op";
+            var text = escapeHtml(token.text);
+            html.push(cls ? '<span class="' + cls + '">' + text + "</span>" : text);
+        }
+        return html.join("");
+    }
+
+    function nextNonSpaceIsParen(tokens, index) {
+        for (var i = index + 1; i < tokens.length; i++) {
+            var type = tokens[i].type;
+            if (type === "space" || type === "newline" || type === "comment") continue;
+            return type === "op" && tokens[i].text === "(";
+        }
+        return false;
+    }
+
+    /* ==================================================================
+     * IMG_* / vv_* rewriting
+     * ================================================================== */
+
+    var IMG_REWRITE = {
+        IMG_PIXEL: { arity: 2 },
+        IMG_NORM_PIXEL: { arity: 2 },
+        IMG_THIS_PIXEL: { arity: 1 },
+        IMG_NORM_THIS_PIXEL: { arity: 1 },
+        IMG_THIS_NORM_PIXEL: { arity: 1 },
+        IMG_SIZE: { arity: 1 }
+    };
+
+    function rewriteGLSLText(text, known, warnings, unresolved) {
+        var src = String(text == null ? "" : text);
+        // Preprocessor lines are tokenised as ordinary tokens here so calls
+        // inside macro definitions are rewritten too; the highlighter is what
+        // wants whole-line `#` tokens.
+        var tokens = tokenizeGLSL(src, { noPreproc: true });
+        var out = [];
+        var cursor = 0;
+
+        for (var i = 0; i < tokens.length; i++) {
+            var token = tokens[i];
+
+            if (token.type === "preproc") {
+                out.push(src.slice(cursor, token.start));
+                out.push(rewriteGLSLText(token.text, known, warnings, unresolved));
+                cursor = token.end;
+                continue;
+            }
+            if (token.type !== "ident") continue;
+
+            var name = token.text;
+            if (name === "vv_FragNormCoord" || name === "vv_vertShaderInit") {
+                out.push(src.slice(cursor, token.start));
+                out.push(name === "vv_FragNormCoord" ? "isf_FragNormCoord" : "isf_vertShaderInit");
+                cursor = token.end;
+                continue;
+            }
+
+            var spec = IMG_REWRITE[name];
+            if (!spec) continue;
+
+            var openIndex = -1;
+            for (var j = i + 1; j < tokens.length; j++) {
+                if (tokens[j].type === "space" || tokens[j].type === "newline" || tokens[j].type === "comment") continue;
+                if (tokens[j].type === "op" && tokens[j].text === "(") openIndex = j;
+                break;
+            }
+            if (openIndex === -1) continue;
+
+            var depth = 0;
+            var closeIndex = -1;
+            for (var d = openIndex; d < tokens.length; d++) {
+                var t = tokens[d];
+                if (t.type !== "op") continue;
+                if (t.text === "(") depth++;
+                else if (t.text === ")") {
+                    depth--;
+                    if (depth === 0) { closeIndex = d; break; }
+                }
+            }
+            if (closeIndex === -1) continue;
+
+            var args = [];
+            var current = [];
+            var parens = 0, brackets = 0, braces = 0;
+            for (var a = openIndex + 1; a < closeIndex; a++) {
+                var at = tokens[a];
+                if (at.type === "op") {
+                    if (at.text === "(") parens++;
+                    else if (at.text === ")") parens--;
+                    else if (at.text === "[") brackets++;
+                    else if (at.text === "]") brackets--;
+                    else if (at.text === "{") braces++;
+                    else if (at.text === "}") braces--;
+                    else if (at.text === "," && parens === 0 && brackets === 0 && braces === 0) {
+                        args.push(current.slice());
+                        current = [];
+                        continue;
+                    }
+                }
+                current.push(at);
+            }
+            args.push(current);
+
+            var argTexts = args.map(function (argTokens) {
+                return trim(argTokens.map(function (x) { return x.text; }).join(""));
+            });
+
+            if (argTexts.length !== spec.arity || !argTexts[0]) {
+                warnings.push({ message: name + "() expects " + spec.arity + " argument(s)", line: lineOfOffset(src, token.start) });
+                continue;
+            }
+
+            var imageName = argTexts[0];
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(imageName)) {
+                unresolved.push({ name: name, image: imageName, line: lineOfOffset(src, token.start), reason: "the image name is not a plain identifier" });
+                continue;
+            }
+            if (!known[imageName]) {
+                unresolved.push({ name: name, image: imageName, line: lineOfOffset(src, token.start), reason: "unknown image uniform" });
+                continue;
+            }
+
+            var replacementText;
+            if (name === "IMG_PIXEL") replacementText = "texture2D(" + imageName + ", (" + argTexts[1] + ") / _" + imageName + "_imgSize)";
+            else if (name === "IMG_NORM_PIXEL") replacementText = "texture2D(" + imageName + ", " + argTexts[1] + ")";
+            else if (name === "IMG_THIS_PIXEL") replacementText = "texture2D(" + imageName + ", gl_FragCoord.xy / _" + imageName + "_imgSize)";
+            else if (name === "IMG_NORM_THIS_PIXEL" || name === "IMG_THIS_NORM_PIXEL") replacementText = "texture2D(" + imageName + ", isf_FragNormCoord)";
+            else replacementText = "_" + imageName + "_imgSize";
+
+            out.push(src.slice(cursor, token.start));
+            out.push(replacementText);
+            cursor = tokens[closeIndex].end;
+            i = closeIndex;
+        }
+
+        if (out.length) {
+            out.push(src.slice(cursor));
+            return out.join("");
+        }
+        return src;
+    }
+
+    function rewriteSpecialFunctions(source, imageNames) {
+        var known = {};
+        if (Array.isArray(imageNames)) {
+            for (var k = 0; k < imageNames.length; k++) known[imageNames[k]] = true;
+        } else if (imageNames) {
+            for (var key in imageNames) {
+                if (Object.prototype.hasOwnProperty.call(imageNames, key)) known[key] = true;
+            }
+        }
+        var warnings = [];
+        var unresolved = [];
+        var result = rewriteGLSLText(source, known, warnings, unresolved);
+        return { source: result, warnings: warnings, unresolved: unresolved };
+    }
+
+    /* ==================================================================
+     * ISF input / pass / import normalisation
+     * ================================================================== */
+
+    var INPUT_TYPE_INFO = {
+        float: { uniform: "float" },
+        bool: { uniform: "bool" },
+        long: { uniform: "int" },
+        event: { uniform: "bool" },
+        color: { uniform: "vec4" },
+        point2D: { uniform: "vec2" },
+        image: { uniform: "sampler2D" },
+        audio: { uniform: "sampler2D" },
+        audioFFT: { uniform: "sampler2D" }
+    };
+
+    // Metadata TYPE spellings are case-insensitive; `int` is a MadMapper alias
+    // of `long` and `audiofft` of `audioFFT`.
+    var INPUT_TYPE_ALIASES = {
+        float: "float",
+        bool: "bool",
+        long: "long",
+        int: "long",
+        event: "event",
+        color: "color",
+        point2d: "point2D",
+        image: "image",
+        audio: "audio",
+        audiofft: "audioFFT"
+    };
+
+    function firstDefined() {
+        for (var i = 0; i < arguments.length; i++) {
+            if (arguments[i] !== undefined && arguments[i] !== null) return arguments[i];
+        }
+        return undefined;
+    }
+
+    function pairValue(value, fallback) {
+        if (Array.isArray(value)) {
+            var x = numberOr(value[0], fallback);
+            var y = numberOr(value.length > 1 ? value[1] : value[0], x);
+            return [x, y];
+        }
+        if (isFiniteNumber(value)) return [value, value];
+        return [fallback, fallback];
+    }
+
+    function quadValue(value, fallback) {
+        var out = fallback.slice();
+        if (Array.isArray(value)) {
+            for (var i = 0; i < 4; i++) if (value[i] !== undefined) out[i] = numberOr(value[i], out[i]);
+        } else if (isFiniteNumber(value)) {
+            out = [value, value, value, 1];
+        }
+        return out;
+    }
+
+    function normalizeInputs(rawInputs, warnings) {
+        var out = [];
+        if (!Array.isArray(rawInputs)) return out;
+        for (var i = 0; i < rawInputs.length; i++) {
+            var raw = rawInputs[i];
+            if (!isObject(raw)) continue;
+            var name = trim(raw.NAME == null ? raw.Name : raw.NAME);
+            if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+                if (warnings) warnings.push({ message: "Input #" + (i + 1) + " has an invalid NAME" });
+                continue;
+            }
+            var rawType = trim(String(firstDefined(raw.TYPE, raw.Type, "float"))).toLowerCase();
+            var type = INPUT_TYPE_ALIASES[rawType];
+            var info = type && INPUT_TYPE_INFO[type];
+            if (!info) {
+                if (warnings) warnings.push({ message: "Input " + name + " has unsupported TYPE '" + rawType + "'" });
+                continue;
+            }
+            var label = trim(String(firstDefined(raw.LABEL, raw.Label, name)));
+            var input = {
+                name: name,
+                label: label || name,
+                type: type,
+                uniform: info.uniform,
+                raw: raw,
+                min: null,
+                max: null,
+                default: null
+            };
+            if (type === "float") {
+                input.min = numberOr(firstDefined(raw.MIN, raw.Min), 0);
+                input.max = numberOr(firstDefined(raw.MAX, raw.Max), 1);
+                if (input.min > input.max) { var swap = input.min; input.min = input.max; input.max = swap; }
+                if (input.min === input.max) { input.min -= 0.5; input.max += 0.5; }
+                input.default = numberOr(firstDefined(raw.DEFAULT, raw.Default, 0), 0);
+            } else if (type === "bool" || type === "event") {
+                input.default = !!firstDefined(raw.DEFAULT, raw.Default, false);
+            } else if (type === "long") {
+                var values = Array.isArray(raw.VALUES) ? raw.VALUES.slice() : null;
+                var labels = Array.isArray(raw.LABELS) ? raw.LABELS.slice() : null;
+                var def = firstDefined(raw.DEFAULT, raw.Default, 0);
+                input.values = values;
+                input.labels = labels;
+                if (values && values.length) {
+                    input.labels = labels && labels.length ? labels : values.map(function (v) { return String(v); });
+                    input.defaultValue = values[0];
+                    if (typeof def === "string") {
+                        var labelIndex = labels ? labels.indexOf(def) : -1;
+                        var valueIndex = labelIndex !== -1 ? labelIndex : values.indexOf(def);
+                        input.defaultValue = values[valueIndex !== -1 ? valueIndex : 0];
+                    } else if (typeof def === "number" && def >= 0 && def < values.length) {
+                        input.defaultValue = values[def];
+                    } else if (values.indexOf(def) !== -1) {
+                        input.defaultValue = def;
+                    }
+                } else {
+                    input.min = numberOr(firstDefined(raw.MIN, raw.Min), null);
+                    input.max = numberOr(firstDefined(raw.MAX, raw.Max), null);
+                    input.defaultValue = numberOr(def, 0);
+                    if (input.min != null && input.max != null && input.min > input.max) {
+                        var swap2 = input.min; input.min = input.max; input.max = swap2;
+                    }
+                    input.step = 1;
+                }
+                input.default = input.defaultValue;
+            } else if (type === "color") {
+                input.default = quadValue(firstDefined(raw.DEFAULT, raw.Default), [0, 0, 0, 1]);
+                input.min = quadValue(firstDefined(raw.MIN, raw.Min), [0, 0, 0, 0]);
+                input.max = quadValue(firstDefined(raw.MAX, raw.Max), [1, 1, 1, 1]);
+            } else if (type === "point2D") {
+                input.default = pairValue(firstDefined(raw.DEFAULT, raw.Default), 0);
+                input.min = pairValue(firstDefined(raw.MIN, raw.Min), 0);
+                input.max = pairValue(firstDefined(raw.MAX, raw.Max), 1);
+                for (var axis = 0; axis < 2; axis++) {
+                    if (input.min[axis] === input.max[axis]) { input.min[axis] -= 0.5; input.max[axis] += 0.5; }
+                }
+            } else if (type === "image") {
+                input.default = undefined;
+            } else if (type === "audio" || type === "audioFFT") {
+                input.samples = Math.max(1, Math.round(numberOr(firstDefined(raw.MAX, raw.Max), 512)));
+                input.default = undefined;
+            }
+            out.push(input);
+        }
+        return out;
+    }
+
+    function normalizePasses(rawPasses, warnings) {
+        if (!Array.isArray(rawPasses) || rawPasses.length === 0) {
+            return [{ target: null, persistent: false, float: false, width: "$WIDTH", height: "$HEIGHT" }];
+        }
+        var out = [];
+        for (var i = 0; i < rawPasses.length; i++) {
+            var raw = rawPasses[i] || {};
+            var target = trim(raw.TARGET == null ? "" : raw.TARGET);
+            if (target && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(target)) {
+                if (warnings) warnings.push({ message: "Pass #" + i + " has an invalid TARGET '" + target + "'" });
+                target = name + "Image";
+            }
+            out.push({
+                index: i,
+                target: target || null,
+                persistent: !!raw.PERSISTENT,
+                float: !!raw.FLOAT,
+                width: trim(String(raw.WIDTH == null ? "$WIDTH" : raw.WIDTH)) || "$WIDTH",
+                height: trim(String(raw.HEIGHT == null ? "$HEIGHT" : raw.HEIGHT)) || "$HEIGHT"
+            });
+        }
+        return out;
+    }
+
+    function normalizeImports(rawImports, warnings) {
+        var out = [];
+        if (!rawImports) return out;
+        function add(name, entry) {
+            if (typeof entry === "string") entry = { PATH: entry };
+            if (!isObject(entry)) return;
+            var path = trim(firstDefined(entry.PATH, entry.path, ""));
+            if (!path) return;
+            var importName = trim(firstDefined(entry.NAME, entry.Name, name));
+            if (!importName || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(importName)) {
+                if (warnings) warnings.push({ message: "IMPORTED entry '" + name + "' has an invalid texture name" });
+                return;
+            }
+            out.push({
+                name: importName,
+                path: path,
+                minFilter: entry.GL_TEXTURE_MIN_FILTER,
+                magFilter: entry.GL_TEXTURE_MAG_FILTER,
+                wrap: entry.GL_TEXTURE_WRAP
+            });
+        }
+        if (Array.isArray(rawImports)) {
+            for (var i = 0; i < rawImports.length; i++) {
+                var item = rawImports[i];
+                if (isObject(item)) add("import" + i, item);
+                else if (typeof item === "string") add(basename(item).replace(/[^A-Za-z0-9_]/g, "_") || ("import" + i), item);
+            }
+        } else if (isObject(rawImports)) {
+            for (var key in rawImports) {
+                if (Object.prototype.hasOwnProperty.call(rawImports, key)) add(key, rawImports[key]);
+            }
+        }
+        return out;
+    }
+
+    /* ==================================================================
+     * Shader assembly
+     * ================================================================== */
+
+    var BUILTIN_NAMES = words("PASSINDEX RENDERSIZE TIME TIMEDELTA DATE FRAMEINDEX isf_FragNormCoord gl_FragCoord gl_FragColor");
+
+    var FRAGMENT_PRELUDE = [
+        "#ifdef GL_FRAGMENT_PRECISION_HIGH",
+        "precision highp float;",
+        "precision highp int;",
+        "#else",
+        "precision mediump float;",
+        "precision mediump int;",
+        "#endif",
+        "",
+        "uniform int PASSINDEX;",
+        "uniform vec2 RENDERSIZE;",
+        "uniform float TIME;",
+        "uniform float TIMEDELTA;",
+        "uniform int FRAMEINDEX;",
+        "uniform vec4 DATE;",
+        "varying vec2 isf_FragNormCoord;"
+    ].join("\n") + "\n";
+
+    function defaultVertexShader() {
+        return [
+            "precision highp float;",
+            "precision highp int;",
+            "attribute vec2 isf_position;",
+            "uniform int PASSINDEX;",
+            "uniform vec2 RENDERSIZE;",
+            "varying vec2 isf_FragNormCoord;",
+            "void isf_vertShaderInit(void);",
+            "void main(void) {",
+            "    isf_vertShaderInit();",
+            "}",
+            "void isf_vertShaderInit(void) {",
+            "    gl_Position = vec4(isf_position, 0.0, 1.0);",
+            "    isf_FragNormCoord = gl_Position.xy * 0.5 + 0.5;",
+            "}"
+        ].join("\n") + "\n";
+    }
+
+    function stripVersionDirective(source) {
+        return String(source == null ? "" : source).replace(/^[ \t]*#version[^\n]*\n?/m, "");
+    }
+
+    function buildVertexShader(userVertexShader, uniformDeclarations) {
+        if (!userVertexShader) return defaultVertexShader();
+        var body = stripVersionDirective(userVertexShader);
+        body = body.replace(/\bvv_vertShaderInit\b/g, "isf_vertShaderInit");
+        body = body.replace(/\bvv_FragNormCoord\b/g, "isf_FragNormCoord");
+        return [
+            "precision highp float;",
+            "precision highp int;",
+            "attribute vec2 isf_position;",
+            "uniform int PASSINDEX;",
+            "uniform vec2 RENDERSIZE;",
+            "varying vec2 isf_FragNormCoord;",
+            uniformDeclarations,
+            "void isf_vertShaderInit(void);",
+            body,
+            "void isf_vertShaderInit(void) {",
+            "    gl_Position = vec4(isf_position, 0.0, 1.0);",
+            "    isf_FragNormCoord = gl_Position.xy * 0.5 + 0.5;",
+            "}"
+        ].join("\n");
+    }
+
+    function buildShader(parsed, options) {
+        options = options || {};
+        var warnings = [];
+        var meta = parsed && parsed.valid ? parsed.metadata : {};
+        var inputs = normalizeInputs(meta.INPUTS, warnings);
+        var passes = normalizePasses(meta.PASSES, warnings);
+        var imports = options.imports === false ? [] : normalizeImports(meta.IMPORTED, warnings);
+
+        var imageNames = [];
+        var imageInfo = [];
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            if (input.type === "image" || input.type === "audio" || input.type === "audioFFT") {
+                imageNames.push(input.name);
+                imageInfo.push({ name: input.name, kind: input.type === "image" ? "input" : "audio", input: input });
+            }
+        }
+        for (var p = 0; p < passes.length; p++) {
+            if (passes[p].target) {
+                imageNames.push(passes[p].target);
+                imageInfo.push({ name: passes[p].target, kind: "pass", pass: passes[p] });
+            }
+        }
+        for (var m = 0; m < imports.length; m++) {
+            imageNames.push(imports[m].name);
+            imageInfo.push({ name: imports[m].name, kind: "import", import: imports[m] });
+        }
+
+        var body = stripVersionDirective(parsed.body || "");
+        var rewritten = rewriteSpecialFunctions(body, imageNames);
+        var bodyOffset = (parsed.bodyStartLine || 1) - 1;
+        var rewriteWarnings = rewritten.warnings || [];
+        for (var w = 0; w < rewriteWarnings.length; w++) {
+            if (rewriteWarnings[w].line) rewriteWarnings[w].line += bodyOffset;
+        }
+        warnings = warnings.concat(rewriteWarnings);
+        var unresolved = rewritten.unresolved || [];
+        for (var ur = 0; ur < unresolved.length; ur++) {
+            if (unresolved[ur].line) unresolved[ur].line += bodyOffset;
+        }
+
+        var uniformLines = [];
+        for (var u = 0; u < inputs.length; u++) {
+            if (BUILTIN_NAMES[inputs[u].name]) {
+                warnings.push({ message: "Input " + inputs[u].name + " shadows an ISF built-in and was ignored" });
+                continue;
+            }
+            if (inputs[u].uniform === "sampler2D") continue; // declared with the image helpers below
+            uniformLines.push("uniform " + inputs[u].uniform + " " + inputs[u].name + ";");
+        }
+        for (var n = 0; n < imageInfo.length; n++) {
+            uniformLines.push("uniform sampler2D " + imageInfo[n].name + ";");
+            uniformLines.push("uniform vec2 _" + imageInfo[n].name + "_imgSize;");
+        }
+
+        var prelude = FRAGMENT_PRELUDE + (uniformLines.length ? uniformLines.join("\n") + "\n" : "");
+        var fragment = prelude + rewritten.source;
+        var preludeLines = (prelude.match(/\n/g) || []).length;
+
+        var vertex = buildVertexShader(options.vertexShader, uniformLines.join("\n"));
+
+        return {
+            ok: true,
+            fragment: fragment,
+            vertex: vertex,
+            inputs: inputs,
+            passes: passes,
+            imports: imports,
+            images: imageInfo,
+            warnings: warnings,
+            unresolved: unresolved,
+            preludeLines: preludeLines,
+            bodyStartLine: parsed.bodyStartLine || 1,
+            lineMap: function (generatedLine) {
+                if (generatedLine <= preludeLines) return null;
+                return (parsed.bodyStartLine || 1) + (generatedLine - preludeLines - 1);
+            }
+        };
+    }
+
+    /* ==================================================================
+     * URLs, routes and fetching
+     * ================================================================== */
+
+    function currentRoutePath(vm) {
+        try {
+            if (vm && vm.route) {
+                if (typeof vm.route.path === "string" && vm.route.path) return vm.route.path;
+                if (typeof vm.route.file === "string" && vm.route.file) return vm.route.file;
+            }
+        } catch (err) { /* ignore */ }
+        if (typeof window !== "undefined") {
+            var hash = window.location.hash || "";
+            if (hash.indexOf("#/") === 0) return hash.slice(1);
+        }
+        return "";
+    }
+
+    function normalizeRouteDir(routePath) {
+        var clean = String(routePath || "").split("?")[0].split("#")[0];
+        if (!clean) return "";
+        if (clean.charAt(0) === "/") clean = clean.slice(1);
+        if (/\.(md|markdown)$/i.test(clean)) clean = dirname(clean);
+        if (clean && clean.charAt(clean.length - 1) !== "/") clean += "/";
+        return clean;
+    }
+
+    function normalizePath(path) {
+        var parts = String(path).replace(/\\/g, "/").split("/");
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var part = parts[i];
+            if (!part || part === ".") continue;
+            if (part === "..") out.pop();
+            else out.push(part);
+        }
+        return out.join("/");
+    }
+
+    function resolveAssetUrl(href, routePath) {
+        var raw = String(href == null ? "" : href);
+        if (/^(https?:)?\/\//i.test(raw)) return raw;
+        if (/^(mailto:|tel:|data:|blob:|javascript:)/i.test(raw)) return raw;
+        var base = (typeof document !== "undefined" && document.baseURI)
+            ? document.baseURI
+            : (typeof location !== "undefined" ? location.href : "");
+        var siteDir = base ? dirname(base) : "";
+        try {
+            if (raw.indexOf("#/") === 0) {
+                return new URL(normalizePath(raw.slice(2)), siteDir).toString();
+            }
+            if (raw.charAt(0) === "#") {
+                var target = raw.slice(1);
+                if (!target) return base;
+                return new URL(normalizePath(target), siteDir).toString();
+            }
+            if (raw.charAt(0) === "/") {
+                return new URL(normalizePath(raw), siteDir).toString();
+            }
+            var routeDir = normalizeRouteDir(routePath);
+            var joined = normalizePath(routeDir + raw);
+            return new URL(joined, siteDir).toString();
+        } catch (err) {
+            return raw;
+        }
+    }
+
+    function resolveCandidates(href, routePath) {
+        var primary = resolveAssetUrl(href, routePath);
+        var candidates = [primary];
+        var base = (typeof document !== "undefined" && document.baseURI)
+            ? document.baseURI
+            : (typeof location !== "undefined" ? location.href : "");
+        var sameOrigin = true;
+        try { sameOrigin = !base || new URL(primary).origin === new URL(base).origin; } catch (err) { sameOrigin = false; }
+        if (/^https?:/i.test(primary) && sameOrigin) {
+            // Legacy generated links look like `../<slug>.fs` while the file
+            // actually lives at `<slug>/<slug>.fs` (and the page route is the
+            // directory). Probe the sibling path on 404.
+            var routeDir = normalizeRouteDir(routePath);
+            var fallback = resolveAssetUrl(normalizePath(routeDir + basename(primary)), "");
+            if (fallback !== primary) candidates.push(fallback);
+        }
+        var unique = [];
+        for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i] && unique.indexOf(candidates[i]) === -1) unique.push(candidates[i]);
+        }
+        return unique;
+    }
+
+    function fetchText(url) {
+        return fetch(url, { credentials: "same-origin" }).then(function (response) {
+            if (!response.ok) {
+                var error = new Error("HTTP " + response.status + " for " + url);
+                error.status = response.status;
+                throw error;
+            }
+            return response.text();
+        });
+    }
+
+    function fetchFirst(urls) {
+        var index = 0;
+        function attempt(lastError) {
+            if (index >= urls.length) return Promise.reject(lastError || new Error("Nothing to fetch"));
+            var url = urls[index++];
+            return fetchText(url).catch(attempt);
+        }
+        return attempt(null);
+    }
+
+    function loadShaderText(urls) {
+        var index = 0;
+        function attempt(lastError) {
+            if (index >= urls.length) {
+                var message = "Unable to load shader" + (lastError && lastError.status ? " (HTTP " + lastError.status + ")" : "") + ": " + urls.join(", ");
+                return Promise.reject(lastError || new Error(message));
+            }
+            var url = urls[index++];
+            return fetchText(url).then(function (text) {
+                return { text: text, url: url };
+            }).catch(attempt);
+        }
+        return attempt(null);
+    }
+
+    /* ==================================================================
+     * Styles
+     * ================================================================== */
+
+    var STYLE_ID = "docsify-isf-style";
+
+    function ensureStyle() {
+        if (typeof document === "undefined") return;
+        if (document.getElementById(STYLE_ID)) return;
+        var style = document.createElement("style");
+        style.id = STYLE_ID;
+        style.textContent = [
+            ".isf-block{--isf-bg:#fff;--isf-surface:#f6f7f9;--isf-surface-2:#eceef2;--isf-border:#e2e4e9;--isf-text:#1c1e22;--isf-muted:#6b7280;--isf-accent:var(--theme-color,#d374d6);--isf-accent-contrast:#fff;--isf-danger:#e5484d;--isf-code-bg:#16181d;--isf-code-text:#c8ccd4;--isf-code-com:#6b7280;--isf-code-kw:#c678dd;--isf-code-type:#e5c07b;--isf-code-fn:#61afef;--isf-code-isf:#56b6c2;--isf-code-num:#d19a66;--isf-code-str:#98c379;--isf-code-var:#e06c75;position:relative;margin:1.1rem 0;border:1px solid var(--isf-border);border-radius:12px;background:var(--isf-bg);overflow:hidden;box-shadow:0 6px 18px rgba(15,18,25,.06);contain:content}",
+            "@media (prefers-color-scheme:dark){.isf-block{--isf-bg:#1e1f22;--isf-surface:#24262b;--isf-surface-2:#2b2d33;--isf-border:#34373e;--isf-text:#f0f1f3;--isf-muted:#9aa0a6;--isf-danger:#ff6369;--isf-code-bg:#131418}}",
+            ".isf-block *{box-sizing:border-box}",
+            ".isf-header{display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
+            ".isf-title{flex:1 1 auto;min-width:0;color:var(--isf-text);font-weight:600;font-size:.92rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+            ".isf-title:hover{text-decoration:underline;color:var(--isf-accent)}",
+            ".isf-icon{display:block;width:15px;height:15px;fill:currentColor}",
+            ".isf-actions{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap}",
+            ".isf-btn{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;transition:background .12s ease,border-color .12s ease}",
+            ".isf-btn:hover{background:var(--isf-surface-2)}",
+            ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-count{font-variant-numeric:tabular-nums;font-size:.68rem;opacity:.75}",
+            ".isf-body{display:grid;grid-template-columns:minmax(0,1fr)}",
+            ".isf-stage{position:relative;background:#0b0c10;min-height:110px;overflow:hidden}",
+            ".isf-canvas{display:block;width:100%;height:100%}",
+            ".isf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;background:rgba(10,11,14,.72);color:#f5f6f8;font-size:.82rem;z-index:3}",
+            ".isf-overlay-inner{max-width:34rem}",
+            ".isf-overlay strong{display:block;margin-bottom:.3rem;font-size:.92rem}",
+            ".isf-overlay code{background:rgba(255,255,255,.12);padding:.1rem .3rem;border-radius:4px;font-size:.78rem;word-break:break-all}",
+            ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
+            ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
+            ".isf-badge{position:absolute;right:.5rem;bottom:.45rem;z-index:2;background:rgba(10,11,14,.6);color:#e7e9ee;border-radius:5px;padding:.12rem .35rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em}",
+            ".isf-side{border-top:1px solid var(--isf-border);background:var(--isf-bg);max-height:340px;overflow:auto}",
+            ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
+            ".isf-panel:last-child{border-bottom:0}",
+            ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.4rem .65rem;font-size:.78rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
+            ".isf-params-list{padding:.25rem .65rem .5rem}",
+            ".isf-param{display:grid;grid-template-columns:minmax(84px,32%) minmax(0,1fr);gap:.4rem .6rem;align-items:center;padding:.28rem 0;font-size:.8rem;border-top:1px dashed var(--isf-border)}",
+            ".isf-param:first-child{border-top:0}",
+            ".isf-param-label{color:var(--isf-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+            ".isf-param-label:hover{color:var(--isf-text)}",
+            ".isf-param-control{display:flex;align-items:center;gap:.4rem;min-width:0}",
+            ".isf-param-control input[type=range]{flex:1 1 auto;min-width:0;height:18px;accent-color:var(--isf-accent);margin:0}",
+            ".isf-param-control input[type=number]{width:4.6rem;border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);padding:.12rem .3rem;font-size:.76rem;text-align:right}",
+            ".isf-param-control select{border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);padding:.12rem .3rem;font-size:.78rem;max-width:100%}",
+            ".isf-param-control input[type=checkbox]{accent-color:var(--isf-accent);width:15px;height:15px;margin:0}",
+            ".isf-param-control input[type=color]{width:28px;height:22px;padding:0;border:1px solid var(--isf-border);border-radius:5px;background:none}",
+            ".isf-param-control .isf-axis{display:flex;align-items:center;gap:.25rem;min-width:0;flex:1 1 auto}",
+            ".isf-param-control .isf-axis span{color:var(--isf-muted);font-size:.68rem;text-transform:uppercase}",
+            ".isf-param-control input[type=range].isf-axis-range{width:100%}",
+            ".isf-event-btn{border:1px solid var(--isf-border);background:var(--isf-surface);color:var(--isf-text);border-radius:6px;padding:.22rem .55rem;font-size:.76rem;cursor:pointer}",
+            ".isf-event-btn:active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-muted{color:var(--isf-muted);font-size:.74rem}",
+            ".isf-status{padding:.3rem .65rem;font-size:.74rem;color:var(--isf-muted);border-top:1px solid var(--isf-border);background:var(--isf-surface);white-space:pre-wrap}",
+            ".isf-status.is-error{color:var(--isf-danger)}",
+            ".isf-status.is-warn{color:#b7791f}",
+            ".isf-editor-wrap{display:flex;flex-direction:column;min-height:0}",
+            ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
+            ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+            ".isf-editor-status.is-error{color:var(--isf-danger)}",
+            ".isf-editor-status.is-ok{color:#3f9142}",
+            ".isf-editor-actions{display:flex;gap:.25rem}",
+            ".isf-editor-actions .isf-btn{padding:.2rem .45rem}",
+            ".isf-editor{position:relative;display:flex;height:300px;background:var(--isf-code-bg);color:var(--isf-code-text);overflow:hidden}",
+            ".isf-gutter{flex:0 0 auto;width:3em;padding:8px 4px 8px 0;text-align:right;overflow:hidden;background:rgba(255,255,255,.03);color:#565c66;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.55;white-space:pre;user-select:none}",
+            ".isf-gutter-error{color:#ff7b72;font-weight:700}",
+            ".isf-code{position:relative;flex:1 1 auto;min-width:0;overflow:hidden}",
+            ".isf-editor .isf-highlight,.isf-editor .isf-input{position:absolute;inset:0;margin:0;border:0;padding:8px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.55;tab-size:2;-moz-tab-size:2;white-space:pre;word-wrap:normal;overflow:auto;background:transparent}",
+            ".isf-editor .isf-highlight{pointer-events:none;color:var(--isf-code-text);z-index:1;overflow:hidden}",
+            ".isf-editor .isf-highlight code{display:block;padding:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:inherit;white-space:inherit}",
+            ".isf-editor .isf-input{z-index:2;color:transparent;caret-color:#f0f1f3;resize:none;outline:none;box-shadow:none}",
+            ".isf-editor .isf-input::selection{background:rgba(97,175,239,.35)}",
+            ".isf-tok-com{color:var(--isf-code-com);font-style:italic}",
+            ".isf-tok-pre{color:var(--isf-code-kw)}",
+            ".isf-tok-str{color:var(--isf-code-str)}",
+            ".isf-tok-num{color:var(--isf-code-num)}",
+            ".isf-tok-kw{color:var(--isf-code-kw)}",
+            ".isf-tok-type{color:var(--isf-code-type)}",
+            ".isf-tok-fn{color:var(--isf-code-fn)}",
+            ".isf-tok-isf{color:var(--isf-code-isf)}",
+            ".isf-tok-var{color:var(--isf-code-var)}",
+            ".isf-tok-op{color:var(--isf-code-text)}",
+            ".isf-hidden{display:none!important}",
+            ".isf-block:fullscreen{position:fixed;inset:0;margin:0;border:0;border-radius:0;display:flex;flex-direction:column;background:#0b0c10;contain:none}",
+            ".isf-block:fullscreen .isf-header{background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto;position:relative;z-index:6}",
+            ".isf-block:fullscreen .isf-title{color:#f0f1f3}",
+            ".isf-block:fullscreen .isf-btn{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:#f0f1f3}",
+            ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr);min-height:0}",
+            ".isf-block:fullscreen .isf-stage{height:100%;min-height:0}",
+            ".isf-block:fullscreen .isf-side{position:absolute;right:0;top:0;bottom:0;width:min(420px,42vw);max-height:none;border-top:0;border-left:1px solid rgba(255,255,255,.12);background:var(--isf-bg);z-index:4;overflow:auto}",
+            ".isf-block:fullscreen .isf-editor{height:46vh;min-height:220px}",
+            ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
+            "@media (min-width:900px){.isf-block.isf-wide .isf-body{grid-template-columns:minmax(0,1fr) minmax(280px,34%)}.isf-block.isf-wide .isf-side{border-top:0;border-left:1px solid var(--isf-border);max-height:none}.isf-block.isf-wide .isf-editor{height:340px}}",
+            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}}"
+        ].join("\n");
+        document.head.appendChild(style);
+    }
+
+    /* ==================================================================
+     * DOM helpers and icons
+     * ================================================================== */
+
+    function h(tag, className, attrs) {
+        var el = document.createElement(tag);
+        if (className) el.className = className;
+        if (attrs) {
+            for (var key in attrs) {
+                if (!Object.prototype.hasOwnProperty.call(attrs, key)) continue;
+                if (key === "text") el.textContent = attrs[key];
+                else if (key === "html") el.innerHTML = attrs[key];
+                else if (key === "style") el.style.cssText = attrs[key];
+                else if (key === "dataset") { for (var d in attrs[key]) el.dataset[d] = attrs[key][d]; }
+                else el.setAttribute(key, attrs[key]);
+            }
+        }
+        for (var i = 3; i < arguments.length; i++) {
+            var child = arguments[i];
+            if (child == null) continue;
+            el.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+        }
+        return el;
+    }
+
+    var ICONS = {
+        params: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M4 12h6M14 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="16" cy="7" r="2" fill="currentColor"/><circle cx="10" cy="17" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>',
+        editor: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6 2 12l6 6M16 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        play: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5 19.5 12 7 19.5z" fill="currentColor"/></svg>',
+        pause: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/></svg>',
+        reset: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        fullscreen: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+        source: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        copy: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+        check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
+    };
+
+    function iconButton(action, icon, title, extraClass) {
+        var button = h("button", "isf-btn" + (extraClass ? " " + extraClass : ""), {
+            type: "button",
+            title: title,
+            "aria-label": title,
+            dataset: { isfAction: action }
+        });
+        button.innerHTML = ICONS[icon] || "";
+        return button;
+    }
+
+    /* ==================================================================
+     * Test images (default sources for image inputs)
+     * ================================================================== */
+
+    function createTestPattern(width, height, variant) {
+        var canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        var ctx = canvas.getContext("2d");
+        var hueBase = variant === "b" ? 190 : 280;
+        var gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, "hsl(" + hueBase + ",70%,32%)");
+        gradient.addColorStop(0.5, "hsl(" + ((hueBase + 60) % 360) + ",65%,45%)");
+        gradient.addColorStop(1, "hsl(" + ((hueBase + 140) % 360) + ",70%,22%)");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // Colour bars along the top.
+        var bars = ["#ffffff", "#ffff00", "#00ffff", "#00ff00", "#ff00ff", "#ff0000", "#0000ff", "#000000"];
+        var barWidth = width / bars.length;
+        for (var b = 0; b < bars.length; b++) {
+            ctx.fillStyle = bars[b];
+            ctx.fillRect(b * barWidth, 0, barWidth, height * 0.14);
+        }
+
+        // Grid.
+        ctx.strokeStyle = "rgba(255,255,255,.35)";
+        ctx.lineWidth = 1;
+        var step = Math.max(24, Math.round(width / 12));
+        for (var x = step; x < width; x += step) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        }
+        for (var y = step; y < height; y += step) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+        }
+
+        // Centre circles.
+        ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.lineWidth = Math.max(2, width / 160);
+        for (var r = width * 0.12; r < width * 0.42; r += width * 0.12) {
+            ctx.beginPath();
+            ctx.arc(width * 0.5, height * 0.55, r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Corner swatches.
+        var swatch = width * 0.16;
+        var corners = [
+            [0, height - swatch, "rgba(255,255,255,.9)"],
+            [width - swatch, height - swatch, "rgba(0,0,0,.6)"],
+            [width - swatch, height * 0.14, "rgba(255,120,0,.85)"],
+            [0, height * 0.14, "rgba(0,160,255,.85)"]
+        ];
+        for (var c = 0; c < corners.length; c++) {
+            ctx.fillStyle = corners[c][2];
+            ctx.fillRect(corners[c][0], corners[c][1], swatch, swatch);
+        }
+
+        // Label.
+        ctx.fillStyle = "rgba(255,255,255,.92)";
+        ctx.font = "bold " + Math.round(width / 12) + "px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(variant === "b" ? "ISF B" : "ISF A", width / 2, height * 0.55);
+        ctx.font = Math.round(width / 26) + "px system-ui, sans-serif";
+        ctx.fillText("docsify-isf test pattern", width / 2, height * 0.68);
+        return canvas;
+    }
+
+    /* ==================================================================
+     * Colour helpers
+     * ================================================================== */
+
+    function clamp01(value) { return clamp(value, 0, 1); }
+
+    function colorToHex(rgba) {
+        function channel(value) {
+            var v = Math.round(clamp01(value) * 255);
+            var hex = v.toString(16);
+            return hex.length < 2 ? "0" + hex : hex;
+        }
+        return "#" + channel(rgba[0]) + channel(rgba[1]) + channel(rgba[2]);
+    }
+
+    function hexToColor(hex) {
+        var match = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+        if (!match) return null;
+        var value = parseInt(match[1], 16);
+        return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+    }
+
+    function formatNumber(value) {
+        value = Number(value);
+        if (!isFinite(value)) return "0";
+        if (value === 0) return "0";
+        var abs = Math.abs(value);
+        if (abs >= 1000 || abs < 0.001) return value.toPrecision(4).replace(/\+?(e[+-]?\d+)$/i, "e$1");
+        return String(Math.round(value * 10000) / 10000);
+    }
+
+    /* ==================================================================
+     * Parameter controls
+     * ================================================================== */
+
+    function isTransitionShader(inputs) {
+        var has = {};
+        for (var i = 0; i < inputs.length; i++) has[inputs[i].name] = true;
+        return !!(has.startImage && has.endImage && has.progress);
+    }
+
+    function buildControls(container, inputs, viewer) {
+        container.innerHTML = "";
+        viewer.controlsList = [];
+        var rows = [];
+        for (var i = 0; i < inputs.length; i++) {
+            var row = buildControlRow(inputs[i], viewer);
+            if (row) {
+                container.appendChild(row);
+                rows.push(row);
+            }
+        }
+        return rows;
+    }
+
+    function buildControlRow(input, viewer) {
+        var row = h("div", "isf-param", { dataset: { isfParam: input.name } });
+        row.appendChild(h("span", "isf-param-label", { title: input.name + " (" + input.type + ") — double-click to reset", text: input.label }));
+        var control = h("span", "isf-param-control");
+
+        function onDoubleClick(event) {
+            event.preventDefault();
+            viewer.resetParameter(input.name);
+        }
+        row.addEventListener("dblclick", onDoubleClick);
+
+        if (input.type === "float") {
+            var range = h("input", null, {
+                type: "range", min: input.min, max: input.max,
+                step: (input.max - input.min) > 0 ? (input.max - input.min) / 1000 : 0.001,
+                value: clamp(input.default, input.min, input.max)
+            });
+            var number = h("input", null, { type: "number", step: "any", value: formatNumber(input.default) });
+            range.addEventListener("input", function () {
+                var value = Number(range.value);
+                number.value = formatNumber(value);
+                viewer.setParameter(input.name, value);
+            });
+            number.addEventListener("change", function () {
+                var value = numberOr(number.value, input.default);
+                range.value = clamp(value, input.min, input.max);
+                viewer.setParameter(input.name, value);
+            });
+            control.appendChild(range);
+            control.appendChild(number);
+            viewer.controlsList.push({ name: input.name, range: range, number: number });
+        } else if (input.type === "bool") {
+            var checkbox = h("input", null, { type: "checkbox" });
+            checkbox.checked = !!input.default;
+            checkbox.addEventListener("change", function () { viewer.setParameter(input.name, checkbox.checked); });
+            control.appendChild(checkbox);
+        } else if (input.type === "event") {
+            var eventButton = h("button", "isf-event-btn", { type: "button", text: "Trigger" });
+            eventButton.addEventListener("click", function () { viewer.triggerEvent(input.name); });
+            control.appendChild(eventButton);
+        } else if (input.type === "long" && input.values && input.values.length) {
+            var select = h("select");
+            for (var v = 0; v < input.values.length; v++) {
+                var option = h("option", null, { value: String(v), text: String(input.labels[v]) });
+                select.appendChild(option);
+            }
+            var selectedIndex = input.values.indexOf(input.defaultValue);
+            select.value = String(selectedIndex === -1 ? 0 : selectedIndex);
+            select.addEventListener("change", function () {
+                var index = Number(select.value) || 0;
+                viewer.setParameter(input.name, input.values[index]);
+            });
+            control.appendChild(select);
+        } else if (input.type === "long") {
+            var intInput = h("input", null, { type: "number", step: "1", value: formatNumber(input.defaultValue) });
+            if (input.min != null) intInput.min = input.min;
+            if (input.max != null) intInput.max = input.max;
+            intInput.addEventListener("change", function () {
+                viewer.setParameter(input.name, Math.round(numberOr(intInput.value, input.defaultValue)));
+            });
+            control.appendChild(intInput);
+        } else if (input.type === "color") {
+            var swatch = h("input", null, { type: "color", value: colorToHex(input.default) });
+            var alpha = h("input", null, {
+                type: "range", min: 0, max: 1, step: 0.01,
+                value: clamp(input.default[3], 0, 1), title: "Alpha"
+            });
+            function pushColor() {
+                var rgb = hexToColor(swatch.value) || [0, 0, 0];
+                viewer.setParameter(input.name, [rgb[0], rgb[1], rgb[2], Number(alpha.value)]);
+            }
+            swatch.addEventListener("input", pushColor);
+            alpha.addEventListener("input", pushColor);
+            control.appendChild(swatch);
+            control.appendChild(alpha);
+        } else if (input.type === "point2D") {
+            var axes = ["x", "y"];
+            for (var a = 0; a < 2; a++) {
+                (function (axisIndex) {
+                    var axis = h("span", "isf-axis");
+                    axis.appendChild(h("span", null, { text: axes[axisIndex] }));
+                    var axisRange = h("input", "isf-axis-range", {
+                        type: "range", min: input.min[axisIndex], max: input.max[axisIndex],
+                        step: (input.max[axisIndex] - input.min[axisIndex]) > 0 ? (input.max[axisIndex] - input.min[axisIndex]) / 1000 : 0.001,
+                        value: clamp(input.default[axisIndex], input.min[axisIndex], input.max[axisIndex])
+                    });
+                    axisRange.addEventListener("input", function () {
+                        var current = viewer.getParameter(input.name) || input.default.slice();
+                        current = current.slice();
+                        current[axisIndex] = Number(axisRange.value);
+                        viewer.setParameter(input.name, current);
+                    });
+                    axis.appendChild(axisRange);
+                    control.appendChild(axis);
+                })(a);
+            }
+        } else if (input.type === "image") {
+            var fileInput = h("input", "isf-hidden", { type: "file", accept: "image/*" });
+            var fileButton = h("button", "isf-btn", { type: "button", text: "Choose image…" });
+            fileButton.addEventListener("click", function () { fileInput.click(); });
+            fileInput.addEventListener("change", function () {
+                if (fileInput.files && fileInput.files[0]) viewer.setInputImage(input.name, fileInput.files[0]);
+            });
+            control.appendChild(fileButton);
+            control.appendChild(fileInput);
+        } else if (input.type === "audio" || input.type === "audioFFT") {
+            control.appendChild(h("span", "isf-muted", { text: "synthetic " + (input.type === "audio" ? "waveform" : "spectrum") }));
+        }
+
+        row.appendChild(control);
+        return row;
+    }
+
+    /* ==================================================================
+     * GLSL editor (textarea over a syntax-highlighted layer)
+     * ================================================================== */
+
+    function createEditor(viewer, config) {
+        var wrap = h("div", "isf-panel isf-editor-wrap");
+        var toolbar = h("div", "isf-editor-toolbar");
+        var status = h("span", "isf-editor-status", { text: "Ready" });
+        var actions = h("span", "isf-editor-actions");
+        var applyButton = h("button", "isf-btn", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
+        var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
+        var copyButton = h("button", "isf-btn", { type: "button", text: "Copy", title: "Copy source" });
+        actions.appendChild(applyButton);
+        actions.appendChild(revertButton);
+        actions.appendChild(copyButton);
+        toolbar.appendChild(status);
+        toolbar.appendChild(actions);
+
+        var editor = h("div", "isf-editor");
+        var gutter = h("div", "isf-gutter", { "aria-hidden": "true", text: "1" });
+        var codeWrap = h("div", "isf-code");
+        var highlight = h("pre", "isf-highlight", { "aria-hidden": "true" });
+        var code = h("code");
+        highlight.appendChild(code);
+        var textarea = h("textarea", "isf-input", {
+            spellcheck: "false", autocapitalize: "off", autocomplete: "off",
+            autocorrect: "off", wrap: "off", "aria-label": "ISF source editor"
+        });
+        codeWrap.appendChild(highlight);
+        codeWrap.appendChild(textarea);
+        editor.appendChild(gutter);
+        editor.appendChild(codeWrap);
+        wrap.appendChild(toolbar);
+        wrap.appendChild(editor);
+
+        var highlightScheduled = false;
+        var liveTimer = null;
+        var errorLine = 0;
+
+        function lineCount(text) {
+            var count = 1;
+            for (var i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++;
+            return count;
+        }
+
+        function renderGutter(text) {
+            var count = lineCount(text);
+            if (!errorLine || errorLine > count) {
+                var plain = [];
+                for (var i = 1; i <= count; i++) plain.push(i);
+                gutter.textContent = plain.join("\n");
+                return;
+            }
+            var html = [];
+            for (var line = 1; line <= count; line++) {
+                if (line === errorLine) html.push('<span class="isf-gutter-error">' + line + "</span>");
+                else html.push(String(line));
+            }
+            gutter.innerHTML = html.join("\n");
+        }
+
+        function renderHighlight() {
+            highlightScheduled = false;
+            var text = textarea.value;
+            if (text.length > 400000) {
+                code.textContent = text;
+            } else {
+                code.innerHTML = highlightGLSL(text) + "\n";
+            }
+            renderGutter(text);
+        }
+
+        function scheduleHighlight() {
+            if (highlightScheduled) return;
+            highlightScheduled = true;
+            requestAnimationFrame(renderHighlight);
+        }
+
+        function syncScroll() {
+            highlight.scrollTop = textarea.scrollTop;
+            highlight.scrollLeft = textarea.scrollLeft;
+            gutter.scrollTop = textarea.scrollTop;
+        }
+
+        function setStatus(message, kind) {
+            status.textContent = message || "";
+            status.className = "isf-editor-status" + (kind ? " is-" + kind : "");
+        }
+
+        function setValue(text, options) {
+            options = options || {};
+            textarea.value = String(text == null ? "" : text);
+            try { textarea.setSelectionRange(0, 0); } catch (err) { /* ignore */ }
+            errorLine = 0;
+            scheduleHighlight();
+            if (!options.keepScroll) {
+                textarea.scrollTop = 0;
+                textarea.scrollLeft = 0;
+                syncScroll();
+            }
+        }
+
+        function markError(line) {
+            errorLine = line || 0;
+            renderGutter(textarea.value);
+            if (errorLine > 0) {
+                var lineHeight = 18.6;
+                textarea.scrollTop = Math.max(0, (errorLine - 3) * lineHeight);
+                syncScroll();
+            }
+        }
+
+        function indentSelection(shift) {
+            var start = textarea.selectionStart;
+            var end = textarea.selectionEnd;
+            var value = textarea.value;
+            var lineStart = value.lastIndexOf("\n", start - 1) + 1;
+            var lineEnd = value.indexOf("\n", end);
+            if (lineEnd === -1) lineEnd = value.length;
+            var block = value.slice(lineStart, lineEnd);
+            var changed;
+            if (shift) {
+                changed = block.replace(/^ {1,2}|^\t/gm, "");
+            } else {
+                changed = block.replace(/^/gm, "  ");
+            }
+            textarea.value = value.slice(0, lineStart) + changed + value.slice(lineEnd);
+            textarea.selectionStart = lineStart;
+            textarea.selectionEnd = lineStart + changed.length;
+            scheduleHighlight();
+            notifyInput();
+        }
+
+        function notifyInput() {
+            viewer.onEditorInput();
+        }
+
+        textarea.addEventListener("input", function () {
+            scheduleHighlight();
+            setStatus("Modified — " + (config.editorLive ? "applying…" : "press Apply"), "");
+            notifyInput();
+        });
+        textarea.addEventListener("scroll", syncScroll);
+        textarea.addEventListener("keydown", function (event) {
+            if (event.key === "Tab") {
+                event.preventDefault();
+                indentSelection(event.shiftKey);
+                return;
+            }
+            if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                viewer.applySource();
+                return;
+            }
+            if ((event.ctrlKey || event.metaKey) && (event.key === "s" || event.key === "S")) {
+                event.preventDefault();
+                viewer.applySource();
+            }
+        });
+        applyButton.addEventListener("click", function () { viewer.applySource(); });
+        revertButton.addEventListener("click", function () { viewer.revertSource(); });
+        copyButton.addEventListener("click", function () {
+            var text = textarea.value;
+            var done = function () {
+                copyButton.innerHTML = ICONS.check;
+                setTimeout(function () { copyButton.textContent = "Copy"; }, 900);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+            } else {
+                fallbackCopy(text);
+                done();
+            }
+        });
+
+        function fallbackCopy(text) {
+            try {
+                var temp = document.createElement("textarea");
+                temp.value = text;
+                temp.style.position = "fixed";
+                temp.style.opacity = "0";
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand("copy");
+                document.body.removeChild(temp);
+            } catch (err) { /* ignore */ }
+        }
+
+        return {
+            el: wrap,
+            setValue: setValue,
+            value: function () { return textarea.value; },
+            setStatus: setStatus,
+            markError: markError,
+            focus: function () {
+                try { textarea.focus({ preventScroll: true }); } catch (err) { textarea.focus(); }
+                syncScroll();
+            },
+            scheduleHighlight: scheduleHighlight
+        };
+    }
+
+    /* ==================================================================
+     * WebGL helpers
+     * ================================================================== */
+
+    function createGL(canvas) {
+        var attrs = {
+            alpha: true,
+            antialias: false,
+            depth: false,
+            stencil: false,
+            premultipliedAlpha: true,
+            preserveDrawingBuffer: false,
+            powerPreference: "default",
+            failIfMajorPerformanceCaveat: false
+        };
+        var names = ["webgl2", "webgl", "experimental-webgl"];
+        for (var i = 0; i < names.length; i++) {
+            try {
+                var gl = canvas.getContext(names[i], attrs);
+                if (gl) { gl.__isfContextName = names[i]; return gl; }
+            } catch (err) { /* try the next one */ }
+        }
+        return null;
+    }
+
+    function parseGLCompileLog(log) {
+        var messages = [];
+        var lines = String(log || "").split(/\r?\n/);
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var match = /^(ERROR|WARNING)\s*:\s*\d+\s*:\s*(\d+)\s*:\s*(.*)$/.exec(line);
+            if (match) {
+                messages.push({ severity: match[1].toLowerCase(), line: Number(match[2]), message: trim(match[3]) });
+                continue;
+            }
+            match = /^\d+\s*\((\d+)\)\s*:\s*(error|warning)\s*[A-Za-z0-9]*\s*:\s*(.*)$/i.exec(line);
+            if (match) {
+                messages.push({ severity: match[2].toLowerCase(), line: Number(match[1]), message: trim(match[3]) });
+            }
+        }
+        return messages;
+    }
+
+    function compileShader(gl, type, source, label) {
+        var shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            var log = gl.getShaderInfoLog(shader) || "Shader failed to compile";
+            gl.deleteShader(shader);
+            return { ok: false, error: { label: label, log: log, messages: parseGLCompileLog(log) } };
+        }
+        return { ok: true, shader: shader, error: null };
+    }
+
+    function createProgram(gl, vertexSource, fragmentSource) {
+        var vs = compileShader(gl, gl.VERTEX_SHADER, vertexSource, "vertex shader");
+        if (!vs.ok) return { ok: false, error: vs.error };
+        var fs = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource, "fragment shader");
+        if (!fs.ok) {
+            gl.deleteShader(vs.shader);
+            return { ok: false, error: fs.error };
+        }
+        var program = gl.createProgram();
+        gl.attachShader(program, vs.shader);
+        gl.attachShader(program, fs.shader);
+        gl.linkProgram(program);
+        gl.deleteShader(vs.shader);
+        gl.deleteShader(fs.shader);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            var log = gl.getProgramInfoLog(program) || "Program failed to link";
+            gl.deleteProgram(program);
+            return { ok: false, error: { label: "program", log: log, messages: parseGLCompileLog(log) } };
+        }
+        return { ok: true, program: program, error: null };
+    }
+
+    function setUniform(gl, location, type, value) {
+        if (location === null || location === undefined) return;
+        switch (type) {
+            case "float": gl.uniform1f(location, Number(value) || 0); break;
+            case "int": gl.uniform1i(location, Math.round(Number(value) || 0)); break;
+            case "bool": gl.uniform1i(location, value ? 1 : 0); break;
+            case "vec2": gl.uniform2f(location, Number(value[0]) || 0, Number(value[1]) || 0); break;
+            case "vec3": gl.uniform3f(location, Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0); break;
+            case "vec4": gl.uniform4f(location, Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0, value[3] === undefined ? 1 : (Number(value[3]) || 0)); break;
+            case "sampler2D": gl.uniform1i(location, value | 0); break;
+            default: break;
+        }
+    }
+
+    function makeTexture(gl) {
+        var texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        return texture;
+    }
+
+    function uploadImage(gl, texture, source) {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        texture.__width = source.naturalWidth || source.videoWidth || source.width || 0;
+        texture.__height = source.naturalHeight || source.videoHeight || source.height || 0;
+    }
+
+    function detectFloatRenderable(gl, isGL2) {
+        try {
+            if (isGL2) {
+                if (!gl.getExtension("EXT_color_buffer_float")) return false;
+            } else {
+                if (!gl.getExtension("OES_texture_float")) return false;
+            }
+            var texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texImage2D(gl.TEXTURE_2D, 0, isGL2 ? gl.RGBA32F : gl.RGBA, 4, 4, 0, gl.RGBA, gl.FLOAT, null);
+            var fbo = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+            var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.deleteFramebuffer(fbo);
+            gl.deleteTexture(texture);
+            return status === gl.FRAMEBUFFER_COMPLETE;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function supportsLinearFloat(gl) {
+        try { return !!gl.getExtension("OES_texture_float_linear"); } catch (err) { return false; }
+    }
+
+    /* ==================================================================
+     * Pass buffers
+     * ================================================================== */
+
+    function PassBuffer(gl, pass, floatSupported, isGL2, linearFloat) {
+        this.gl = gl;
+        this.pass = pass;
+        this.name = pass.target;
+        this.float = !!(pass.float && floatSupported);
+        this.isGL2 = isGL2;
+        this.linearFloat = linearFloat;
+        this.width = 0;
+        this.height = 0;
+        this.index = 0;
+        this.textures = [this.createTexture(), this.createTexture()];
+        this.fbo = gl.createFramebuffer();
+    }
+
+    PassBuffer.prototype.createTexture = function () {
+        var gl = this.gl;
+        var texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        var filter = (this.float && !this.linearFloat) ? gl.NEAREST : gl.LINEAR;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        texture.__width = 0;
+        texture.__height = 0;
+        return texture;
+    };
+
+    PassBuffer.prototype.setSize = function (width, height) {
+        if (this.width === width && this.height === height) return;
+        this.width = width;
+        this.height = height;
+        var gl = this.gl;
+        var type = this.float ? gl.FLOAT : gl.UNSIGNED_BYTE;
+        var internal = this.float && this.isGL2 ? gl.RGBA32F : gl.RGBA;
+        for (var i = 0; i < this.textures.length; i++) {
+            gl.bindTexture(gl.TEXTURE_2D, this.textures[i]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, internal, width, height, 0, gl.RGBA, type, null);
+            this.textures[i].__width = width;
+            this.textures[i].__height = height;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    };
+
+    PassBuffer.prototype.readTexture = function () { return this.textures[this.index]; };
+    PassBuffer.prototype.writeTexture = function () { return this.textures[1 - this.index]; };
+    PassBuffer.prototype.flip = function () { this.index = 1 - this.index; };
+
+    PassBuffer.prototype.destroy = function () {
+        var gl = this.gl;
+        for (var i = 0; i < this.textures.length; i++) gl.deleteTexture(this.textures[i]);
+        gl.deleteFramebuffer(this.fbo);
+        this.textures = [];
+    };
+
+    /* ==================================================================
+     * WebGL runtime
+     * ================================================================== */
+
+    var PAINT_VERTEX = [
+        "attribute vec2 isf_position;",
+        "varying vec2 vUV;",
+        "void main(){ gl_Position = vec4(isf_position, 0.0, 1.0); vUV = isf_position * 0.5 + 0.5; }"
+    ].join("\n");
+    var PAINT_FRAGMENT = [
+        "precision mediump float;",
+        "uniform sampler2D tex;",
+        "varying vec2 vUV;",
+        "void main(){ gl_FragColor = texture2D(tex, vUV); }"
+    ].join("\n");
+
+    function ISFRuntime(viewer, gl) {
+        this.viewer = viewer;
+        this.config = viewer.config;
+        this.gl = gl;
+        this.isGL2 = gl.__isfContextName === "webgl2";
+        this.floatSupported = detectFloatRenderable(gl, this.isGL2);
+        this.linearFloat = supportsLinearFloat(gl);
+        this.program = null;
+        this.paint = null;
+        this.vertexBuffer = null;
+        this.locations = {};
+        this.passBuffers = {};
+        this.inputTextures = {};
+        this.inputSources = {};
+        this.importTextures = {};
+        this.audioTextures = {};
+        this.audioData = {};
+        this.images = [];
+        this.inputs = [];
+        this.passes = [];
+        this.values = viewer.values;
+        this.events = {};
+        this.time = 0;
+        this.lastNow = performance.now();
+        this.frameIndex = 0;
+        this.transitionTime = 0;
+        this.playing = !!this.config.autoplay;
+        this.visible = true;
+        this.needsRender = true;
+        this.running = false;
+        this.destWidth = 1;
+        this.destHeight = 1;
+        this.frameCount = 0;
+        this.statsAt = 0;
+        this.fps = 0;
+        this.lastPassTarget = null;
+        this.lastLog = 0;
+        this.warnedSizes = {};
+        var self = this;
+        this._tick = function (now) { self.tick(now); };
+        this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
+        gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
+        this.setupGeometry();
+        this.setupPaint();
+        this.resize(true);
+    }
+
+    ISFRuntime.prototype.setupGeometry = function () {
+        var gl = this.gl;
+        this.vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    };
+
+    ISFRuntime.prototype.setupPaint = function () {
+        var gl = this.gl;
+        var result = createProgram(gl, PAINT_VERTEX, PAINT_FRAGMENT);
+        if (!result.ok) { this.paint = null; return; }
+        var program = result.program;
+        var position = gl.getAttribLocation(program, "isf_position");
+        this.paint = { program: program, position: position, tex: gl.getUniformLocation(program, "tex") };
+    };
+
+    ISFRuntime.prototype.compile = function (shader) {
+        var gl = this.gl;
+        var result = createProgram(gl, shader.vertex, shader.fragment);
+        if (!result.ok) return result.error;
+
+        this.cleanupProgram();
+        this.program = result.program;
+        this.shader = shader;
+        this.inputs = shader.inputs;
+        this.passes = shader.passes;
+        this.images = shader.images;
+        this.locations = {};
+        var i;
+        for (i = 0; i < this.inputs.length; i++) {
+            this.locations[this.inputs[i].name] = { location: gl.getUniformLocation(this.program, this.inputs[i].name), type: this.inputs[i].uniform };
+        }
+        this.positionLocation = gl.getAttribLocation(this.program, "isf_position");
+        for (i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            this.locations[image.name] = { location: gl.getUniformLocation(this.program, image.name), type: "sampler2D" };
+            this.locations["_" + image.name + "_imgSize"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgSize"), type: "vec2" };
+            if (image.kind === "audio") this.setupAudioTexture(image.input);
+        }
+        this.locations.TIME = { location: gl.getUniformLocation(this.program, "TIME"), type: "float" };
+        this.locations.TIMEDELTA = { location: gl.getUniformLocation(this.program, "TIMEDELTA"), type: "float" };
+        this.locations.DATE = { location: gl.getUniformLocation(this.program, "DATE"), type: "vec4" };
+        this.locations.FRAMEINDEX = { location: gl.getUniformLocation(this.program, "FRAMEINDEX"), type: "int" };
+        this.locations.PASSINDEX = { location: gl.getUniformLocation(this.program, "PASSINDEX"), type: "int" };
+        this.locations.RENDERSIZE = { location: gl.getUniformLocation(this.program, "RENDERSIZE"), type: "vec2" };
+
+        // Pass buffers (reuse when the target set is unchanged).
+        var nextBuffers = {};
+        for (i = 0; i < this.passes.length; i++) {
+            var pass = this.passes[i];
+            if (!pass.target) continue;
+            var existing = this.passBuffers[pass.target];
+            if (existing && existing.pass.persistent === pass.persistent && existing.pass.float === pass.float && existing.pass.width === pass.width && existing.pass.height === pass.height) {
+                existing.pass = pass;
+                nextBuffers[pass.target] = existing;
+            } else {
+                if (existing) existing.destroy();
+                nextBuffers[pass.target] = new PassBuffer(gl, pass, this.floatSupported, this.isGL2, this.linearFloat);
+            }
+        }
+        for (var name in this.passBuffers) {
+            if (Object.prototype.hasOwnProperty.call(this.passBuffers, name) && !nextBuffers[name]) this.passBuffers[name].destroy();
+        }
+        this.passBuffers = nextBuffers;
+        this.needsRender = true;
+        return null;
+    };
+
+    ISFRuntime.prototype.cleanupProgram = function () {
+        var gl = this.gl;
+        if (this.program) gl.deleteProgram(this.program);
+        this.program = null;
+        for (var name in this.passBuffers) {
+            if (Object.prototype.hasOwnProperty.call(this.passBuffers, name)) this.passBuffers[name].destroy();
+        }
+        this.passBuffers = {};
+    };
+
+    ISFRuntime.prototype.handleContextLost = function () {
+        this.running = false;
+        if (this.viewer) this.viewer.handleContextLost();
+    };
+
+    ISFRuntime.prototype.setNumber = function (name, value, type) {
+        var entry = this.locations[name];
+        if (!entry || !this.program) return;
+        setUniform(this.gl, entry.location, type || entry.type, value);
+    };
+
+    ISFRuntime.prototype.resize = function (force) {
+        var canvas = this.gl.canvas;
+        var rect;
+        try { rect = canvas.getBoundingClientRect(); } catch (err) { rect = null; }
+        var cssWidth = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || 1));
+        var cssHeight = Math.max(1, Math.round((rect && rect.height) || canvas.clientHeight || 1));
+        var dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+        var scale;
+        if (this.config.resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
+        else scale = Number(this.config.resolution) || 1;
+        if (!isFinite(scale) || scale <= 0) scale = 1;
+        var maxSize = 0;
+        try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { maxSize = 4096; }
+        var width = clamp(Math.round(cssWidth * scale), 1, Math.min(maxSize, 8192));
+        var height = clamp(Math.round(cssHeight * scale), 1, Math.min(maxSize, 8192));
+        if (force || canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+            this.needsRender = true;
+        }
+        this.destWidth = width;
+        this.destHeight = height;
+    };
+
+    ISFRuntime.prototype.evaluateSize = function (expression, fallback) {
+        var variables = { WIDTH: this.destWidth, HEIGHT: this.destHeight };
+        for (var name in this.values) {
+            if (!Object.prototype.hasOwnProperty.call(this.values, name)) continue;
+            var value = this.values[name];
+            if (typeof value === "number") variables[name] = value;
+            else if (typeof value === "boolean") variables[name] = value ? 1 : 0;
+        }
+        var result = evalExpression(expression, variables);
+        if (!result.ok) {
+            if (!this.warnedSizes[expression]) {
+                this.warnedSizes[expression] = true;
+                this.viewer.warn("Unsupported size equation '" + expression + "' — using " + fallback);
+            }
+            return fallback;
+        }
+        var maxSize = 4096;
+        try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { /* ignore */ }
+        return clamp(Math.round(result.value), 1, Math.min(maxSize, 8192));
+    };
+
+    ISFRuntime.prototype.setupInputTexture = function (name) {
+        if (this.inputTextures[name]) return this.inputTextures[name];
+        var gl = this.gl;
+        var texture = makeTexture(gl);
+        this.inputTextures[name] = texture;
+        return texture;
+    };
+
+    ISFRuntime.prototype.defaultImageSource = function (input) {
+        var self = this;
+        var name = input.name;
+        if (this.inputSources[name]) return this.inputSources[name];
+        var variant = /end/i.test(name) ? "b" : "a";
+        var canvas = createTestPattern(512, 512, variant);
+        this.inputSources[name] = canvas;
+        if (this.config.imageUrl) {
+            var image = new Image();
+            image.crossOrigin = "anonymous";
+            image.onload = function () {
+                self.inputSources[name] = image;
+                self.viewer.needsRender = true;
+                self.needsRender = true;
+            };
+            image.onerror = function () { self.viewer.warn("Could not load imageUrl for " + name); };
+            image.src = this.config.imageUrl;
+        }
+        return canvas;
+    };
+
+    ISFRuntime.prototype.setupAudioTexture = function (input) {
+        var gl = this.gl;
+        var samples = input.samples || 512;
+        var texture = this.audioTextures[input.name];
+        if (!texture) {
+            texture = makeTexture(gl);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            this.audioTextures[input.name] = texture;
+            this.audioData[input.name] = new Uint8Array(samples * 4);
+            texture.__width = samples;
+            texture.__height = 1;
+        }
+        return texture;
+    };
+
+    ISFRuntime.prototype.updateAudioTextures = function () {
+        var gl = this.gl;
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind !== "audio" || !image.input) continue;
+            var input = image.input;
+            var texture = this.audioTextures[input.name];
+            var data = this.audioData[input.name];
+            if (!texture || !data) {
+            texture = this.setupAudioTexture(input);
+            data = this.audioData[input.name];
+        }
+        if (!texture || !data) continue;
+            var samples = texture.__width;
+            var time = this.time;
+            for (var x = 0; x < samples; x++) {
+                var t = x / samples;
+                var value;
+                if (input.type === "audio") {
+                    var envelope = Math.sin(Math.PI * t);
+                    value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
+                } else {
+                    var falloff = Math.pow(1 - t, 1.7);
+                    value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
+                }
+                var byte = Math.max(0, Math.min(255, Math.round(value * 255)));
+                data[x * 4] = byte;
+                data[x * 4 + 1] = byte;
+                data[x * 4 + 2] = byte;
+                data[x * 4 + 3] = 255;
+            }
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, samples, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+        }
+    };
+
+    ISFRuntime.prototype.updateInputTextures = function () {
+        var gl = this.gl;
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind === "pass" || image.kind === "audio") continue;
+            var texture = this.inputTextures[image.name];
+            var source = this.inputSources[image.name];
+            if (!source && image.kind === "input") source = this.defaultImageSource(image.input);
+            if (!texture) {
+                texture = makeTexture(gl);
+                this.inputTextures[image.name] = texture;
+            }
+            if (source && !source.__isfUploaded) {
+                uploadImage(gl, texture, source);
+                source.__isfUploaded = true;
+            }
+        }
+    };
+
+    ISFRuntime.prototype.bindImage = function (image, unit) {
+        var gl = this.gl;
+        var texture = null;
+        var width = 1, height = 1;
+        if (image.kind === "pass") {
+            var buffer = this.passBuffers[image.name];
+            if (!buffer) return;
+            texture = buffer.readTexture();
+            width = buffer.width;
+            height = buffer.height;
+        } else if (image.kind === "audio") {
+            texture = this.audioTextures[image.name];
+            if (texture) { width = texture.__width; height = texture.__height; }
+        } else {
+            texture = this.inputTextures[image.name];
+            if (texture) { width = texture.__width || 1; height = texture.__height || 1; }
+        }
+        if (!texture) return;
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        this.setNumber(image.name, unit, "sampler2D");
+        this.setNumber("_" + image.name + "_imgSize", [width, height], "vec2");
+        return unit + 1;
+    };
+
+    ISFRuntime.prototype.draw = function (delta) {
+        if (!this.program) return;
+        var gl = this.gl;
+        this.resize(false);
+        if (this.destWidth <= 1 || this.destHeight <= 1) return;
+
+        gl.disable(gl.BLEND);
+        gl.disable(gl.DEPTH_TEST);
+        gl.useProgram(this.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+        var position = this.positionLocation;
+        if (position !== undefined && position !== -1) {
+            gl.enableVertexAttribArray(position);
+            gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+        }
+
+        this.updateInputTextures();
+        this.updateAudioTextures();
+
+        // Animate transition progress (startImage / endImage / progress) so
+        // the viewer is alive; the control follows unless the user is dragging.
+        if (this.viewer.transition && this.config.loopTransition && this.playing) {
+            var duration = Math.max(0.5, Number(this.config.transitionDuration) || 4);
+            this.transitionTime += delta || 0;
+            var cycle = this.transitionTime % (duration * 2);
+            if (cycle < 0) cycle += duration * 2;
+            var progress = cycle <= duration ? cycle / duration : 2 - cycle / duration;
+            this.values.progress = progress;
+            if (this.viewer.syncParameterControl) this.viewer.syncParameterControl("progress", progress);
+        }
+
+        // Input uniforms (per frame).
+        for (var i = 0; i < this.inputs.length; i++) {
+            var input = this.inputs[i];
+            if (input.type === "image" || input.type === "audio" || input.type === "audioFFT") continue;
+            if (input.type === "event") {
+                this.setNumber(input.name, this.events[input.name] ? 1 : 0, "bool");
+            } else {
+                this.setNumber(input.name, this.values[input.name] === undefined ? input.default : this.values[input.name], input.uniform);
+            }
+        }
+        var now = new Date();
+        this.setNumber("TIME", this.time, "float");
+        this.setNumber("TIMEDELTA", delta || 0, "float");
+        this.setNumber("DATE", [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()], "vec4");
+        this.setNumber("FRAMEINDEX", this.frameIndex, "int");
+
+        this.lastPassTarget = null;
+        for (var p = 0; p < this.passes.length; p++) this.renderPass(p);
+
+        // If the final pass rendered into a target, paint it to the canvas.
+        if (this.lastPassTarget) this.paintToScreen(this.lastPassTarget.readTexture());
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        this.events = {};
+        this.frameIndex++;
+        this.frameCount++;
+        var nowMs = performance.now();
+        if (!this.statsAt) this.statsAt = nowMs;
+        if (nowMs - this.statsAt >= 500) {
+            this.fps = Math.round(this.frameCount * 1000 / (nowMs - this.statsAt));
+            this.frameCount = 0;
+            this.statsAt = nowMs;
+            this.viewer.updateBadge(this.fps + " fps · " + this.destWidth + "×" + this.destHeight + (this.passes.length > 1 ? " · " + this.passes.length + " passes" : ""));
+        }
+    };
+
+    ISFRuntime.prototype.renderPass = function (index) {
+        var gl = this.gl;
+        var pass = this.passes[index];
+        var width = this.destWidth;
+        var height = this.destHeight;
+        var buffer = null;
+        if (pass.target) {
+            buffer = this.passBuffers[pass.target];
+            if (!buffer) return;
+            width = this.evaluateSize(pass.width, this.destWidth);
+            height = this.evaluateSize(pass.height, this.destHeight);
+            buffer.setSize(width, height);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, buffer.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, buffer.writeTexture(), 0);
+        } else {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        gl.viewport(0, 0, width, height);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        this.setNumber("PASSINDEX", index, "int");
+        this.setNumber("RENDERSIZE", [width, height], "vec2");
+
+        var unit = 0;
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            var next = this.bindImage(image, unit);
+            if (next !== undefined) unit = next;
+        }
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (buffer) {
+            buffer.flip();
+            this.lastPassTarget = buffer;
+        }
+    };
+
+    ISFRuntime.prototype.paintToScreen = function (texture) {
+        if (!this.paint || !texture) return;
+        var gl = this.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, this.destWidth, this.destHeight);
+        gl.useProgram(this.paint.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+        if (this.paint.position !== -1) {
+            gl.enableVertexAttribArray(this.paint.position);
+            gl.vertexAttribPointer(this.paint.position, 2, gl.FLOAT, false, 0, 0);
+        }
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        if (this.paint.tex) gl.uniform1i(this.paint.tex, 0);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+
+    ISFRuntime.prototype.tick = function (now) {
+        if (!this.running) return;
+        var self = this;
+        this.raf = requestAnimationFrame(this._tick);
+        if (!this.visible || (typeof document !== "undefined" && document.hidden)) {
+            this.lastNow = now;
+            return;
+        }
+        if (!this.playing && !this.needsRender) return;
+        var delta = 0;
+        if (this.playing) {
+            delta = Math.max(0, Math.min(0.1, (now - this.lastNow) / 1000));
+            this.time += delta;
+        }
+        this.lastNow = now;
+        this.needsRender = false;
+        try {
+            this.draw(delta);
+        } catch (err) {
+            this.running = false;
+            this.viewer.runtimeError(err);
+        }
+    };
+
+    ISFRuntime.prototype.start = function () {
+        if (this.running) return;
+        this.running = true;
+        this.lastNow = performance.now();
+        this.raf = requestAnimationFrame(this._tick);
+    };
+
+    ISFRuntime.prototype.stop = function () {
+        this.running = false;
+        if (this.raf) cancelAnimationFrame(this.raf);
+        this.raf = null;
+    };
+
+    ISFRuntime.prototype.setPlaying = function (playing) {
+        this.playing = !!playing;
+        if (this.playing) this.lastNow = performance.now();
+        this.needsRender = true;
+    };
+
+    ISFRuntime.prototype.dispose = function () {
+        this.stop();
+        var gl = this.gl;
+        if (!gl) return;
+        try { gl.canvas.removeEventListener("webglcontextlost", this._contextLost, false); } catch (err) { /* ignore */ }
+        this.cleanupProgram();
+        if (this.paint) { gl.deleteProgram(this.paint.program); this.paint = null; }
+        if (this.vertexBuffer) { gl.deleteBuffer(this.vertexBuffer); this.vertexBuffer = null; }
+        for (var name in this.inputTextures) if (Object.prototype.hasOwnProperty.call(this.inputTextures, name)) gl.deleteTexture(this.inputTextures[name]);
+        for (var audio in this.audioTextures) if (Object.prototype.hasOwnProperty.call(this.audioTextures, audio)) gl.deleteTexture(this.audioTextures[audio]);
+        for (var imported in this.importTextures) if (Object.prototype.hasOwnProperty.call(this.importTextures, imported)) gl.deleteTexture(this.importTextures[imported]);
+        this.inputTextures = {};
+        this.audioTextures = {};
+        this.importTextures = {};
+        try {
+            var lose = gl.getExtension("WEBGL_lose_context");
+            if (lose && gl.canvas === this.viewer.dom.canvas) lose.loseContext();
+        } catch (err) { /* ignore */ }
+        this.gl = null;
+    };
+
+    /* ==================================================================
+     * GPU context budget
+     * ================================================================== */
+
+    var BUDGET = {
+        max: 8,
+        active: [],
+        waiting: [],
+        _pumpTimer: null,
+        setMax: function (max) {
+            max = Math.max(1, Math.round(Number(max) || 8));
+            this.max = max;
+            while (this.active.length > max) {
+                var victim = this.active[0];
+                if (victim === undefined) break;
+                victim.releaseContext();
+                if (this.active[0] === victim) this.active.shift();
+            }
+            this.schedulePump();
+        },
+        acquire: function (viewer) {
+            var index = this.active.indexOf(viewer);
+            if (index !== -1) { this.touch(viewer); this.dequeue(viewer); return true; }
+            if (this.active.length >= this.max) {
+                var victim = this.pickVictim(viewer);
+                if (victim) victim.releaseContext();
+            }
+            if (this.active.length < this.max) {
+                this.active.push(viewer);
+                viewer.lastUsed = performance.now();
+                this.dequeue(viewer);
+                return true;
+            }
+            this.enqueue(viewer);
+            return false;
+        },
+        release: function (viewer) {
+            var index = this.active.indexOf(viewer);
+            if (index !== -1) this.active.splice(index, 1);
+            this.schedulePump();
+        },
+        enqueue: function (viewer) {
+            if (this.waiting.indexOf(viewer) === -1) this.waiting.push(viewer);
+        },
+        dequeue: function (viewer) {
+            var index = this.waiting.indexOf(viewer);
+            if (index !== -1) this.waiting.splice(index, 1);
+        },
+        schedulePump: function () {
+            if (this._pumpTimer) return;
+            var self = this;
+            this._pumpTimer = setTimeout(function () {
+                self._pumpTimer = null;
+                self.pump();
+            }, 250);
+        },
+        pump: function () {
+            while (this.waiting.length && this.active.length < this.max) {
+                var viewer = this.waiting.shift();
+                if (viewer && !viewer.disposed) viewer.initRuntime();
+            }
+        },
+        touch: function (viewer) {
+            viewer.lastUsed = performance.now();
+        },
+        pickVictim: function (except) {
+            var candidate = null;
+            for (var i = 0; i < this.active.length; i++) {
+                var viewer = this.active[i];
+                if (viewer === except) continue;
+                if (!candidate) { candidate = viewer; continue; }
+                if ((viewer.visible ? 0 : 1) > (candidate.visible ? 0 : 1)) candidate = viewer;
+                else if (viewer.visible === candidate.visible && viewer.lastUsed < candidate.lastUsed) candidate = viewer;
+            }
+            return candidate;
+        }
+    };
+
+    /* ==================================================================
+     * Viewer
+     * ================================================================== */
+
+    function isShaderHref(href, config) {
+        if (!href) return false;
+        if (/^(mailto:|tel:|javascript:|data:|blob:)/i.test(href)) return false;
+        var clean = String(href).replace(/^#/, "").split("#")[0].split("?")[0];
+        var match = /\.([A-Za-z0-9]+)$/.exec(clean);
+        if (!match) return false;
+        return config.extensions.indexOf(match[1].toLowerCase()) !== -1;
+    }
+
+    function viewerOverlay(block) {
+        return block.querySelector(".isf-overlay");
+    }
+
+    function createViewer(anchor, title, config, routePath) {
+        var viewer = {};
+        viewer.config = config;
+        viewer.href = anchor.getAttribute("href") || "";
+        viewer.routePath = routePath || "";
+        viewer.title = title || basename(viewer.href);
+        viewer.state = "idle";
+        viewer.visible = false;
+        viewer.lastUsed = performance.now();
+        viewer.values = {};
+        viewer.events = {};
+        viewer.listeners = [];
+        viewer.disposed = false;
+        viewer.url = resolveAssetUrl(viewer.href, viewer.routePath);
+        viewer.candidates = resolveCandidates(viewer.href, viewer.routePath);
+        viewer.rawSource = "";
+        viewer.source = "";
+
+        ensureStyle();
+
+        // Header + stage + side panel
+        var block = h("div", "isf-block", { dataset: { isfUrl: viewer.url } });
+        var header = h("div", "isf-header");
+        var titleEl = h("a", "isf-title", {
+            href: viewer.url,
+            target: "_blank",
+            rel: "noopener",
+            title: "Open " + viewer.title + " source",
+            text: viewer.title
+        });
+        var actions = h("div", "isf-actions");
+        var paramsButton = iconButton("params", "params", "Parameters");
+        var paramsCount = h("span", "isf-count");
+        paramsButton.appendChild(paramsCount);
+        var editorButton = config.editor ? iconButton("editor", "editor", "Source editor") : null;
+        var playButton = iconButton("play", "play", "Pause");
+        var resetButton = iconButton("reset", "reset", "Reset parameters");
+        var fullscreenButton = iconButton("fullscreen", "fullscreen", "Fullscreen");
+        var sourceButton = config.showSource ? h("a", "isf-btn", {
+            href: viewer.url,
+            target: "_blank",
+            rel: "noopener",
+            title: "Open source file",
+            "aria-label": "Open source file"
+        }) : null;
+        if (sourceButton) sourceButton.innerHTML = ICONS.source;
+        actions.appendChild(paramsButton);
+        if (editorButton) actions.appendChild(editorButton);
+        actions.appendChild(playButton);
+        actions.appendChild(resetButton);
+        actions.appendChild(fullscreenButton);
+        if (sourceButton) actions.appendChild(sourceButton);
+        header.appendChild(titleEl);
+        header.appendChild(actions);
+
+        var body = h("div", "isf-body");
+        var stage = h("div", "isf-stage");
+        var canvas = h("canvas", "isf-canvas");
+        var overlay = h("div", "isf-overlay");
+        var overlayInner = h("div", "isf-overlay-inner");
+        overlay.appendChild(overlayInner);
+        overlay.style.display = "none";
+        var badge = h("div", "isf-badge isf-hidden");
+        stage.appendChild(canvas);
+        stage.appendChild(overlay);
+        stage.appendChild(badge);
+
+        var side = h("aside", "isf-side isf-hidden");
+        var paramsPanel = h("div", "isf-panel isf-params isf-hidden");
+        paramsPanel.appendChild(h("div", "isf-panel-title", { text: "Parameters" }));
+        var paramsList = h("div", "isf-params-list");
+        paramsPanel.appendChild(paramsList);
+        side.appendChild(paramsPanel);
+
+        var editor = null;
+        if (config.editor) {
+            editor = createEditor(viewer, config);
+            editor.el.classList.add("isf-hidden");
+            side.appendChild(editor.el);
+        }
+
+        body.appendChild(stage);
+        body.appendChild(side);
+        var status = h("div", "isf-status isf-hidden");
+        block.appendChild(header);
+        block.appendChild(body);
+        block.appendChild(status);
+
+        viewer.dom = {
+            block: block,
+            header: header,
+            title: titleEl,
+            actions: actions,
+            stage: stage,
+            canvas: canvas,
+            overlay: overlay,
+            overlayInner: overlayInner,
+            badge: badge,
+            side: side,
+            paramsPanel: paramsPanel,
+            paramsList: paramsList,
+            paramsCount: paramsCount,
+            paramsButton: paramsButton,
+            editorButton: editorButton,
+            editorPanel: editor ? editor.el : null,
+            playButton: playButton,
+            resetButton: resetButton,
+            fullscreenButton: fullscreenButton,
+            sourceButton: sourceButton,
+            status: status
+        };
+        viewer.editor = editor;
+        viewer.runtime = null;
+        viewer.gl = null;
+
+        /* ---------------------------------------------------------- UI */
+
+        viewer.setState = function (message, kind) {
+            status.textContent = message || "";
+            status.className = "isf-status" + (message ? "" : " isf-hidden") + (kind ? " is-" + kind : "");
+        };
+        viewer.warn = function (message) {
+            debugLog(config, message);
+            viewer.setState(message, "warn");
+        };
+        viewer.updateBadge = function (text) {
+            if (!config.showStats) return;
+            badge.textContent = text || "";
+            badge.classList.toggle("isf-hidden", !text);
+        };
+        viewer.showOverlay = function (html, show) {
+            overlayInner.innerHTML = html || "";
+            overlay.style.display = show ? "flex" : "none";
+        };
+        viewer.setPanel = function (panel, open) {
+            panel.classList.toggle("isf-hidden", !open);
+            var anyOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden") ||
+                (viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
+            side.classList.toggle("isf-hidden", !anyOpen);
+            block.classList.toggle("isf-wide", anyOpen);
+        };
+        viewer.toggleParams = function () {
+            var open = viewer.dom.paramsPanel.classList.contains("isf-hidden");
+            viewer.setPanel(viewer.dom.paramsPanel, open);
+            paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
+            paramsButton.classList.toggle("is-active", open);
+        };
+        viewer.toggleEditor = function () {
+            if (!viewer.dom.editorPanel) return;
+            var open = viewer.dom.editorPanel.classList.contains("isf-hidden");
+            viewer.setPanel(viewer.dom.editorPanel, open);
+            editorButton.setAttribute("aria-pressed", open ? "true" : "false");
+            editorButton.classList.toggle("is-active", open);
+            if (open && viewer.editor) viewer.editor.focus();
+        };
+        viewer.togglePlay = function () {
+            var runtime = viewer.runtime;
+            if (!runtime) return;
+            var playing = !runtime.playing;
+            runtime.setPlaying(playing);
+            viewer.dom.playButton.innerHTML = playing ? ICONS.pause : ICONS.play;
+            viewer.dom.playButton.title = playing ? "Pause" : "Play";
+            viewer.updateBadge(playing ? "" : "paused");
+        };
+        viewer.resetAll = function () {
+            viewer.resetParameters();
+            if (viewer.runtime) {
+                viewer.runtime.time = 0;
+                viewer.runtime.needsRender = true;
+            }
+        };
+        viewer.toggleFullscreen = function () {
+            var fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+            if (fullscreenElement === block) {
+                var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+                if (exit) { var p = exit.call(document); if (p && p.catch) p.catch(function () { }); }
+                return;
+            }
+            var request = block.requestFullscreen || block.webkitRequestFullscreen || block.msRequestFullscreen;
+            if (!request) { viewer.warn("Fullscreen is not supported by this browser"); return; }
+            var promise = request.call(block);
+            if (promise && promise.catch) promise.catch(function () { });
+        };
+        viewer.syncFullscreen = function () {
+            var fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+            var active = fullscreenElement === block;
+            block.classList.toggle("isf-fullscreen", active);
+            viewer.dom.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
+            if (viewer.runtime) viewer.runtime.resize(true);
+            if (active) viewer.setState("");
+        };
+
+        paramsButton.addEventListener("click", viewer.toggleParams);
+        if (editorButton) editorButton.addEventListener("click", viewer.toggleEditor);
+        playButton.addEventListener("click", viewer.togglePlay);
+        resetButton.addEventListener("click", viewer.resetAll);
+        fullscreenButton.addEventListener("click", viewer.toggleFullscreen);
+        var fullscreenHandler = function () { viewer.syncFullscreen(); };
+        document.addEventListener("fullscreenchange", fullscreenHandler);
+        document.addEventListener("webkitfullscreenchange", fullscreenHandler);
+        viewer.listeners.push(function () {
+            document.removeEventListener("fullscreenchange", fullscreenHandler);
+            document.removeEventListener("webkitfullscreenchange", fullscreenHandler);
+        });
+
+        /* ------------------------------------------------- parameter APIs */
+
+        viewer.defaultValues = function () {
+            var defaults = {};
+            if (!viewer.built) return defaults;
+            for (var i = 0; i < viewer.built.inputs.length; i++) {
+                var input = viewer.built.inputs[i];
+                if (input.type === "image" || input.type === "audio" || input.type === "audioFFT") continue;
+                var value = input.default;
+                if (Array.isArray(value)) value = value.slice();
+                defaults[input.name] = value;
+            }
+            return defaults;
+        };
+        viewer.mergeValues = function () {
+            var next = viewer.defaultValues();
+            for (var name in next) {
+                if (!Object.prototype.hasOwnProperty.call(next, name)) continue;
+                if (viewer.values[name] !== undefined) next[name] = viewer.values[name];
+            }
+            viewer.values = next;
+        };
+        viewer.setParameter = function (name, value) {
+            viewer.values[name] = Array.isArray(value) ? value.slice() : value;
+            if (viewer.runtime) {
+                viewer.runtime.needsRender = true;
+                if (name === "progress") {
+                    var duration = Math.max(0.5, Number(config.transitionDuration) || 4);
+                    viewer.runtime.transitionTime = clamp(value, 0, 1) * duration;
+                }
+                BUDGET.touch(viewer);
+            }
+        };
+        viewer.syncParameterControl = function (name, value) {
+            var control = viewer.controls && viewer.controls[name];
+            if (!control || !control.range) return;
+            var active = typeof document !== "undefined" ? document.activeElement : null;
+            if (active === control.range || active === control.number) return;
+            control.range.value = clamp(value, Number(control.range.min), Number(control.range.max));
+            if (control.number) control.number.value = formatNumber(value);
+        };
+        viewer.getParameter = function (name) { return viewer.values[name]; };
+        viewer.resetParameter = function (name) {
+            var defaults = viewer.defaultValues();
+            if (defaults[name] !== undefined) {
+                viewer.setParameter(name, defaults[name]);
+                viewer.rebuildParams();
+            }
+        };
+        viewer.resetParameters = function () {
+            viewer.values = viewer.defaultValues();
+            viewer.rebuildParams();
+            if (viewer.runtime) viewer.runtime.needsRender = true;
+        };
+        viewer.triggerEvent = function (name) {
+            if (viewer.runtime) {
+                viewer.runtime.events[name] = true;
+                viewer.runtime.needsRender = true;
+            }
+        };
+        viewer.setInputImage = function (name, file) {
+            if (!file || !viewer.runtime) return;
+            var url = URL.createObjectURL(file);
+            var image = new Image();
+            image.onload = function () {
+                viewer.runtime.inputSources[name] = image;
+                viewer.runtime.needsRender = true;
+                URL.revokeObjectURL(url);
+            };
+            image.onerror = function () {
+                URL.revokeObjectURL(url);
+                viewer.warn("Could not load " + (file.name || "image"));
+            };
+            image.src = url;
+        };
+
+        /* -------------------------------------------------- params panel */
+
+        viewer.rebuildParams = function () {
+            var inputs = viewer.built ? viewer.built.inputs : [];
+            buildControls(paramsList, inputs, viewer);
+            viewer.controls = {};
+            for (var ci = 0; ci < viewer.controlsList.length; ci++) {
+                var controlEntry = viewer.controlsList[ci];
+                viewer.controls[controlEntry.name] = controlEntry;
+            }
+            viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
+            var open;
+            if (!config.controls) open = false;
+            else if (config.params === "open") open = true;
+            else if (config.params === "closed") open = false;
+            else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
+            viewer.setPanel(viewer.dom.paramsPanel, open);
+            paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
+            paramsButton.classList.toggle("is-active", open);
+            if (!config.controls) paramsButton.classList.add("isf-hidden");
+        };
+
+        /* ----------------------------------------------------- loading */
+
+        viewer.load = function () {
+            if (viewer.state === "loading" || viewer.state === "live") return;
+            viewer.state = "loading";
+            viewer.showOverlay("<strong>Loading shader…</strong><code>" + escapeHtml(basename(viewer.url)) + "</code>", true);
+            viewer.setState("Loading " + viewer.url);
+            var candidates = viewer.candidates.slice();
+            loadShaderText(candidates).then(function (result) {
+                if (viewer.disposed) return;
+                viewer.url = result.url;
+                viewer.rawSource = result.text;
+                if (viewer.dom.title) viewer.dom.title.href = result.url;
+                if (viewer.dom.sourceButton) viewer.dom.sourceButton.href = result.url;
+                var parsed = parseISF(result.text);
+                if (!parsed.valid) {
+                    var error = new Error(parsed.error && parsed.error.message ? parsed.error.message : "Invalid ISF header");
+                    error.isfLine = parsed.error && (parsed.error.fileLine || parsed.error.line);
+                    throw error;
+                }
+                viewer.parse = parsed;
+                viewer.originalSource = result.text;
+                var vertexPromise = Promise.resolve(null);
+                if (config.vertexShader !== false) {
+                    var vertexUrl = result.url.replace(/\.fs(\?|#|$)/i, ".vs$1");
+                    if (vertexUrl !== result.url) {
+                        vertexPromise = fetchText(vertexUrl).catch(function () { return null; });
+                    }
+                }
+                return vertexPromise.then(function (vertexSource) {
+                    viewer.vertexSource = vertexSource;
+                    return null;
+                });
+            }).then(function () {
+                if (viewer.disposed) return;
+                var built;
+                try {
+                    built = buildShader(viewer.parse, { vertexShader: viewer.vertexSource, imports: config.imports });
+                } catch (buildError) {
+                    var error2 = new Error(buildError && buildError.message ? buildError.message : "Unable to build shader");
+                    error2.isfLine = buildError && buildError.line;
+                    throw error2;
+                }
+                viewer.built = built;
+                viewer.transition = isTransitionShader(built.inputs);
+                viewer.source = viewer.rawSource;
+                viewer.values = viewer.defaultValues();
+                if (built.unresolved && built.unresolved.length) {
+                    var first = built.unresolved[0];
+                    var unresolvedError = new Error(first.name + "(" + first.image + ") at line " + first.line + ": " + first.reason);
+                    unresolvedError.isfLine = first.line;
+                    throw unresolvedError;
+                }
+                viewer.rebuildParams();
+                if (viewer.editor) {
+                    viewer.editor.setValue(viewer.rawSource);
+                    viewer.editor.setStatus("Loaded · " + built.inputs.length + " input(s)", "ok");
+                }
+                viewer.initRuntime();
+            }).catch(function (error) {
+                if (viewer.disposed) return;
+                viewer.state = "error";
+                var message = error && error.message ? error.message : String(error);
+                viewer.setState("Error: " + message, "error");
+                viewer.showOverlay("<strong>Shader could not be loaded</strong>" + escapeHtml(message) +
+                    '<br><a class="isf-overlay-btn" style="display:inline-block;margin-top:.6rem;text-decoration:none" href="' + escapeHtml(viewer.url) + '" target="_blank" rel="noopener">Open source file</a>', true);
+                if (viewer.editor && error && error.isfLine) {
+                    viewer.editor.setValue(viewer.rawSource || viewer.source);
+                    viewer.editor.setStatus(message, "error");
+                    viewer.editor.markError(error.isfLine);
+                }
+                debugLog(config, "load failed", error);
+            });
+        };
+
+        /* ------------------------------------------------------ runtime */
+
+        viewer.initRuntime = function () {
+            if (viewer.disposed) return;
+            if (!BUDGET.acquire(viewer)) {
+                viewer.state = "released";
+                viewer.updateBadge("");
+                viewer.showOverlay("<strong>Waiting for a GPU context</strong>Too many viewers are active at once. This one starts automatically as soon as another viewer releases its context.", true);
+                return;
+            }
+            if (!viewer.gl) {
+                canvas = h("canvas", "isf-canvas");
+                stage.replaceChild(canvas, viewer.dom.canvas);
+                viewer.dom.canvas = canvas;
+            }
+            viewer.gl = createGL(viewer.dom.canvas);
+            if (!viewer.gl) {
+                viewer.state = "error";
+                viewer.setState("WebGL is not available in this browser", "error");
+                viewer.showOverlay("<strong>WebGL is not available</strong>This browser or GPU cannot render ISF shaders.", true);
+                return;
+            }
+            viewer.runtime = new ISFRuntime(viewer, viewer.gl);
+            var compileError = viewer.runtime.compile(viewer.built);
+            if (compileError) {
+                viewer.runtimeError(compileError, viewer.built);
+                return;
+            }
+            viewer.runtime.visible = viewer.visible;
+            viewer.runtime.start();
+            viewer.state = "live";
+            viewer.showOverlay("", false);
+            var warnings = (viewer.built.warnings || []).slice();
+            if (!viewer.runtime.floatSupported && viewer.built.passes.some(function (pass) { return pass.float; })) {
+                warnings.push({ message: "Float buffers are not supported here; byte buffers are used instead" });
+            }
+            if (warnings.length) viewer.setState(warnings.map(function (w) { return w.message + (w.line ? " (line " + w.line + ")" : ""); }).join("\n"), "warn");
+            else viewer.setState("");
+            viewer.updateBadge(viewer.runtime.playing ? "" : "paused");
+            if (viewer.editor && viewer.built.warnings && viewer.built.warnings.length) {
+                viewer.editor.setStatus(viewer.built.warnings.length + " warning(s) — see status", "");
+            }
+            if (config.imports && viewer.built.imports && viewer.built.imports.length) {
+                for (var m = 0; m < viewer.built.imports.length; m++) {
+                    (function (spec) {
+                        try {
+                            var imported = new Image();
+                            imported.crossOrigin = "anonymous";
+                            imported.onload = function () {
+                                if (viewer.runtime) { viewer.runtime.inputSources[spec.name] = imported; viewer.runtime.needsRender = true; }
+                            };
+                            imported.onerror = function () { viewer.warn("Could not load imported image " + spec.path); };
+                            imported.src = new URL(spec.path, viewer.url).toString();
+                        } catch (err) { /* ignore */ }
+                    })(viewer.built.imports[m]);
+                }
+            }
+        };
+
+        viewer.runtimeError = function (error, built) {
+            built = built || viewer.built;
+            var message = typeof error === "string" ? error : (error && error.log) || (error && error.message) || "Shader error";
+            var rawLine = null;
+            var firstMessage = null;
+            if (error && error.messages && error.messages.length) {
+                firstMessage = error.messages[0];
+                rawLine = firstMessage.line && built ? built.lineMap(firstMessage.line) : null;
+                message = (error.label ? error.label + ": " : "") + firstMessage.severity + " at line " + firstMessage.line + ": " + firstMessage.message;
+                if (rawLine) message += " (file line " + rawLine + ")";
+            }
+            viewer.state = "error";
+            viewer.setState(message, "error");
+            viewer.showOverlay("<strong>Shader error</strong>" + escapeHtml(message), true);
+            if (viewer.editor) {
+                viewer.editor.setStatus(message, "error");
+                viewer.editor.markError(rawLine || null);
+            }
+            debugLog(config, "compile failed", error);
+        };
+
+        /* --------------------------------------------------- source edit */
+
+        viewer.onEditorInput = function () {
+            if (!config.editorLive || !viewer.editor) return;
+            clearTimeout(viewer._liveTimer);
+            viewer._liveTimer = setTimeout(function () { viewer.applySource(true); }, Math.max(120, Number(config.editorDebounce) || 600));
+        };
+
+        viewer.applySource = function (live) {
+            if (!viewer.editor || !viewer.runtime) return false;
+            var text = viewer.editor.value();
+            var parsed = parseISF(text);
+            if (!parsed.valid) {
+                var headerMessage = parsed.error && parsed.error.message ? parsed.error.message : "Invalid ISF header";
+                viewer.editor.setStatus(headerMessage, "error");
+                viewer.editor.markError(parsed.error && (parsed.error.fileLine || parsed.error.line));
+                if (!live) viewer.setState(headerMessage, "error");
+                return false;
+            }
+            var built;
+            try {
+                built = buildShader(parsed, { vertexShader: viewer.vertexSource, imports: config.imports });
+            } catch (buildError) {
+                viewer.editor.setStatus(buildError.message, "error");
+                return false;
+            }
+            if (built.unresolved && built.unresolved.length) {
+                var first = built.unresolved[0];
+                var message = first.name + "(" + first.image + ") at line " + first.line + ": " + first.reason;
+                viewer.editor.setStatus(message, "error");
+                viewer.editor.markError(first.line);
+                if (!live) viewer.setState(message, "error");
+                return false;
+            }
+            var compileError = viewer.runtime.compile(built);
+            if (compileError) {
+                viewer.runtimeError(compileError, built);
+                return false;
+            }
+            viewer.parse = parsed;
+            viewer.built = built;
+            viewer.transition = isTransitionShader(built.inputs);
+            viewer.mergeValues();
+            viewer.rebuildParams();
+            if (!viewer.runtime.running) viewer.runtime.start();
+            viewer.editor.markError(0);
+            viewer.editor.setStatus("Applied · " + built.inputs.length + " input(s)", "ok");
+            viewer.runtime.visible = viewer.visible;
+            viewer.runtime.needsRender = true;
+            viewer.showOverlay("", false);
+            viewer.state = "live";
+            if (built.warnings && built.warnings.length) {
+                viewer.setState(built.warnings.map(function (w) { return w.message + (w.line ? " (line " + w.line + ")" : ""); }).join("\n"), "warn");
+            } else {
+                viewer.setState("");
+            }
+            return true;
+        };
+
+        viewer.revertSource = function () {
+            if (!viewer.editor || !viewer.originalSource) return;
+            viewer.editor.setValue(viewer.originalSource);
+            viewer.editor.setStatus("Reverted — press Apply", "");
+            viewer.applySource(false);
+        };
+
+        /* -------------------------------------------------- context budget */
+
+        viewer.releaseContext = function () {
+            if (viewer.runtime) { viewer.runtime.dispose(); viewer.runtime = null; }
+            viewer.gl = null;
+            BUDGET.release(viewer);
+            if (viewer.state === "live") {
+                viewer.state = "released";
+                viewer.updateBadge("");
+                viewer.showOverlay("<strong>GPU context released</strong>Too many viewers are active at once. Scroll back or click to render this shader again.", true);
+            }
+        };
+
+        viewer.resume = function () {
+            if (viewer.disposed) return;
+            if (viewer.state === "idle") viewer.load();
+            else if (viewer.state === "released") viewer.initRuntime();
+        };
+
+        viewer.handleContextLost = function () {
+            viewer.runtime = null;
+            viewer.gl = null;
+            BUDGET.release(viewer);
+            viewer.state = "released";
+            viewer.updateBadge("");
+            viewer.showOverlay("<strong>WebGL context lost</strong>Click to render again.", true);
+        };
+
+        /* --------------------------------------------------- visibility */
+
+        var observer = null;
+        if (typeof IntersectionObserver !== "undefined") {
+            observer = new IntersectionObserver(function (entries) {
+                for (var i = 0; i < entries.length; i++) {
+                    var entry = entries[i];
+                    viewer.visible = !!entry.isIntersecting;
+                    if (viewer.runtime) viewer.runtime.visible = viewer.visible;
+                    if (viewer.visible) {
+                        BUDGET.touch(viewer);
+                        if (config.lazy === "visible") viewer.resume();
+                    }
+                }
+            }, { rootMargin: "240px" });
+            observer.observe(block);
+        } else {
+            viewer.visible = true;
+        }
+        viewer.observer = observer;
+
+        if (config.lazy === "click") {
+            var clickHandler = function () {
+                block.removeEventListener("click", clickHandler);
+                viewer.showOverlay("", false);
+                viewer.resume();
+            };
+            block.addEventListener("click", clickHandler);
+            viewer.listeners.push(function () { block.removeEventListener("click", clickHandler); });
+        } else if (config.lazy === "none") {
+            viewer.visible = true;
+            setTimeout(function () { viewer.resume(); }, 0);
+        }
+
+        /* -------------------------------------------------------- dispose */
+
+        viewer.dispose = function () {
+            viewer.disposed = true;
+            clearTimeout(viewer._liveTimer);
+            if (observer) observer.disconnect();
+            if (viewer.runtime) { viewer.runtime.dispose(); viewer.runtime = null; }
+            BUDGET.release(viewer);
+            for (var i = 0; i < viewer.listeners.length; i++) {
+                try { viewer.listeners[i](); } catch (err) { /* ignore */ }
+            }
+            viewer.listeners = [];
+        };
+
+        // Keep the overlay in sync when a released/click-lazy viewer is clicked.
+        overlay.addEventListener("click", function (event) {
+            var button = event.target && event.target.closest ? event.target.closest(".isf-overlay-btn") : null;
+            if (button && button.getAttribute("href")) return; // real links keep working
+            if (viewer.state === "released") viewer.initRuntime();
+            else if (viewer.state === "idle" && config.lazy !== "visible") viewer.load();
+        });
+
+        if (config.lazy === "click") {
+            viewer.showOverlay("<strong>" + escapeHtml(viewer.title) + "</strong>Click to render this ISF shader.", true);
+        } else {
+            // Offscreen viewers are lazy; they show a loading message only once
+            // the intersection observer actually starts them.
+            viewer.showOverlay("", false);
+        }
+
+        return viewer;
+    }
+
+    /* ==================================================================
+     * Docsify plugin
+     * ================================================================== */
+
+    function processContainer(container, config, routePath, instances) {
+        if (!container) return;
+        ensureStyle();
+        BUDGET.setMax(config.maxContexts);
+        var anchors = container.querySelectorAll("a[href]");
+        for (var i = 0; i < anchors.length; i++) {
+            var anchor = anchors[i];
+            if (anchor.dataset && anchor.dataset.isfProcessed === "true") continue;
+            if (anchor.closest && anchor.closest(".isf-block")) continue;
+            var href = anchor.getAttribute("href");
+            if (!isShaderHref(href, config)) continue;
+            anchor.dataset.isfProcessed = "true";
+            var title = trim(anchor.textContent) || basename(href);
+            var viewer = createViewer(anchor, title, config, routePath);
+            instances.push(viewer);
+            if (config.mode === "augment") {
+                anchor.setAttribute("target", "_blank");
+                anchor.setAttribute("rel", "noopener");
+                if (anchor.parentNode) anchor.parentNode.insertBefore(viewer.dom.block, anchor.nextSibling);
+            } else if (anchor.parentNode) {
+                anchor.parentNode.replaceChild(viewer.dom.block, anchor);
+            }
+        }
+    }
+
+    function cleanupAll(instances) {
+        for (var i = 0; i < instances.length; i++) {
+            try { instances[i].dispose(); } catch (err) { /* ignore */ }
+        }
+    }
+
+    function plugin(hook, vm) {
+        var instances = [];
+        hook.beforeEach(function (content) {
+            cleanupAll(instances);
+            instances.length = 0;
+            return content;
+        });
+        hook.doneEach(function () {
+            var config = getConfig();
+            if (!config.enabled) return;
+            var container = document.querySelector(".content") || document.getElementById("main") || document.body;
+            var routePath = currentRoutePath(vm);
+            processContainer(container, config, routePath, instances);
+        });
+    }
+
+    return {
+        VERSION: VERSION,
+        plugin: plugin,
+        DEFAULTS: DEFAULTS,
+        getConfig: getConfig,
+        parseISF: parseISF,
+        parseISFMetadata: parseISFMetadata,
+        parseJSONTolerant: parseJSONTolerant,
+        evalExpression: evalExpression,
+        buildShader: buildShader,
+        normalizeInputs: normalizeInputs,
+        normalizePasses: normalizePasses,
+        normalizeImports: normalizeImports,
+        rewriteSpecialFunctions: rewriteSpecialFunctions,
+        tokenizeGLSL: tokenizeGLSL,
+        highlightGLSL: highlightGLSL,
+        resolveAssetUrl: resolveAssetUrl,
+        resolveCandidates: resolveCandidates,
+        isShaderHref: isShaderHref,
+        setMaxContexts: function (max) { BUDGET.setMax(max); },
+        createTestPattern: typeof document !== "undefined" ? createTestPattern : null
+    };
+});

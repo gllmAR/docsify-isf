@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="docsify-isf — interactive ISF shader viewer for Docsify pages." />
+    <title>docsify-isf — self-test</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@5.0.0/dist/themes/core.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@5.0.0/dist/themes/addons/core-dark.min.css"
+        media="(prefers-color-scheme: dark)" />
+    <style>
+        :root {
+            --theme-color: #d374d6;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script>
+        window.$docsify = {
+            name: 'docsify-isf',
+            repo: 'gllmAR/docsify-isf',
+            loadSidebar: false,
+            relativePath: true,
+            auto2top: true,
+            isf: {
+                // This is also the default configuration; it is spelled out so
+                // the self-test page documents what it is exercising.
+                mode: 'replace',
+                lazy: 'visible',
+                controls: true,
+                params: 'auto',
+                paramsOpenLimit: 6,
+                autoplay: true,
+                editor: true,
+                editorLive: true,
+                maxContexts: 8,
+                maxPixelRatio: 2,
+                showStats: true,
+                showSource: true
+            }
+        };
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/docsify@5.0.0/dist/docsify.min.js"></script>
+    <script src="./docsify-isf.js"></script>
+</body>
+
+</html>
