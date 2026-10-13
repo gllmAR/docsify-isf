@@ -663,25 +663,54 @@ try {
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px)");
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
 
-    await page.click('.isf-block .isf-btn[title="Parameters"]');
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const phoneParams = await page.evaluate(() => {
-        const b = document.querySelector(".isf-block");
+    // Wait for the target's controls: a budget-released viewer rebuilds them
+    // when it resumes, and the test must click after that settled.
+    await page.waitForFunction(() => {
+        const b = Array.from(document.querySelectorAll(".isf-block"))
+            .find((block) => /Plasma generator/i.test(block.textContent));
+        return !!b && b.querySelectorAll(".isf-param").length > 0;
+    }, { timeout: 20000 }).catch(() => {});
+
+    // One atomic evaluate per interaction: pick the viewer, normalise its
+    // drawer state, click the toolbar button and read the result, so a
+    // Docsify re-render or a layout shift cannot split the click and the
+    // assertion across DOM nodes.
+    const phoneParams = await page.evaluate(async () => {
+        const b = Array.from(document.querySelectorAll(".isf-block"))
+            .find((block) => /Plasma generator/i.test(block.textContent)) ||
+            document.querySelector(".isf-block");
+        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) {
+            b.querySelector('.isf-btn[title="Parameters"]').click();
+        }
+        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) {
+            b.querySelector('.isf-btn[title="Source editor"]').click();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const button = b.querySelector('.isf-btn[title="Parameters"]');
+        button.click();
+        await new Promise((resolve) => setTimeout(resolve, 350));
         const drawer = b.querySelector(".isf-drawer-right");
         const stage = b.querySelector(".isf-stage");
         return {
             open: !drawer.classList.contains("isf-drawer-closed"),
             drawerWidth: drawer.getBoundingClientRect().width,
-            stageWidth: stage.getBoundingClientRect().width
+            stageWidth: stage.getBoundingClientRect().width,
+            title: (b.querySelector(".isf-title") || {}).textContent || "",
+            pressed: button.getAttribute("aria-pressed")
         };
     });
-    if (!phoneParams.open) problems.push("mobile: parameters did not open from the toolbar");
+    if (!phoneParams.open || phoneParams.pressed !== "true") {
+        problems.push("mobile: parameters did not open from the toolbar (" +
+            JSON.stringify(phoneParams) + ")");
+    }
     if (phoneParams.drawerWidth < phoneParams.stageWidth - 2) problems.push("mobile: parameters drawer should fill the stage width");
 
-    await page.click('.isf-block .isf-btn[title="Source editor"]');
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const phoneSwap = await page.evaluate(() => {
-        const b = document.querySelector(".isf-block");
+    const phoneSwap = await page.evaluate(async () => {
+        const b = Array.from(document.querySelectorAll(".isf-block"))
+            .find((block) => /Plasma generator/i.test(block.textContent)) ||
+            document.querySelector(".isf-block");
+        b.querySelector('.isf-btn[title="Source editor"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 350));
         return {
             editorOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
             paramsClosed: b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")

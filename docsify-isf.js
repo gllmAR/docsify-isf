@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.12.0
+ * docsify-isf v1.13.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.12.0";
+    var VERSION = "1.13.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1249,7 +1249,7 @@
                 default: null,
                 define: /\bgenerate_as_define\b/.test(String(firstDefined(raw.FLAGS, raw.Flags, "")))
             };
-            if (type === "float") {
+            if (type === "float" || /^(animator|shaper|incrementer|damper|pass_thru|linear_filter|adsr)$/.test(type)) {
                 input.min = numberOr(firstDefined(raw.MIN, raw.Min), 0);
                 input.max = numberOr(firstDefined(raw.MAX, raw.Max), 1);
                 if (input.min > input.max) { var swap = input.min; input.min = input.max; input.max = swap; }
@@ -1289,6 +1289,13 @@
                 input.default = quadValue(firstDefined(raw.DEFAULT, raw.Default), [0, 0, 0, 1]);
                 input.min = quadValue(firstDefined(raw.MIN, raw.Min), [0, 0, 0, 0]);
                 input.max = quadValue(firstDefined(raw.MAX, raw.Max), [1, 1, 1, 1]);
+            } else if (type === "floatRange") {
+                input.default = pairValue(firstDefined(raw.DEFAULT, raw.Default), 0);
+                input.min = pairValue(firstDefined(raw.MIN, raw.Min), 0);
+                input.max = pairValue(firstDefined(raw.MAX, raw.Max), 1);
+                for (var rangeAxis = 0; rangeAxis < 2; rangeAxis++) {
+                    if (input.min[rangeAxis] === input.max[rangeAxis]) { input.min[rangeAxis] -= 0.5; input.max[rangeAxis] += 0.5; }
+                }
             } else if (type === "point2D") {
                 input.default = pairValue(firstDefined(raw.DEFAULT, raw.Default), 0);
                 input.min = pairValue(firstDefined(raw.MIN, raw.Min), 0);
@@ -3678,8 +3685,22 @@
     function clampInputValue(input, value) {
         if (!input) return value;
         switch (input.type) {
-            case "float": {
+            case "float":
+            case "animator":
+            case "shaper":
+            case "incrementer":
+            case "damper":
+            case "pass_thru":
+            case "linear_filter":
+            case "adsr": {
                 return clamp(numberOr(value, input.default), input.min, input.max);
+            }
+            case "floatRange": {
+                var range = Array.isArray(value) ? value : input.default;
+                return [
+                    clamp(numberOr(range[0], input.default[0]), input.min[0], input.max[0]),
+                    clamp(numberOr(range[1], input.default[1]), input.min[1], input.max[1])
+                ];
             }
             case "long": {
                 if (input.values && input.values.length) {
@@ -3761,7 +3782,7 @@
         }
         row.addEventListener("dblclick", onDoubleClick);
 
-        if (input.type === "float") {
+        if (input.type === "float" || /^(animator|shaper|incrementer|damper|pass_thru|linear_filter|adsr)$/.test(input.type)) {
             var step = Math.max((input.max - input.min) / 1000, 1e-6);
             var range = h("input", null, {
                 type: "range", min: input.min, max: input.max, step: step,
@@ -3834,8 +3855,8 @@
             alpha.addEventListener("input", pushColor);
             control.appendChild(swatch);
             control.appendChild(alpha);
-        } else if (input.type === "point2D") {
-            var axes = ["x", "y"];
+        } else if (input.type === "point2D" || input.type === "floatRange") {
+            var axes = input.type === "floatRange" ? ["min", "max"] : ["x", "y"];
             for (var a = 0; a < 2; a++) {
                 (function (axisIndex) {
                     var axis = h("span", "isf-axis");
@@ -5659,6 +5680,10 @@
         viewer.routePath = routePath || "";
         viewer.title = title || basename(viewer.href);
         viewer.state = "idle";
+        // A viewer released by the context budget rebuilds its controls when it
+        // resumes; the auto-open decision must not override a drawer the user
+        // already toggled.
+        viewer.drawerTouched = false;
         viewer.visible = false;
         viewer.lastUsed = performance.now();
         viewer.values = {};
@@ -6157,10 +6182,12 @@
             }
         };
         viewer.toggleParams = function () {
+            viewer.drawerTouched = true;
             viewer.setDrawer(rightDrawer, !viewer.isDrawerOpen(rightDrawer));
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
+            viewer.drawerTouched = true;
             var open = !viewer.isDrawerOpen(leftDrawer);
             viewer.setDrawer(leftDrawer, open);
             if (open) showEditorPanel();
@@ -6482,7 +6509,7 @@
             else if (config.params === "closed") open = false;
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
             if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
-            viewer.setDrawer(rightDrawer, open);
+            if (!viewer.drawerTouched) viewer.setDrawer(rightDrawer, open);
             var hasControls = config.controls && inputs.length > 0;
             paramsButton.classList.toggle("isf-hidden", !hasControls);
         };

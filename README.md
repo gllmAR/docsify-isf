@@ -16,7 +16,10 @@ becomes, on a Docsify page, a viewer with:
 
 - a realtime WebGL render of the shader,
 - auto-generated controls for every `INPUTS` entry (float, bool, long, event,
-  color, point2D, image, audio, audioFFT),
+  color, point2D, image, audio, audioFFT, plus the MadMapper `floatRange`
+  min/max pair and the animator/shaper/incrementer/damper/pass_thru/
+  linear_filter/adsr controllers as sliders; `generate_as_define` inputs are
+  compile-time constants),
 - a live text/shader editor with GLSL syntax highlighting, error mapping and
   a foldable toolbar (chevron or Ctrl/Cmd+Shift+B) that hands its rows back
   to the code pane,
