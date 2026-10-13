@@ -252,7 +252,9 @@ that already works is never rewritten:
 |---|---|
 | ES 1.00 | the assembled shader |
 | WebGL2 / ES 3.00 | `#version 300 es` + macros (`varying`→`in`, `texture2D`→`texture`, `gl_FragColor`→`_isfFragColor`); enables dynamic indexing and non-constant loops |
-| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), int identifiers are cast (`float(mode)`), int arguments of functions declared with `int` parameters are preserved (`mm_fbm2o(p, 4, …)`), skipping integer-only lines |
+| Dialect rewrite | HLSL/MadMapper aliases (`saturate`, `frac`, `lerp`, `rsqrt`, `ddx`, `ddy`) and original-name → ported `mm_*` renames (`fill`→`mm_fill3/4`, `circle`→`mm_circle2/3`, the `fBm`/`ridgedNoise`/`flowNoise`/derivative noise families, …), resolved by dimension/arity and shadowed by user-defined names |
+| Overload shims | `float f(float x){ return f(int(x)); }` (plus prototypes) for every function declared with `int` parameters, so promoted calls still resolve |
+| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), int identifiers/`int()` casts are floated, for-loop counters and float array elements are handled, integer-only lines, array indices and bitwise contexts are left alone |
 
 Besides those, `buildShader`/the loader implement:
 
@@ -268,12 +270,13 @@ and bound as uniforms.
 - **Legacy helpers** — `_<image>_imgRect` / `_<image>_flip` are declared and
 set next to `_<image>_imgSize` for shaders ported from the reference JS host.
 
-Measured against the bundled library after the include/generator work
-(`npm run test:coverage`): 404 ES 1.00 + 37 ES 3.00 + 242 ES 3.00 with
-promotion = **683/857 browser-compilable (≈80 %)** — filters 169/171,
-transitions 156/157, sources 358/529. The remaining failures are dominated by
-MadMapper helper overloads (94), int/float operand mixes on lines that are
-protected (54), conversion errors (10) and missing optional includes (9).
+Measured against the bundled library after the include/generator/dialect work
+(`npm run test:coverage`): 409 ES 1.00 + 59 ES 3.00 + 290 ES 3.00 with
+promotion = **758/857 browser-compilable (≈88 %)** — filters 169/171,
+transitions 156/157, sources 433/529. The remaining failures are mostly
+one-off material quirks (48 int/float operand mixes on protected lines, 19
+unresolved local helpers, 15 explicit conversions, 6 missing optional
+includes) that need per-function type inference.
 
 ### 5.9 Live controls and media
 

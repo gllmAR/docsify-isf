@@ -501,12 +501,12 @@ test("literal promotion learns float constants from includes", () => {
     assert(built.fragmentLoose.indexOf("2.0*PI*TIME / 360.0") !== -1, built.fragmentLoose);
 });
 
-test("promotion keeps int helper arguments and casts int identifiers", () => {
+test("int helpers get float-overload shims and int identifiers are cast", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mode","TYPE":"long","DEFAULT":0,"VALUES":[0,1,2],"LABELS":["a","b","c"]}]}*/\nfloat scaleBy(int n){ return float(n); }\nvoid main(){\n    float t = TIME * mode;\n    float u = TIME * scaleBy(2);\n    gl_FragColor = vec4(t + u);\n}';
     const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("float scaleBy(float n)") !== -1, built.fragment);
+    assert(built.fragment.indexOf("return scaleBy(int(n));") !== -1, built.fragment);
     assert(built.fragmentLoose.indexOf("TIME * float(mode)") !== -1, built.fragmentLoose);
-    assert(built.fragmentLoose.indexOf("scaleBy(2)") !== -1, built.fragmentLoose);
-    assert(built.fragmentLoose.indexOf("scaleBy(2.0)") === -1, built.fragmentLoose);
 });
 
 test("ES3 variants are generated for the WebGL2 fallback", () => {
@@ -562,6 +562,30 @@ test("image uniforms declare _imgRect and _flip", () => {
     const built = isf.buildShader(isf.parseISF(source), {});
     assert(built.fragment.indexOf("uniform vec4 _inputImage_imgRect;") !== -1);
     assert(built.fragment.indexOf("uniform bool _inputImage_flip;") !== -1);
+});
+
+test("MadMapper dialect renames originals to the ported mm_* names", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    vec3 c = fill(vec3(0.0), vec3(1.0), circle(isf_FragNormCoord, 0.5));\n    gl_FragColor = vec4(saturate(c), 1.0);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("mm_fill3(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("mm_circle2(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("#define saturate(x) clamp(x, 0.0, 1.0)") !== -1, built.fragment);
+    equal(built.warnings, []);
+});
+
+test("dialect rewrite respects user-defined functions", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvec3 fill(vec3 a, vec3 b, float d){ return a; }\nvoid main(){ gl_FragColor = vec4(fill(vec3(0.0), vec3(1.0), 0.5), 1.0); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("vec3 fill(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("mm_fill3") === -1, built.fragment);
+});
+
+test("dimension-aware renames pick the right port", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    vec4 a = fill(vec4(0.0), vec4(1.0), 0.5);\n    float b = noise(vec3(1.0));\n    float c = rectangle(isf_FragNormCoord, vec2(0.2));\n    gl_FragColor = a + vec4(b, c, 0.0, 0.0);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("mm_fill4(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("mm_noise3(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("mm_rect_s(") !== -1, built.fragment);
 });
 
 test("MadMapper GENERATORS are declared and exposed", () => {

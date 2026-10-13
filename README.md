@@ -311,7 +311,7 @@ current frame.
 | Includes | local `#include "file.glsl"` — relative to the shader, `includePaths`, recursive, cached, case-variant aliases, also honoured in `.vs` files |
 | Generators | MadMapper `GENERATORS` (`time_base`, `incrementer`, `pass_thru`, `multiplier`, filter/damper/ease/animator/adsr) simulated CPU-side |
 | Entry points | `void main()`, MadMapper `materialColorForPixel()` wrapper |
-| Compatibility | WebGL2 / GLSL ES 3.00 retry and last-resort literal promotion |
+| Compatibility | WebGL2 / GLSL ES 3.00 retry, MadMapper/HLSL dialect rewrite (`fill`, `fBm`, `saturate`, …), generated `int`-overload shims and last-resort literal promotion |
 | Vertex | default generated vertex shader, or a same-name `.vs` (editable tab) |
 | ISF v1 | `vv_FragNormCoord`, `vv_vertShaderInit` aliases |
 | docsify-isf | `_isfMouse` pointer `vec4` (Shadertoy semantics), pass-target preview, quality scaling, PNG export |
@@ -331,9 +331,11 @@ current frame.
 
 ## Limitations
 
-- WebGL renders GLSL ES 1.00 shaders. Desktop GLSL features that WebGL 1
-  rejects (dynamic array indexing, non-constant loop bounds, `texture2DProj`,
-  geometry/3D textures) fail with a compile error instead of rendering.
+- WebGL renders GLSL ES 1.00 / ES 3.00. The viewer rewrites the MadMapper/HLSL
+dialect and retries progressively permissive compilations, but a small number
+of materials still fail: dynamic types the heuristics cannot infer, regex-style
+local helpers, or genuinely unsupported features. Compile errors show the
+original file line and the attempt that failed.
 - `STARTIMAGE`/media from cameras and real audio capture are not wired up; audio
   inputs receive a synthetic waveform/spectrum.
 - Vertex shaders only get the standard `isf_position` attribute; custom extra

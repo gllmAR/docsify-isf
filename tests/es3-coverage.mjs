@@ -125,9 +125,11 @@ if (!hasWebGL2) {
 console.log(`es3-coverage: ${selected.length} material(s) from ${materials.length}, compiling ES1 + ES3 …`);
 const started = Date.now();
 const results = await page.evaluate(async (items) => {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl2");
-    const vsCache = new Map();
+    // A fresh context every N materials: the software compiler accumulates
+    // programs and starts reporting spurious errors after several hundred.
+    let canvas = document.createElement("canvas");
+    let gl = canvas.getContext("webgl2");
+    let compiledCount = 0;
 
     function compile(type, source) {
         const shader = gl.createShader(type);
@@ -192,6 +194,10 @@ const results = await page.evaluate(async (items) => {
     }
 
     for (const item of items) {
+        if (++compiledCount % 100 === 0) {
+            canvas = document.createElement("canvas");
+            gl = canvas.getContext("webgl2");
+        }
         const response = await fetch(item.url);
         const text = await response.text();
         const parsed = window.DocsifyISF.parseISF(text);
@@ -276,6 +282,21 @@ if (failures.length) {
     const top = Object.keys(patterns).sort((a, b) => patterns[b] - patterns[a]).slice(0, 12);
     console.log("\nfailure classes:");
     for (const key of top) console.log(String(patterns[key]).padStart(5) + "  " + key);
+
+    // Which helper functions still fail to resolve?
+    const overloads = {};
+    for (const failure of failures) {
+        const match = /no matching overloaded function found/.test(failure.log || "") && /'([A-Za-z_]\w*)'/.exec(failure.log);
+        if (match) {
+            if (!overloads[match[1]]) overloads[match[1]] = { count: 0, sample: failure.url };
+            overloads[match[1]].count++;
+        }
+    }
+    const overloadNames = Object.keys(overloads).sort((a, b) => overloads[b].count - overloads[a].count).slice(0, 15);
+    if (overloadNames.length) {
+        console.log("\nunresolved functions:");
+        for (const name of overloadNames) console.log(String(overloads[name].count).padStart(5) + "  " + name + "  (" + overloads[name].sample.split("/").slice(-2)[0] + ")");
+    }
     console.log("\nsample failures:");
     for (const failure of failures.slice(0, 10)) {
         console.log("  " + failure.url.split("/").slice(-2).join("/") + " — " + failure.log);
