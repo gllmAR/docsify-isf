@@ -17,7 +17,9 @@ becomes, on a Docsify page, a viewer with:
 - a realtime WebGL render of the shader,
 - auto-generated controls for every `INPUTS` entry (float, bool, long, event,
   color, point2D, image, audio, audioFFT),
-- a live text/shader editor with GLSL syntax highlighting and error mapping,
+- a live text/shader editor with GLSL syntax highlighting, error mapping and
+  a foldable toolbar (chevron or Ctrl/Cmd+Shift+B) that hands its rows back
+  to the code pane,
 - multi-pass and persistent buffers, `IMPORTED` textures and `.vs` pairing,
 - fullscreen, pause/reset, FPS/resolution stats and a GPU context budget.
 
@@ -214,7 +216,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
-| `persistLayout` | `true` | Remember editor height / drawer widths across viewers and pages. |
+| `persistLayout` | `true` | Remember editor height, folded toolbar and drawer widths across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
 | `share` | `true` | Show the “copy link” button (parameters + panel state). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |

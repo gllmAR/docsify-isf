@@ -587,6 +587,34 @@ try {
         problems.push("editor textarea not found for the typing test");
     }
 
+    // The editor toolbar folds away to give the code pane the space.
+    const foldResult = await page.evaluate(async () => {
+        const b = document.querySelector(".isf-block");
+        const fold = b.querySelector(".isf-fold-btn");
+        const actions = b.querySelector(".isf-editor-actions");
+        const editor = b.querySelector(".isf-editor");
+        if (!fold) return { missing: true };
+        const before = editor.getBoundingClientRect().height;
+        fold.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const folded = {
+            actionsHidden: getComputedStyle(actions).display === "none",
+            summaryShown: getComputedStyle(b.querySelector(".isf-editor-folded-summary")).display !== "none",
+            grew: editor.getBoundingClientRect().height > before + 8
+        };
+        const pressed = fold.getAttribute("aria-expanded");
+        fold.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return { folded: folded, pressed: pressed, restored: getComputedStyle(actions).display !== "none" };
+    });
+    if (foldResult.missing) problems.push("editor fold button not found");
+    else {
+        if (!foldResult.folded.actionsHidden || !foldResult.folded.summaryShown) problems.push("folding the editor toolbar did not hide its controls");
+        if (!foldResult.folded.grew) problems.push("folding the editor toolbar did not grow the code pane");
+        if (foldResult.pressed !== "false") problems.push("fold button did not report aria-expanded=false when folded");
+        if (!foldResult.restored) problems.push("unfolding the editor toolbar did not restore its controls");
+    }
+
     // Context budget: scroll a released viewer into view and wait for the pump.
     const recovery = await page.evaluate(async () => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Input-type test card/i.test(b.textContent));
@@ -661,6 +689,25 @@ try {
     });
     if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
     await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
+
+    const phoneFold = await page.evaluate(async () => {
+        const b = document.querySelector(".isf-block");
+        const fold = b.querySelector(".isf-fold-btn");
+        const actions = b.querySelector(".isf-editor-actions");
+        const editor = b.querySelector(".isf-editor");
+        const before = editor.getBoundingClientRect().height;
+        fold.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const summary = b.querySelector(".isf-editor-folded-summary");
+        return {
+            hidden: getComputedStyle(actions).display === "none",
+            grew: Math.round(editor.getBoundingClientRect().height - before),
+            summary: summary ? summary.textContent.trim().slice(0, 40) : ""
+        };
+    });
+    if (!phoneFold.hidden) problems.push("mobile: folded editor toolbar is still visible");
+    if (phoneFold.grew < 24) problems.push("mobile: folding the toolbar freed only " + phoneFold.grew + "px");
+    await page.screenshot({ path: path.join(here, "artifacts", "mobile-folded.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
 
     if (consoleErrors.length) {

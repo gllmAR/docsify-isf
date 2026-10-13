@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.9.0
+ * docsify-isf v1.10.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.9.0";
+    var VERSION = "1.10.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -3405,6 +3405,13 @@
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
             ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0}",
+            ".isf-editor-folded-summary{display:none;flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+            ".isf-fold-btn{flex:0 0 auto;padding:.15rem .25rem}",
+            ".isf-fold-btn .isf-icon{width:13px;height:13px;transition:transform .15s ease}",
+            ".isf-editor-wrap.isf-toolbar-folded .isf-fold-btn .isf-icon{transform:rotate(-90deg)}",
+            ".isf-editor-wrap.isf-toolbar-folded .isf-editor-toolbar{padding:.15rem .3rem;gap:.3rem;flex-wrap:nowrap}",
+            ".isf-editor-wrap.isf-toolbar-folded .isf-editor-tabs,.isf-editor-wrap.isf-toolbar-folded .isf-editor-status,.isf-editor-wrap.isf-toolbar-folded .isf-editor-pos,.isf-editor-wrap.isf-toolbar-folded .isf-editor-actions{display:none}",
+            ".isf-editor-wrap.isf-toolbar-folded .isf-editor-folded-summary{display:block}",
             ".isf-editor-actions .isf-btn{padding:.2rem .45rem}",
             ".isf-editor{position:relative;display:flex;height:300px;background:var(--isf-code-bg);color:var(--isf-code-text);overflow:hidden;font-size:12px}",
             ".isf-gutter{flex:0 0 auto;width:3em;padding:8px 4px 8px 0;text-align:right;overflow:hidden;background:rgba(255,255,255,.03);color:#565c66;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:inherit;line-height:1.55;white-space:pre;user-select:none}",
@@ -3525,7 +3532,8 @@
         source: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         share: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         copy: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
-        check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
+        check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
     };
 
     function iconButton(action, icon, title, extraClass) {
@@ -4019,9 +4027,17 @@
         keysButton.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
         editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
         importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
+        var foldButton = h("button", "isf-btn isf-fold-btn", {
+            type: "button", html: ICONS.chevron,
+            title: "Collapse the editor toolbar", "aria-label": "Collapse the editor toolbar",
+            "aria-expanded": "true", "aria-controls": "isf-editor-toolbar-content"
+        });
+        var foldedSummary = h("span", "isf-editor-folded-summary", { "aria-hidden": "true" });
+        toolbar.appendChild(foldButton);
         toolbar.appendChild(tabs);
         toolbar.appendChild(status);
         toolbar.appendChild(posLabel);
+        toolbar.appendChild(foldedSummary);
         toolbar.appendChild(actions);
         var editor = h("div", "isf-editor");
         var activeLine = h("div", "isf-active-line", { "aria-hidden": "true" });
@@ -4162,6 +4178,7 @@
         function setStatus(message, kind) {
             status.textContent = message || "";
             status.className = "isf-editor-status" + (kind ? " is-" + kind : "");
+            updateFoldedSummary();
         }
 
         function setValue(text, options) {
@@ -4251,6 +4268,7 @@
             fragmentTab.setAttribute("aria-pressed", activeBuffer === "fragment" ? "true" : "false");
             vertexTab.classList.toggle("is-active", activeBuffer === "vertex");
             vertexTab.setAttribute("aria-pressed", activeBuffer === "vertex" ? "true" : "false");
+            updateFoldedSummary();
         }
 
         function setActiveBuffer(name) {
@@ -4389,19 +4407,30 @@
         function maxEditorHeight() {
             return Math.max(160, Math.min(window.innerHeight * 0.85, 1400));
         }
-        function applyEditorHeight(px, persist) {
-            var height = clamp(px, 120, maxEditorHeight());
-            editor.style.height = height + "px";
+        var toolbarCollapsed = false;
+        var collapsedToolbarExtra = 0;
+        var editorBaseHeight = null;
+        function refreshEditorHeight() {
+            var extra = toolbarCollapsed ? collapsedToolbarExtra : 0;
+            if (editorBaseHeight == null) editor.style.height = "";
+            else editor.style.height = (editorBaseHeight + extra) + "px";
             measureMetrics();
-            if (persist) viewer.saveLayout({ editorHeight: height });
-            return height;
+        }
+        function applyEditorHeight(px, persist) {
+            editorBaseHeight = clamp(px, 120, maxEditorHeight());
+            refreshEditorHeight();
+            if (persist) viewer.saveLayout({ editorHeight: editorBaseHeight });
+            return editorBaseHeight;
         }
         var dragStartY = 0;
         var dragStartHeight = 0;
         resizeY.addEventListener("pointerdown", function (event) {
             event.preventDefault();
             dragStartY = event.clientY;
-            dragStartHeight = editor.getBoundingClientRect().height;
+            var startExtra = toolbarCollapsed ? collapsedToolbarExtra : 0;
+            dragStartHeight = editorBaseHeight == null
+                ? Math.max(0, editor.getBoundingClientRect().height - startExtra)
+                : editorBaseHeight;
             resizeY.classList.add("is-dragging");
             try { resizeY.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
         });
@@ -4418,20 +4447,74 @@
         resizeY.addEventListener("pointerup", endEditorDrag);
         resizeY.addEventListener("pointercancel", endEditorDrag);
         resizeY.addEventListener("dblclick", function () {
-            editor.style.height = "";
-            measureMetrics();
+            editorBaseHeight = null;
+            refreshEditorHeight();
             viewer.saveLayout({ editorHeight: null });
         });
         resizeY.addEventListener("keydown", function (event) {
-            var current = editor.getBoundingClientRect().height;
+            var keyExtra = toolbarCollapsed ? collapsedToolbarExtra : 0;
+            var current = editorBaseHeight == null
+                ? Math.max(0, editor.getBoundingClientRect().height - keyExtra)
+                : editorBaseHeight;
             var delta = event.shiftKey ? 64 : 16;
             if (event.key === "ArrowUp") { event.preventDefault(); applyEditorHeight(current + delta, true); }
             else if (event.key === "ArrowDown") { event.preventDefault(); applyEditorHeight(current - delta, true); }
             else if (event.key === "Home") { event.preventDefault(); applyEditorHeight(160, true); }
             else if (event.key === "End") { event.preventDefault(); applyEditorHeight(maxEditorHeight(), true); }
         });
+        function updateFoldedSummary() {
+            if (!foldedSummary) return;
+            var label = activeBuffer === "vertex" ? "Vertex" : "Fragment";
+            var text = status.textContent || "";
+            foldedSummary.textContent = text ? label + " · " + text : label;
+        }
+
+        // Folding hides the tabs/actions/status rows and grows the code pane by
+        // exactly the height they occupied.
+        function measureCollapsedExtra() {
+            var wasFolded = wrap.classList.contains("isf-toolbar-folded");
+            if (wasFolded) wrap.classList.remove("isf-toolbar-folded");
+            var expanded = toolbar.getBoundingClientRect().height;
+            wrap.classList.add("isf-toolbar-folded");
+            var folded = toolbar.getBoundingClientRect().height;
+            if (!wasFolded) wrap.classList.remove("isf-toolbar-folded");
+            return Math.max(0, expanded - folded);
+        }
+        function refreshFold() {
+            if (!toolbarCollapsed) { updateFoldedSummary(); return; }
+            if (!collapsedToolbarExtra) {
+                collapsedToolbarExtra = measureCollapsedExtra();
+                if (editorBaseHeight == null) {
+                    var current = editor.getBoundingClientRect().height;
+                    if (current > 0) editorBaseHeight = clamp(current, 120, maxEditorHeight());
+                }
+            }
+            refreshEditorHeight();
+            updateFoldedSummary();
+        }
+        function setToolbarCollapsed(collapsed, persist) {
+            toolbarCollapsed = collapsed;
+            if (collapsed) refreshFold();
+            else refreshEditorHeight();
+            wrap.classList.toggle("isf-toolbar-folded", collapsed);
+            foldButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
+            var label = collapsed ? "Expand the editor toolbar" : "Collapse the editor toolbar";
+            foldButton.title = label;
+            foldButton.setAttribute("aria-label", label);
+            updateFoldedSummary();
+            if (persist) viewer.saveLayout({ editorToolbar: collapsed ? "folded" : null });
+        }
+        foldButton.addEventListener("click", function () { setToolbarCollapsed(!toolbarCollapsed, true); });
+        if (typeof MutationObserver !== "undefined") {
+            var statusObserver = new MutationObserver(updateFoldedSummary);
+            statusObserver.observe(status, { childList: true, characterData: true, subtree: true });
+            viewer.listeners.push(function () { statusObserver.disconnect(); });
+        }
+
         var storedEditorHeight = viewer.layout && viewer.layout.editorHeight;
         if (storedEditorHeight && config.persistLayout !== false) applyEditorHeight(storedEditorHeight, false);
+        var storedFold = viewer.layout && viewer.layout.editorToolbar;
+        if (storedFold === "folded" && config.persistLayout !== false) setToolbarCollapsed(true, false);
         applyFontSize(fontSize, false);
         requestAnimationFrame(measureMetrics);
         applyButton.addEventListener("click", function () { viewer.applySource(); });
@@ -4486,6 +4569,9 @@
             applyFontSize: applyFontSize,
             value: function () { return textarea.value; },
             setStatus: setStatus,
+            toggleToolbar: function () { setToolbarCollapsed(!toolbarCollapsed, true); },
+            folded: function () { return toolbarCollapsed; },
+            refreshFold: refreshFold,
             markError: markError,
             focus: function () {
                 try { textarea.focus({ preventScroll: true }); } catch (err) { textarea.focus(); }
@@ -5832,7 +5918,10 @@
             }
         });
         block.addEventListener("keydown", function (event) {
-            if ((event.ctrlKey || event.metaKey) && (event.key === "b" || event.key === "B")) {
+            if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === "b" || event.key === "B")) {
+                event.preventDefault();
+                if (viewer.editor) viewer.editor.toggleToolbar();
+            } else if ((event.ctrlKey || event.metaKey) && (event.key === "b" || event.key === "B")) {
                 event.preventDefault();
                 viewer.toggleEditor();
             } else if ((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
@@ -5886,6 +5975,7 @@
         function showEditorPanel() {
             importPanel.classList.add("isf-hidden");
             if (viewer.editor) viewer.editor.el.classList.remove("isf-hidden");
+            if (viewer.editor && viewer.editor.refreshFold) requestAnimationFrame(viewer.editor.refreshFold);
         }
         viewer.openImport = function () {
             importPanel.classList.remove("isf-hidden");
@@ -5974,6 +6064,7 @@
                 ["Tab / Shift+Tab", "Indent / dedent"],
                 ["Enter", "Auto-indent"],
                 ["Ctrl/Cmd + B", "Show / hide the editor"],
+                ["Ctrl/Cmd + Shift + B", "Fold / unfold the editor toolbar"],
                 ["Ctrl/Cmd + K", "Show / hide the parameters"],
                 ["Enter / Space", "Fullscreen the preview"],
                 ["Drag the dividers", "Resize the editor and panel"]

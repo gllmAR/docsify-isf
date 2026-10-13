@@ -369,6 +369,7 @@ background so the shader stays visible. They start closed according to
 | Code (left) | `</>` in the toolbar / Ctrl-Cmd+B | rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
 | Parameters (right) | sliders button in the toolbar / Ctrl-Cmd+K | rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
 | Editor height | — | rail above the editor | ↑/↓, Home/End | double-click | `editorHeight` |
+| Editor toolbar | chevron / Ctrl-Cmd+Shift+B | — | — | — | `editorToolbar` |
 
 Drawers are opened from the top-bar buttons only (there are no lateral tabs);
 the buttons keep `aria-pressed`/`aria-expanded` in sync with the drawer state
@@ -376,7 +377,10 @@ and the panels' × buttons. Widths are clamped to 240 px…64 % of the stage for
 a single drawer and 46 % when both are open (two drawers always leave the
 render visible), the editor height to 120 px…85 vh. On viewports up to 600 px
 narrow each drawer takes the full stage, opening one closes the other, and the
-horizontal resize rails are hidden. Handles are
+horizontal resize rails are hidden. The editor toolbar folds to a single row
+(a chevron button or Ctrl-Cmd+Shift+B) showing `Fragment/Vertex · status`; the
+code pane grows by exactly the height the hidden rows occupied, and the state
+is persisted with the rest of the layout. Handles are
 `role="separator"` with `aria-orientation`; persistence is opt-out via
 `persistLayout: false`. The drawer scrolls its own `.isf-drawer-inner`, so the
 rail never scrolls away. In fullscreen the drawers stay as overlays over the
