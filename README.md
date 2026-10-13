@@ -349,6 +349,48 @@ original file line and the attempt that failed.
 - Cross-origin `.fs` URLs must send CORS headers, and imported images must be
   same-origin or CORS-enabled, because of WebGL texture security rules.
 
+## Headless frames
+
+The plugin can render a single deterministic frame without any UI, which makes
+ISF output comparable across renderers, revisions and machines:
+
+```js
+const frame = await DocsifyISF.renderFrame({
+    url: "/modules/src/isf-source/library/2d-clouds/2d-clouds.fs",
+    width: 320, height: 180,   // exact drawing-buffer size
+    time: 1.5,                 // frozen material time (seconds)
+    inputs: { mat_scale: 2 },  // input overrides, clamped like the controls
+    steps: 1                   // virtual steps from 0 → time (use ~60 for feedback)
+});
+// frame.dataUrl  — image/png data URL
+// frame.mode     — "ES 1.00" | "ES 3.00" | "Compatibility mode · …"
+// frame.width, frame.height, frame.time, frame.inputs, frame.warnings
+
+const diff = await DocsifyISF.compareFrames(a.dataUrl, b.dataUrl, { threshold: 2 });
+// diff.mae       — mean absolute per-channel error (same metric as the OBS cover sweep)
+// diff.maxDiff, diff.diffRatio, diff.identical, diff.sizeMismatch
+```
+
+`DATE` is frozen to `2020-01-01T00:00:00Z` by default (`date: "now"` for the
+real clock), `TIME`/`TIMEDELTA`/generators/frame index are reset per frame, and
+the viewer is disposed afterwards, so repeated renders are byte-identical.
+
+The bundled CLI renders files or whole library sweeps and can diff them
+against the project's OBS `_cover.png` captures:
+
+```bash
+node tools/render-frame.mjs samples/plasma.fs --out plasma.png
+node tools/render-frame.mjs --kind generator --limit 20 --out-dir frames --cover --report report.json
+node tools/render-frame.mjs samples/kaleidoscope.fs --parent color-bars --compare frames/color-bars.png
+```
+
+`--cover` replays the time/parameters/parent recorded in `_covers.json`
+(including packed colour and split point values) and reports the MAE against
+each material's `_cover.png`, so renderer differences are separated from
+capture differences. `--steps N` walks the runtime from zero in N virtual
+steps for feedback/multi-pass shaders; `--strict` exits non-zero above
+`--max-mae`. Run `node tools/render-frame.mjs --help` for every option.
+
 ## Development and tests
 
 ```bash
@@ -360,9 +402,10 @@ node tests/run.js
 # inside obs-lua-projection-mapping)
 node tests/run.js --corpus
 
-# optional browser smoke test (needs Chrome + puppeteer-core)
+# optional browser tests (need Chrome + puppeteer-core)
 npm install
-npm run test:smoke
+npm run test:smoke     # UI interactions
+npm run test:frame     # headless frame renderer determinism + comparison
 
 # serve this repository as the demo Docsify site
 npx docsify serve .

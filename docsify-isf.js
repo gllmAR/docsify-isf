@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.10.0
+ * docsify-isf v1.11.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.10.0";
+    var VERSION = "1.11.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -2881,6 +2881,31 @@
         var meta = parsed && parsed.valid ? parsed.metadata : {};
         var inputs = normalizeInputs(meta.INPUTS, warnings);
         var passes = normalizePasses(meta.PASSES, warnings);
+        // MadMapper binds `mm_LastFrame` to an implicit persistent ping-pong
+        // buffer whenever a shader samples it (isf/effect.lua does the same).
+        if (/\bmm_LastFrame\b/.test(parsed.body || "")) {
+            var lastFramePass = -1;
+            for (var lf = 0; lf < passes.length; lf++) {
+                if (passes[lf].target === "mm_LastFrame") lastFramePass = lf;
+            }
+            if (lastFramePass === -1) {
+                if (passes.length === 1 && !passes[0].target) {
+                    // Single-shader feedback: render into the persistent buffer,
+                    // which is also what gets painted to the screen.
+                    passes[0].target = "mm_LastFrame";
+                    passes[0].persistent = true;
+                } else {
+                    passes.push({
+                        index: passes.length,
+                        target: "mm_LastFrame",
+                        persistent: true,
+                        float: false,
+                        width: "$WIDTH",
+                        height: "$HEIGHT"
+                    });
+                }
+            }
+        }
         var generators = normalizeGenerators(meta.GENERATORS, inputs, warnings);
         var imports = options.imports === false ? [] : normalizeImports(meta.IMPORTED, warnings);
 
@@ -5347,7 +5372,7 @@
                 this.setNumber(input.name, this.values[input.name] === undefined ? input.default : this.values[input.name], input.uniform);
             }
         }
-        var now = new Date();
+        var now = this.fixedDate || new Date();
         this.setNumber("TIME", this.time, "float");
         this.setNumber("TIMEDELTA", delta || 0, "float");
         this.setNumber("DATE", [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()], "vec4");
@@ -6899,6 +6924,264 @@
         });
     }
 
+    /* ==================================================================
+     * Headless frame rendering
+     *
+     * DocsifyISF.renderFrame() mounts a viewer off-screen, freezes the
+     * shader at a deterministic time/size/inputs and returns a PNG data URL;
+     * DocsifyISF.compareFrames() diffs two PNG data URLs with the same
+     * metric the project's cover comparison uses (mean absolute per-channel
+     * error). Both are browser-only and dependency-free.
+     * ================================================================== */
+
+    function frameImageFrom(src) {
+        return new Promise(function (resolve, reject) {
+            var image = new Image();
+            image.onload = function () { resolve(image); };
+            image.onerror = function () { reject(new Error("Could not decode frame image")); };
+            image.src = src;
+        });
+    }
+
+    function firstImageInput(viewer) {
+        var inputs = (viewer.built && viewer.built.inputs) || [];
+        for (var i = 0; i < inputs.length; i++) {
+            if (inputs[i].type === "image") return inputs[i].name;
+        }
+        return null;
+    }
+
+    // Deterministic frame at options.time: the runtime is paused and the
+    // shader time, generators and buffer history are stepped from zero.
+    function snapshotFrame(viewer, options, width, height) {
+        var runtime = viewer.runtime;
+        if (!runtime) throw new Error("renderFrame: the shader is not running");
+        runtime.setPlaying(false);
+        runtime.qualityScale = 1;
+        runtime.fixedDate = options.date === "now" ? null : new Date(options.date || "2020-01-01T00:00:00Z");
+        runtime.mouse = [0, 0, 0, 0];
+        runtime.events = {};
+        runtime.frameIndex = 0;
+        runtime.resize(true);
+        if (runtime.destWidth !== width || runtime.destHeight !== height) {
+            // The stage is sized explicitly, so this only guards against odd
+            // viewport scaling (e.g. a zoomed page).
+            runtime.destWidth = width;
+            runtime.destHeight = height;
+            runtime.gl.canvas.width = width;
+            runtime.gl.canvas.height = height;
+        }
+        var time = options.time === undefined || options.time === null ? 1.5 : Number(options.time);
+        if (!isFinite(time)) time = 1.5;
+        var steps = Math.max(1, Math.round(numberOr(options.steps, 1)));
+        runtime.generatorState = {};
+        if (steps === 1) {
+            runtime.time = time;
+            runtime.updateGenerators(time);
+        } else {
+            for (var step = 1; step <= steps; step++) {
+                runtime.time = time * step / steps;
+                runtime.draw(time / steps);
+            }
+        }
+        var dataUrl = runtime.snapshot();
+        if (!dataUrl) throw new Error("renderFrame: the shader did not produce a frame");
+        return {
+            dataUrl: dataUrl,
+            width: runtime.destWidth,
+            height: runtime.destHeight,
+            time: runtime.time,
+            steps: steps,
+            mode: runtime.compatibilityLabel || (runtime.isGL2 ? "ES 3.00" : "ES 1.00"),
+            warnings: (viewer.built && viewer.built.warnings) || []
+        };
+    }
+
+    function renderFrame(options) {
+        options = options || {};
+        if (typeof document === "undefined") {
+            return Promise.reject(new Error("renderFrame needs a document (run it in a browser)"));
+        }
+        if (!options.url) {
+            return Promise.reject(new Error("renderFrame: options.url is required"));
+        }
+        var width = clamp(Math.round(numberOr(options.width, 320)), 1, 4096);
+        var height = clamp(Math.round(numberOr(options.height, 180)), 1, 4096);
+        var timeout = Math.max(1000, numberOr(options.timeout, 30000));
+        var includePaths = options.includePaths || (getConfig() && getConfig().includePaths) || [];
+        var config = assign({}, DEFAULTS, options.config, {
+            enabled: true,
+            mode: "replace",
+            lazy: "none",
+            width: width + "px",
+            height: height + "px",
+            resolution: 1,
+            maxPixelRatio: 1,
+            controls: false,
+            params: "closed",
+            editor: false,
+            editorOpen: false,
+            showStats: false,
+            showSource: false,
+            share: false,
+            autoplay: false,
+            persistLayout: false,
+            persistValues: false,
+            loopTransition: false,
+            includePaths: includePaths
+        });
+
+        var holder = document.createElement("div");
+        holder.style.cssText = "position:fixed;left:-100000px;top:0;width:" + width + "px;height:" + height +
+            "px;overflow:hidden;pointer-events:none;contain:strict";
+        var anchor = document.createElement("a");
+        anchor.setAttribute("href", options.url);
+        holder.appendChild(anchor);
+        document.body.appendChild(holder);
+
+        var viewer = createViewer(anchor, options.title || basename(options.url), config, options.routePath || "");
+        holder.replaceChild(viewer.dom.block, anchor);
+        if (viewer.dom.header) viewer.dom.header.style.display = "none";
+        if (viewer.dom.status) viewer.dom.status.style.display = "none";
+        viewer.dom.block.style.margin = "0";
+        viewer.dom.block.style.border = "0";
+        viewer.dom.block.style.borderRadius = "0";
+        viewer.dom.stage.style.width = width + "px";
+        viewer.dom.stage.style.height = height + "px";
+        viewer.dom.stage.style.minHeight = "0";
+        viewer.visible = true;
+
+        var settled = false;
+        function cleanup() {
+            if (settled) return;
+            settled = true;
+            try { viewer.dispose(); } catch (err) { /* ignore */ }
+            if (holder.parentNode) holder.parentNode.removeChild(holder);
+        }
+
+        return new Promise(function (resolve, reject) {
+            var timer = setTimeout(function () {
+                cleanup();
+                reject(new Error("renderFrame timed out after " + timeout + "ms"));
+            }, timeout);
+            function fail(error) {
+                clearTimeout(timer);
+                cleanup();
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
+            function ready() {
+                var inputs = options.inputs || {};
+                var applied = {};
+                if (!viewer.inputByName && viewer.built) {
+                    viewer.inputByName = {};
+                    for (var i = 0; i < viewer.built.inputs.length; i++) viewer.inputByName[viewer.built.inputs[i].name] = viewer.built.inputs[i];
+                }
+                for (var name in inputs) {
+                    if (Object.prototype.hasOwnProperty.call(inputs, name)) applied[name] = viewer.setParameter(name, inputs[name]);
+                }
+                var pending = [];
+                if (options.parentFrame) {
+                    pending.push(frameImageFrom(options.parentFrame));
+                } else if (options.parent) {
+                    pending.push(renderFrame({
+                        url: options.parent,
+                        width: width,
+                        height: height,
+                        time: options.time,
+                        steps: options.steps,
+                        date: options.date,
+                        includePaths: includePaths
+                    }).then(function (parentFrame) {
+                        return frameImageFrom(parentFrame.dataUrl);
+                    }));
+                }
+                Promise.all(pending).then(function (images) {
+                    if (images.length) {
+                        var imageName = options.imageName || firstImageInput(viewer);
+                        if (!imageName) throw new Error("renderFrame: a parent frame was given but the shader has no image input");
+                        viewer.runtime.inputSources[imageName] = images[0];
+                    }
+                    var extraImages = options.images || {};
+                    var imageLoads = [];
+                    for (var key in extraImages) {
+                        if (!Object.prototype.hasOwnProperty.call(extraImages, key)) continue;
+                        (function (name, source) {
+                            imageLoads.push(frameImageFrom(source).then(function (image) {
+                                viewer.runtime.inputSources[name] = image;
+                            }));
+                        })(key, extraImages[key]);
+                    }
+                    return Promise.all(imageLoads);
+                }).then(function () {
+                    var frame = snapshotFrame(viewer, options, width, height);
+                    frame.inputs = applied;
+                    frame.mode = frame.mode || "ES 1.00";
+                    clearTimeout(timer);
+                    var result = frame;
+                    cleanup();
+                    resolve(result);
+                }).catch(fail);
+            }
+            (function poll() {
+                if (settled) return;
+                if (viewer.disposed) return fail(new Error("renderFrame: viewer disposed"));
+                if (viewer.state === "live") return ready();
+                if (viewer.state === "error") return fail(new Error(viewer.lastErrorText || "renderFrame: shader error"));
+                setTimeout(poll, 40);
+            })();
+            try { viewer.resume(); } catch (err) { fail(err); }
+        });
+    }
+
+    function compareFrames(a, b, options) {
+        options = options || {};
+        var threshold = Math.max(0, numberOr(options.threshold, 2));
+        if (typeof document === "undefined") {
+            return Promise.reject(new Error("compareFrames needs a document (run it in a browser)"));
+        }
+        return Promise.all([frameImageFrom(a), frameImageFrom(b)]).then(function (images) {
+            var width = Math.min(images[0].naturalWidth || images[0].width, images[1].naturalWidth || images[1].width);
+            var height = Math.min(images[0].naturalHeight || images[0].height, images[1].naturalHeight || images[1].height);
+            if (!width || !height) throw new Error("compareFrames: could not read the image sizes");
+            function pixels(image) {
+                var canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                var context = canvas.getContext("2d", { willReadFrequently: true });
+                context.drawImage(image, 0, 0, width, height);
+                return context.getImageData(0, 0, width, height).data;
+            }
+            var first = pixels(images[0]);
+            var second = pixels(images[1]);
+            var sum = 0;
+            var maxDiff = 0;
+            var changed = 0;
+            var count = width * height;
+            for (var pixel = 0; pixel < count; pixel++) {
+                var index = pixel * 4;
+                var dr = Math.abs(first[index] - second[index]);
+                var dg = Math.abs(first[index + 1] - second[index + 1]);
+                var db = Math.abs(first[index + 2] - second[index + 2]);
+                sum += dr + dg + db;
+                var worst = Math.max(dr, dg, db);
+                if (worst > maxDiff) maxDiff = worst;
+                if (worst > threshold) changed++;
+            }
+            var sizeMismatch = images[0].naturalWidth !== images[1].naturalWidth ||
+                images[0].naturalHeight !== images[1].naturalHeight;
+            return {
+                width: width,
+                height: height,
+                sizeMismatch: sizeMismatch,
+                mae: sizeMismatch ? null : +(sum / (count * 3)).toFixed(2),
+                maxDiff: maxDiff,
+                diffRatio: sizeMismatch ? null : +(changed / count).toFixed(4),
+                identical: sizeMismatch ? false : sum === 0,
+                threshold: threshold
+            };
+        });
+    }
+
     return {
         VERSION: VERSION,
         plugin: plugin,
@@ -6922,6 +7205,8 @@
         resolveAssetUrl: resolveAssetUrl,
         resolveCandidates: resolveCandidates,
         isShaderHref: isShaderHref,
+        renderFrame: typeof document !== "undefined" ? renderFrame : null,
+        compareFrames: typeof document !== "undefined" ? compareFrames : null,
         setMaxContexts: function (max) { BUDGET.setMax(max); },
         createTestPattern: typeof document !== "undefined" ? createTestPattern : null
     };

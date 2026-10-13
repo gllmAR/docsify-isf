@@ -676,6 +676,14 @@ test("shaders writing to their own uniforms get a plain global", () => {
     assert(built.fragment.indexOf("vec2 iResolution;") !== -1, built.fragment);
 });
 
+test("mm_LastFrame gets an implicit persistent buffer", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){ vec4 p = IMG_NORM_PIXEL(mm_LastFrame, isf_FragNormCoord); gl_FragColor = p * 0.9 + vec4(0.1); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.passes.length === 1 && built.passes[0].target === "mm_LastFrame" && built.passes[0].persistent === true, JSON.stringify(built.passes));
+    assert(built.fragment.indexOf("uniform sampler2D mm_LastFrame;") !== -1, built.fragment);
+    equal(built.unresolved, []);
+});
+
 test("desktop exponent literals do not lose their exponent", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    float x = 1.e-6 + 0.03;\n    gl_FragColor = vec4(x);\n}';
     const built = isf.buildShader(isf.parseISF(source), {});

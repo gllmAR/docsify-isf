@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>docsify-isf frame host</title>
+</head>
+
+<body>
+    <!-- Minimal host used by tools/render-frame.mjs: no Docsify, no page
+         chrome — just the plugin and DocsifyISF.renderFrame(). Include
+         search paths are passed per call by the CLI. -->
+    <script>
+        window.$docsify = { isf: { enabled: false, includePaths: [] } };
+    </script>
+    <script src="../docsify-isf.js"></script>
+</body>
+
+</html>
