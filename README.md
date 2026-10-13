@@ -320,7 +320,7 @@ current frame.
 | Includes | local `#include "file.glsl"` — relative to the shader, `includePaths`, recursive, cached, case-variant aliases, also honoured in `.vs` files |
 | Generators | MadMapper `GENERATORS` (`time_base`, `incrementer`, `pass_thru`, `multiplier`, filter/damper/ease/animator/adsr) simulated CPU-side |
 | Entry points | `void main()`, MadMapper `materialColorForPixel()` wrapper |
-| Compatibility | WebGL2 / GLSL ES 3.00 retry, MadMapper/HLSL dialect rewrite (`fill`, `fBm`, `saturate`, …), scope-aware literal promotion, generated overload shims and forward prototypes (every material in the bundled library compiles, `npm run test:coverage`) |
+| Compatibility | WebGL2 / GLSL ES 3.00 retry, MadMapper/HLSL dialect rewrite (`fill`, `fBm`, `saturate`, …), scope-aware literal promotion, generated overload shims and forward prototypes (every material in the bundled library compiles, `npm run test:coverage`); the CPU generators and image upload orientation match the shared editor core, which is byte-identical on the cross-kernel sample (`scripts/library.sh kernels`) |
 | Vertex | default generated vertex shader, or a same-name `.vs` (editable tab) |
 | ISF v1 | `vv_FragNormCoord`, `vv_vertShaderInit` aliases |
 | docsify-isf | `_isfMouse` pointer `vec4` (Shadertoy semantics), pass-target preview, quality scaling, PNG export |
