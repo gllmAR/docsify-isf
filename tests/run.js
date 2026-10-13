@@ -634,6 +634,55 @@ test("MadMapper floatRange and generator inputs map to uniforms", () => {
     equal(built.warnings, []);
 });
 
+test("commented defines do not poison the macro tables", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"iterations","TYPE":"int","DEFAULT":4}]}*/\n// #define iterations 64.\nvoid main(){\n    for (float i = 0.0; i < iterations; i++) { float shad = i/iterations; }\n    gl_FragColor = vec4(0.0);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("i < float(iterations)") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("uniform int iterations;") !== -1, built.fragmentES3Loose);
+});
+
+test("generate_as_define inputs become macros", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"luma_mode","TYPE":"long","VALUES":["Before","After"],"DEFAULT":"After","FLAGS":"generate_as_define"}]}*/\nvoid main(){ gl_FragColor = vec4(float(luma_mode)); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("#define luma_mode 1") !== -1, built.fragment);
+    assert(built.fragment.indexOf("uniform int luma_mode") === -1, built.fragment);
+});
+
+test("modulo expressions and int-returning calls are floated whole", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nint hash(int x){ return x; }\nvoid main(){\n    int k = 5;\n    float a = k%4 * 2.0;\n    float b = (hash(k)%7) / 3.0;\n    gl_FragColor = vec4(a, b, 0.0, 1.0);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("float(k%4)") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("float(hash(k)%7)") !== -1, built.fragmentES3Loose);
+});
+
+test("multi-declarator int lines learn every name", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    int x = 1, y = 2;\n    float g = x*y*0.5;\n    gl_FragColor = vec4(g);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("float(x)*float(y)") !== -1, built.fragmentES3Loose);
+});
+
+test("texelFetch level argument and mm_* arguments are coerced", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"tex","TYPE":"image"}],"PASSES":[]}*/\nvoid main(){\n    int k = 1;\n    vec2 p = isf_FragNormCoord;\n    float v = texelFetch(tex, ivec2(p*100.0), 0.0).r;\n    vec4 c = mm_fill3(vec3(0.0), vec3(1.0), k%2);\n    gl_FragColor = vec4(v) + c;\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("int(0.0)).r") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("float(k%2)") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("mm_fill3(") !== -1, built.fragmentES3Loose);
+});
+
+test("shaders writing to their own uniforms get a plain global", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nuniform vec2 iResolution = vec2(1024.0);\nvoid main(){\n    iResolution = vec2(1024.0);\n    gl_FragColor = vec4(iResolution.x);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("uniform vec2 iResolution") === -1, built.fragment);
+    assert(built.fragment.indexOf("vec2 iResolution;") !== -1, built.fragment);
+});
+
+test("desktop exponent literals do not lose their exponent", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){\n    float x = 1.e-6 + 0.03;\n    gl_FragColor = vec4(x);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("1.e-6") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("6.0") === -1, built.fragmentES3Loose);
+});
+
 test("MadMapper GENERATORS are declared and exposed", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mat_speed","TYPE":"float","DEFAULT":1,"MIN":0,"MAX":4}],"GENERATORS":[{"NAME":"mat_time_source","TYPE":"time_base","PARAMS":{"speed":"mat_speed"}}]}*/\nvoid main(){ gl_FragColor = vec4(mat_time_source); }';
     const built = isf.buildShader(isf.parseISF(source), {});
