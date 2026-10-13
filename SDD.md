@@ -252,7 +252,7 @@ that already works is never rewritten:
 |---|---|
 | ES 1.00 | the assembled shader |
 | WebGL2 / ES 3.00 | `#version 300 es` + macros (`varying`→`in`, `texture2D`→`texture`, `gl_FragColor`→`_isfFragColor`); enables dynamic indexing and non-constant loops |
-| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), skipping integer-only lines |
+| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), int identifiers are cast (`float(mode)`), int arguments of functions declared with `int` parameters are preserved (`mm_fbm2o(p, 4, …)`), skipping integer-only lines |
 
 Besides those, `buildShader`/the loader implement:
 
@@ -269,10 +269,11 @@ and bound as uniforms.
 set next to `_<image>_imgSize` for shaders ported from the reference JS host.
 
 Measured against the bundled library after the include/generator work
-(`npm run test:coverage`): 408 ES 1.00 + 43 ES 3.00 + 248 ES 3.00 with
-promotion = **699/910 browser-compilable (≈77 %)** — filters 169/171,
-transitions 156/157, sources 374/582. The remaining failures are unsupported
-feature families (laser materials, 3D/cube textures, …).
+(`npm run test:coverage`): 404 ES 1.00 + 37 ES 3.00 + 242 ES 3.00 with
+promotion = **683/857 browser-compilable (≈80 %)** — filters 169/171,
+transitions 156/157, sources 358/529. The remaining failures are dominated by
+MadMapper helper overloads (94), int/float operand mixes on lines that are
+protected (54), conversion errors (10) and missing optional includes (9).
 
 ### 5.9 Live controls and media
 
@@ -364,12 +365,14 @@ background so the shader stays visible. They start closed according to
 
 | Drawer | Toggle | Handle | Keys | Reset | Persisted |
 |---|---|---|---|---|---|
-| Code (left) | `</>` / Ctrl-Cmd+B | rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
-| Parameters (right) | sliders / Ctrl-Cmd+K | rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
+| Code (left) | `</>` / Ctrl-Cmd+B | edge tab or rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
+| Parameters (right) | sliders / Ctrl-Cmd+K | edge tab or rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
 | Editor height | — | rail above the editor | ↑/↓, Home/End | double-click | `editorHeight` |
 
-Widths are clamped to 240 px…46 % of the stage (two drawers always leave the
-render visible) and the editor height to 120 px…85 vh. Handles are
+Slim edge tabs sit on the left and right of the stage and open a drawer; they
+hide while it is open. Widths are clamped to 240 px…64 % of the stage for a
+single drawer and 46 % when both are open (two drawers always leave the render
+visible), the editor height to 120 px…85 vh. Handles are
 `role="separator"` with `aria-orientation`; persistence is opt-out via
 `persistLayout: false`. The drawer scrolls its own `.isf-drawer-inner`, so the
 rail never scrolls away. In fullscreen the drawers stay as overlays over the

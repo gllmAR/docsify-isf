@@ -287,8 +287,11 @@ current frame.
 - `width`, `height` and `aspectRatio` size the preview; the code and
   parameter drawers overlay the canvas (left/right) at every width and never
   change the render size. They are translucent/glassy (backdrop blur) so the
-  shader stays visible; on narrow screens they take nearly the full width and
-  the resize rails are hidden.
+  shader stays visible; slim **edge tabs** on the left (`</>`) and right
+  (sliders) open them and disappear while the drawer is open. One drawer may
+  use up to 64 % of the stage, two are capped at 46 % each so the render stays
+  visible; on narrow screens they take nearly the full width and the resize
+  rails are hidden.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles
   fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
   `aria-expanded`, and the status regions are `aria-live`.

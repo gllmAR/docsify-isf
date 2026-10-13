@@ -265,8 +265,19 @@ for (const name of Object.keys(perLibrary)) {
 }
 const failures = results.filter((result) => result.status === "fail");
 if (failures.length) {
+    const patterns = {};
+    for (const failure of failures) {
+        const key = String(failure.log || "unknown")
+            .replace(/\d+/g, "N")
+            .replace(/'.*?'/g, "'X'")
+            .slice(0, 90);
+        patterns[key] = (patterns[key] || 0) + 1;
+    }
+    const top = Object.keys(patterns).sort((a, b) => patterns[b] - patterns[a]).slice(0, 12);
+    console.log("\nfailure classes:");
+    for (const key of top) console.log(String(patterns[key]).padStart(5) + "  " + key);
     console.log("\nsample failures:");
-    for (const failure of failures.slice(0, 12)) {
+    for (const failure of failures.slice(0, 10)) {
         console.log("  " + failure.url.split("/").slice(-2).join("/") + " — " + failure.log);
     }
 }

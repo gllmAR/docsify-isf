@@ -531,6 +531,64 @@ try {
     if (!liveControls.shortcutsShown) problems.push("shortcut overlay did not open");
     if (!/Loaded drop-test\.png/.test(liveControls.dropStatus)) problems.push("drag & drop did not load the image: " + JSON.stringify(liveControls.dropStatus));
 
+    // Real interaction regression: edge tabs, slider drag, editor typing.
+    await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        b.scrollIntoView({ block: "center" });
+        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Source editor"]').click();
+        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Parameters"]').click();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const edgeTabBefore = await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        const left = b.querySelector(".isf-edge-tab-left");
+        return { visible: !!left && !left.classList.contains("isf-hidden") };
+    });
+    await page.click(".isf-block .isf-edge-tab-left");
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const edgeTabAfter = await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        return {
+            drawerOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
+            tabHidden: b.querySelector(".isf-edge-tab-left").classList.contains("isf-hidden")
+        };
+    });
+    if (!edgeTabBefore.visible) problems.push("left edge tab missing while the drawer is closed");
+    if (!edgeTabAfter.drawerOpen || !edgeTabAfter.tabHidden) problems.push("left edge tab did not toggle the code drawer");
+
+    await page.click('.isf-block .isf-btn[title="Parameters"]');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const slider = await page.$('.isf-block .isf-param[data-isf-param="scale"] input[type="range"]');
+    if (slider) {
+        const box = await slider.boundingBox();
+        const scaleBefore = await page.$eval('.isf-block .isf-param[data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
+        await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
+        await page.mouse.down();
+        for (let step = 1; step <= 8; step++) {
+            await page.mouse.move(box.x + box.width * (0.2 + 0.075 * step), box.y + box.height / 2);
+            await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        await page.mouse.up();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const scaleAfter = await page.$eval('.isf-block .isf-param[data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
+        if (scaleAfter === scaleBefore) problems.push("real slider drag did not change the parameter (" + scaleBefore + " -> " + scaleAfter + ")");
+    } else {
+        problems.push("scale slider not found for the drag test");
+    }
+
+    const textareaHandle = await page.$(".isf-block .isf-input");
+    if (textareaHandle) {
+        const textBox = await textareaHandle.boundingBox();
+        const textBefore = await page.$eval(".isf-block .isf-input", (el) => el.value);
+        await page.mouse.click(textBox.x + 50, textBox.y + 40);
+        await page.keyboard.type("Z");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const textAfter = await page.$eval(".isf-block .isf-input", (el) => el.value);
+        if (textAfter === textBefore) problems.push("real editor click + typing did not change the source");
+    } else {
+        problems.push("editor textarea not found for the typing test");
+    }
+
     // Context budget: scroll a released viewer into view and wait for the pump.
     const recovery = await page.evaluate(async () => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Input-type test card/i.test(b.textContent));

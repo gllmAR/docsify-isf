@@ -501,6 +501,14 @@ test("literal promotion learns float constants from includes", () => {
     assert(built.fragmentLoose.indexOf("2.0*PI*TIME / 360.0") !== -1, built.fragmentLoose);
 });
 
+test("promotion keeps int helper arguments and casts int identifiers", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mode","TYPE":"long","DEFAULT":0,"VALUES":[0,1,2],"LABELS":["a","b","c"]}]}*/\nfloat scaleBy(int n){ return float(n); }\nvoid main(){\n    float t = TIME * mode;\n    float u = TIME * scaleBy(2);\n    gl_FragColor = vec4(t + u);\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentLoose.indexOf("TIME * float(mode)") !== -1, built.fragmentLoose);
+    assert(built.fragmentLoose.indexOf("scaleBy(2)") !== -1, built.fragmentLoose);
+    assert(built.fragmentLoose.indexOf("scaleBy(2.0)") === -1, built.fragmentLoose);
+});
+
 test("ES3 variants are generated for the WebGL2 fallback", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"a","TYPE":"float"}]}*/\nvoid main(){ float p[2]; p[0]=a; gl_FragColor=vec4(p[int(gl_FragCoord.x)%2]); }';
     const built = isf.buildShader(isf.parseISF(source), {});

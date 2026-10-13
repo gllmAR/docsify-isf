@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.3.0
+ * docsify-isf v1.4.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.3.0";
+    var VERSION = "1.4.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1524,19 +1524,42 @@
         }
 
         // 3. Collect every int/uint identifier declared anywhere (inputs were
-        //    seeded by the caller); their lines must not be promoted.
+        //    seeded by the caller); their lines need int/float care.
         var intDeclRe = /\b(?:int|uint|ivec[234]|uvec[234])\s+([A-Za-z_]\w*)/g;
         var intDecl;
         while ((intDecl = intDeclRe.exec(text))) {
+            // `int name(` is a function return type, not an int variable.
+            if (text.charAt(intDeclRe.lastIndex) === "(") continue;
             if (intDecl[1]) integers[intDecl[1]] = true;
         }
+        // A name also declared as float/vec/mat (e.g. `vec2 i` in a helper) is
+        // not treated as an int identifier; scoping is not tracked here.
+        var nonIntDeclRe = /\b(?:float|vec[234]|mat[234])\s+([A-Za-z_]\w*)/g;
+        var nonIntDecl;
+        while ((nonIntDecl = nonIntDeclRe.exec(text))) {
+            if (nonIntDecl[1]) delete integers[nonIntDecl[1]];
+        }
         var intKeys = Object.keys(integers);
-        var intRe = intKeys.length
+        var intTestRe = intKeys.length
             ? new RegExp("(^|[^A-Za-z0-9_])(" + intKeys.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)")
             : null;
+        var intCastRe = intKeys.length ? new RegExp("\\b(" + intKeys.map(escapeRegExp).join("|") + ")\\b", "g") : null;
 
-        // 4. Promote bare integer literals on every line that is not an
-        //    integer context.
+        // 4. Functions with `int` parameters keep their int arguments: do not
+        //    promote inside calls like `mm_fbm2o(p, 4, 2.0, 0.5)`.
+        var intParamFunctions = {};
+        var signatureRe = /\b(?:void|float|int|bool|vec[234]|mat[234])\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{/g;
+        var signature;
+        while ((signature = signatureRe.exec(text))) {
+            if (/\b(?:int|uint|ivec[234])\b/.test(signature[2])) intParamFunctions[signature[1]] = true;
+        }
+        var intParamKeys = Object.keys(intParamFunctions);
+        var intParamRe = intParamKeys.length ? new RegExp("\\b(?:" + intParamKeys.map(escapeRegExp).join("|") + ")\\s*\\(") : null;
+
+        // 5. Promote integer literals and cast int identifiers to float on
+        //    non-integer lines.
+        var nameKeys = Object.keys(names);
+        var nameRe = nameKeys.length ? new RegExp("(^|[^A-Za-z0-9_])(?:" + nameKeys.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)") : null;
         var lines = text.split("\n");
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
@@ -1547,7 +1570,26 @@
             if (/[%]|<<|>>|\[|\]/.test(code)) continue;
             // Bitwise operators are an int context, but logical `&&`/`||` are not.
             if (/[&|^]/.test(code.replace(/&&/g, "").replace(/\|\|/g, ""))) continue;
-            if (intRe && intRe.test(code)) continue;
+            // Compound assignment and increment would break if an int operand
+            // were wrapped in float().
+            if (/(?:\+\+|--|[+\-*/%]=)/.test(code)) continue;
+            if (intParamRe && intParamRe.test(code)) continue;
+            var declarationMatch = /^[ \t]*(?:(?:const|lowp|mediump|highp)[ \t]+)*(?:float|vec[234]|mat[234]|bool)[ \t]+([A-Za-z_]\w*)[ \t]*(?:=|;|,|\[)/.exec(code);
+            var declaredName = declarationMatch ? declarationMatch[1] : null;
+            var equalIndex = code.indexOf("=");
+            var floatContext = /(\d+\.\d*|\.\d+|\b(float|vec[234]|mat[234])\b)/.test(code) ||
+                /\b(TIME|TIMEDELTA|RENDERSIZE|DATE|isf_FragNormCoord|gl_FragCoord|_isfMouse)\b/.test(code) ||
+                !!(nameRe && nameRe.test(code));
+            if (intTestRe && intTestRe.test(code)) {
+                if (!floatContext) continue;
+                line = line.replace(intCastRe, function (match, name, offset, whole) {
+                    // The declared variable on the left of `=` is not an operand.
+                    if (declaredName && name === declaredName && (equalIndex === -1 || offset < equalIndex)) return match;
+                    var before = whole.slice(Math.max(0, offset - 6), offset);
+                    if (/float\($/.test(before)) return match;
+                    return "float(" + name + ")";
+                });
+            }
             lines[i] = line.replace(/(^|[^\w.])(\d+)(?![\w.])(?!\.\d)/g, function (match, prefix, digits, offset, whole) {
                 // Never touch the digits of an exponent (`1e-3`, `2E+4`).
                 var before = whole.slice(0, offset + prefix.length);
@@ -1980,13 +2022,22 @@
     }
 
     function fetchText(url) {
-        return fetch(url, { credentials: "same-origin" }).then(function (response) {
+        var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        var timer = null;
+        if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (err) { /* ignore */ } }, 20000);
+        return fetch(url, { credentials: "same-origin", signal: controller ? controller.signal : undefined }).then(function (response) {
             if (!response.ok) {
                 var error = new Error("HTTP " + response.status + " for " + url);
                 error.status = response.status;
                 throw error;
             }
             return response.text();
+        }).then(function (text) {
+            if (timer) clearTimeout(timer);
+            return text;
+        }, function (error) {
+            if (timer) clearTimeout(timer);
+            throw error;
         });
     }
 
@@ -2098,7 +2149,12 @@
             ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-badge{position:absolute;right:.5rem;bottom:.45rem;z-index:2;background:rgba(10,11,14,.6);color:#e7e9ee;border-radius:5px;padding:.12rem .35rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em}",
-            ".isf-drawer{position:absolute;top:0;bottom:0;z-index:5;display:flex;flex-direction:column;width:min(380px,46%);max-width:92%;background:var(--isf-drawer-bg);-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);transition:transform .18s ease,opacity .18s ease;box-shadow:0 0 24px rgba(0,0,0,.18)}",
+            ".isf-drawer{position:absolute;top:0;bottom:0;z-index:5;display:flex;flex-direction:column;width:min(360px,48%);max-width:92%;background:var(--isf-drawer-bg);-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);transition:transform .18s ease,opacity .18s ease;box-shadow:0 0 24px rgba(0,0,0,.18)}",
+            ".isf-edge-tab{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:24px;height:44px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--isf-border);background:var(--isf-drawer-bg);color:var(--isf-muted);cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,.18)}",
+            ".isf-edge-tab:hover{color:var(--isf-accent);background:var(--isf-surface-2)}",
+            ".isf-edge-tab-left{left:0;border-left:0;border-radius:0 8px 8px 0}",
+            ".isf-edge-tab-right{right:0;border-right:0;border-radius:8px 0 0 8px}",
+            ".isf-edge-tab .isf-icon{width:15px;height:15px}",
             ".isf-drawer-left{left:0;border-right:1px solid var(--isf-border)}",
             ".isf-drawer-right{right:0;border-left:1px solid var(--isf-border)}",
             ".isf-drawer.isf-drawer-closed{opacity:0;visibility:hidden;pointer-events:none}",
@@ -2109,7 +2165,7 @@
             ".isf-drawer .isf-editor-wrap{background:rgba(0,0,0,.12)}",
             ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
             ".isf-panel:last-child{border-bottom:0}",
-            ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.4rem .65rem;font-size:.78rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
+            ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.35rem .6rem;font-size:.72rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.05em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
             ".isf-params-list{padding:.25rem .65rem .5rem}",
             ".isf-param{display:grid;grid-template-columns:minmax(84px,32%) minmax(0,1fr);gap:.4rem .6rem;align-items:center;padding:.28rem 0;font-size:.8rem;border-top:1px dashed var(--isf-border)}",
             ".isf-param:first-child{border-top:0}",
@@ -3505,6 +3561,11 @@
     ISFRuntime.prototype.bindPointer = function () {
         var self = this;
         var stage = this.viewer.dom.stage;
+        // Only feed the pointer extension from the render surface; UI events
+        // (sliders, selects, the editor) must keep their native behaviour.
+        function isRenderTarget(target) {
+            return target === self.viewer.dom.canvas;
+        }
         function point(event) {
             var canvas = self.viewer.dom.canvas;
             var rect = canvas.getBoundingClientRect();
@@ -3515,6 +3576,7 @@
             return [clamp(x, 0, self.destWidth), clamp(y, 0, self.destHeight)];
         }
         this._onPointerMove = function (event) {
+            if (!isRenderTarget(event.target)) return;
             var p = point(event);
             self.mouse[0] = p[0];
             self.mouse[1] = p[1];
@@ -3523,6 +3585,7 @@
             self.needsRender = true;
         };
         this._onPointerDown = function (event) {
+            if (!isRenderTarget(event.target)) return;
             var p = point(event);
             self.pointerDown = true;
             self._clickX = p[0];
@@ -4315,8 +4378,8 @@
         }) : null;
         if (sourceButton) sourceButton.innerHTML = ICONS.source;
         var shareButton = config.share !== false ? iconButton("share", "share", "Copy a link with the current parameters") : null;
-        actions.appendChild(paramsButton);
         if (editorButton) actions.appendChild(editorButton);
+        actions.appendChild(paramsButton);
         actions.appendChild(playButton);
         actions.appendChild(resetButton);
         actions.appendChild(fullscreenButton);
@@ -4396,6 +4459,20 @@
 
         stage.appendChild(leftDrawer);
         stage.appendChild(rightDrawer);
+        var leftTab = h("button", "isf-edge-tab isf-edge-tab-left", {
+            type: "button", html: ICONS.editor,
+            title: "Code editor (Ctrl/Cmd+B)",
+            "aria-label": "Toggle the code drawer",
+            "aria-expanded": "false"
+        });
+        var rightTab = h("button", "isf-edge-tab isf-edge-tab-right", {
+            type: "button", html: ICONS.params,
+            title: "Parameters (Ctrl/Cmd+K)",
+            "aria-label": "Toggle the parameters drawer",
+            "aria-expanded": "false"
+        });
+        stage.appendChild(leftTab);
+        stage.appendChild(rightTab);
         body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         block.appendChild(header);
@@ -4416,6 +4493,8 @@
             rightDrawer: rightDrawer,
             leftResize: leftResize,
             rightResize: rightResize,
+            leftTab: leftTab,
+            rightTab: rightTab,
             body: body,
             paramsPanel: paramsPanel,
             paramsList: paramsList,
@@ -4455,8 +4534,23 @@
 
         function maxDrawerWidth() {
             var stageWidth = stage.getBoundingClientRect().width || (typeof window !== "undefined" ? window.innerWidth : 1200);
-            // Two drawers must always leave the render visible between them.
-            return Math.max(220, Math.min(760, stageWidth * 0.46));
+            // One open drawer may take more room; two must leave the render visible.
+            var fraction = openDrawerCount() >= 2 ? 0.46 : 0.64;
+            return Math.max(240, Math.min(820, stageWidth * fraction));
+        }
+
+        function isDrawerClosed(drawer) {
+            return drawer.classList.contains("isf-drawer-closed");
+        }
+
+        function openDrawerCount() {
+            return (isDrawerClosed(leftDrawer) ? 0 : 1) + (isDrawerClosed(rightDrawer) ? 0 : 1);
+        }
+
+        function clampDrawerWidths() {
+            var limit = maxDrawerWidth();
+            if (leftDrawer.style.width) leftDrawer.style.width = clamp(parseFloat(leftDrawer.style.width) || 380, 240, limit) + "px";
+            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, limit) + "px";
         }
 
         function setDrawerWidth(drawer, px, key, persist) {
@@ -4521,8 +4615,7 @@
         if (storedLeft && config.persistLayout !== false) setDrawerWidth(leftDrawer, storedLeft, "leftWidth", false);
         if (storedRight && config.persistLayout !== false) setDrawerWidth(rightDrawer, storedRight, "paramsWidth", false);
         var drawerMetricsHandler = function () {
-            if (leftDrawer.style.width) leftDrawer.style.width = clamp(parseFloat(leftDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
-            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
+            clampDrawerWidths();
         };
         window.addEventListener("resize", drawerMetricsHandler);
         viewer.listeners.push(function () { window.removeEventListener("resize", drawerMetricsHandler); });
@@ -4692,9 +4785,17 @@
         };
         viewer.setDrawer = function (drawer, open) {
             drawer.classList.toggle("isf-drawer-closed", !open);
+            if (drawer === leftDrawer) {
+                leftTab.classList.toggle("isf-hidden", open);
+                leftTab.setAttribute("aria-expanded", open ? "true" : "false");
+            } else if (drawer === rightDrawer) {
+                rightTab.classList.toggle("isf-hidden", open);
+                rightTab.setAttribute("aria-expanded", open ? "true" : "false");
+            }
+            clampDrawerWidths();
         };
         viewer.isDrawerOpen = function (drawer) {
-            return !drawer.classList.contains("isf-drawer-closed");
+            return !isDrawerClosed(drawer);
         };
         viewer.setPanel = function (panel, open) {
             if (panel === viewer.dom.paramsPanel) viewer.setDrawer(rightDrawer, open);
@@ -4761,6 +4862,8 @@
 
         paramsButton.addEventListener("click", viewer.toggleParams);
         if (editorButton) editorButton.addEventListener("click", viewer.toggleEditor);
+        leftTab.addEventListener("click", viewer.toggleEditor);
+        rightTab.addEventListener("click", viewer.toggleParams);
         playButton.addEventListener("click", viewer.togglePlay);
         resetButton.addEventListener("click", viewer.resetAll);
         fullscreenButton.addEventListener("click", viewer.toggleFullscreen);
