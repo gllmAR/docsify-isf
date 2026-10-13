@@ -33,6 +33,8 @@
  *                           (slug or .fs; rendered once and reused)
  *   --image name=PATH       bind an image input from a file (repeatable)
  *   --date ISO|now          frozen DATE (default 2020-01-01T00:00:00Z)
+  --background CSS        composite over this colour (default #000, like the
+                           OBS covers); pass "transparent" to keep alpha
  *   --include DIR           extra include search dir (repeatable)
  *   --compare REF.png       diff the frame against a reference PNG
  *   --compare-dir DIR       diff each sweep frame against DIR/<slug>.png
@@ -134,6 +136,7 @@ function parseArgs(argv) {
         width: 320, height: 180, time: 1.5, steps: 1,
         date: "2020-01-01T00:00:00Z",
         parent: null, compare: null, compareDir: null, compareCover: false, cover: false,
+        background: "#000",
         threshold: 2, maxMae: 2, strict: false,
         timeout: 30000, chrome: process.env.CHROME_PATH || null
     };
@@ -184,6 +187,10 @@ function parseArgs(argv) {
         else if (arg === "--compare-dir") opts.compareDir = path.resolve(value());
         else if (arg === "--compare-cover") opts.compareCover = true;
         else if (arg === "--cover") opts.cover = true;
+        else if (arg === "--background") {
+            const bg = value();
+            opts.background = (bg === "transparent" || bg === "none") ? null : bg;
+        }
         else if (arg === "--threshold") opts.threshold = Number(value());
         else if (arg === "--max-mae") opts.maxMae = Number(value());
         else if (arg === "--strict") opts.strict = true;
@@ -212,7 +219,7 @@ function parseArgs(argv) {
  * comparison is not silently run with defaults. Colours are packed OBS ABGR
  * integers (`0xFF30C0FF`), unpacked for the shader.
  */
-function captureParams(raw) {
+export function captureParams(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
     const out = {};
     for (const [key, value] of Object.entries(raw)) {
@@ -230,7 +237,7 @@ function captureParams(raw) {
     return out;
 }
 
-function unpackColours(params, parsed) {
+export function unpackColours(params, parsed) {
     const byName = new Map(((parsed.metadata && parsed.metadata.INPUTS) || []).map((input) => [input.NAME || input.name, input]));
     const out = Object.assign({}, params);
     for (const [name, value] of Object.entries(out)) {
@@ -244,7 +251,7 @@ function unpackColours(params, parsed) {
 }
 
 /** The `_covers.json` record for a material, or null. */
-function findCoverRecord(file) {
+export function findCoverRecord(file) {
     let dir = path.dirname(file);
     for (let depth = 0; depth < 5; depth++) {
         const sidecar = path.join(dir, "_covers.json");
@@ -271,7 +278,7 @@ function findCoverRecord(file) {
 }
 
 /** IMPORTED textures resolved next to the material, as data URLs. */
-function importImages(parsed, materialFile) {
+export function importImages(parsed, materialFile) {
     const out = {};
     const imported = (parsed.metadata && parsed.metadata.IMPORTED) || null;
     if (!imported) return out;
@@ -501,6 +508,7 @@ export async function renderFrames(options = {}) {
         date: "2020-01-01T00:00:00Z",
         inputs: {}, images: {}, includes: [],
         threshold: 2, maxMae: 2, strict: false,
+        background: "#000",
         dryRun: false, quiet: true
     }, options);
     const ownsSession = !opts.session;
@@ -522,6 +530,7 @@ export async function renderFrames(options = {}) {
             time: opts.time,
             steps: opts.steps,
             date: opts.date,
+            background: opts.background,
             inputs: opts.inputs || {},
             images,
             includePaths,

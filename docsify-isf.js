@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.11.0
+ * docsify-isf v1.12.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.11.0";
+    var VERSION = "1.12.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -5495,11 +5495,23 @@
         this.raf = requestAnimationFrame(this._tick);
     };
 
-    ISFRuntime.prototype.snapshot = function () {
+    // `toDataURL` reads the drawing buffer, which is bottom-up relative to
+    // what the browser presents; flip it so exports match the screen (and the
+    // editor core's captures). Pass { flipY: false } for the raw buffer.
+    ISFRuntime.prototype.snapshot = function (options) {
         if (!this.program || !this.gl) return null;
         try {
             this.draw(0);
-            return this.gl.canvas.toDataURL("image/png");
+            var source = this.gl.canvas;
+            if (options && options.flipY === false) return source.toDataURL("image/png");
+            var canvas = document.createElement("canvas");
+            canvas.width = source.width;
+            canvas.height = source.height;
+            var context = canvas.getContext("2d");
+            context.translate(0, canvas.height);
+            context.scale(1, -1);
+            context.drawImage(source, 0, 0);
+            return canvas.toDataURL("image/png");
         } catch (err) {
             return null;
         }
@@ -6984,14 +6996,42 @@
                 runtime.draw(time / steps);
             }
         }
+        // snapshot() already flips the drawing buffer to screen orientation.
         var dataUrl = runtime.snapshot();
         if (!dataUrl) throw new Error("renderFrame: the shader did not produce a frame");
+        // ISF output is straight RGBA; OBS composites it over the source
+        // behind (black for a generator). Flatten by default so headless
+        // frames match the cover captures, with `background: null` to keep
+        // the alpha channel.
+        var background = options.background === undefined ? "#000" : options.background;
+        if (background) {
+            var flat = document.createElement("canvas");
+            flat.width = width;
+            flat.height = height;
+            var context = flat.getContext("2d");
+            context.fillStyle = background;
+            context.fillRect(0, 0, flat.width, flat.height);
+            context.drawImage(runtime.gl.canvas, 0, 0, width, height);
+            var flipped = flat.toDataURL("image/png");
+            // drawImage of the WebGL drawing buffer is bottom-up too; flip it
+            // back so the flattened frame has the same orientation as the
+            // unflattened one.
+            var oriented = document.createElement("canvas");
+            oriented.width = width;
+            oriented.height = height;
+            var flipContext = oriented.getContext("2d");
+            flipContext.translate(0, height);
+            flipContext.scale(1, -1);
+            flipContext.drawImage(flat, 0, 0);
+            dataUrl = oriented.toDataURL("image/png");
+        }
         return {
             dataUrl: dataUrl,
             width: runtime.destWidth,
             height: runtime.destHeight,
             time: runtime.time,
             steps: steps,
+            background: background || null,
             mode: runtime.compatibilityLabel || (runtime.isGL2 ? "ES 3.00" : "ES 1.00"),
             warnings: (viewer.built && viewer.built.warnings) || []
         };
