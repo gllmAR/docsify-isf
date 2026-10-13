@@ -366,14 +366,17 @@ background so the shader stays visible. They start closed according to
 
 | Drawer | Toggle | Handle | Keys | Reset | Persisted |
 |---|---|---|---|---|---|
-| Code (left) | `</>` / Ctrl-Cmd+B | edge tab or rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
-| Parameters (right) | sliders / Ctrl-Cmd+K | edge tab or rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
+| Code (left) | `</>` in the toolbar / Ctrl-Cmd+B | rail on its right edge | ←/→ (Shift = ×4), Home/End | double-click | `leftWidth` in `docsify-isf:layout` |
+| Parameters (right) | sliders button in the toolbar / Ctrl-Cmd+K | rail on its left edge | ←/→, Home/End | double-click | `paramsWidth` |
 | Editor height | — | rail above the editor | ↑/↓, Home/End | double-click | `editorHeight` |
 
-Slim edge tabs sit on the left and right of the stage and open a drawer; they
-hide while it is open. Widths are clamped to 240 px…64 % of the stage for a
-single drawer and 46 % when both are open (two drawers always leave the render
-visible), the editor height to 120 px…85 vh. Handles are
+Drawers are opened from the top-bar buttons only (there are no lateral tabs);
+the buttons keep `aria-pressed`/`aria-expanded` in sync with the drawer state
+and the panels' × buttons. Widths are clamped to 240 px…64 % of the stage for
+a single drawer and 46 % when both are open (two drawers always leave the
+render visible), the editor height to 120 px…85 vh. On viewports up to 600 px
+narrow each drawer takes the full stage, opening one closes the other, and the
+horizontal resize rails are hidden. Handles are
 `role="separator"` with `aria-orientation`; persistence is opt-out via
 `persistLayout: false`. The drawer scrolls its own `.isf-drawer-inner`, so the
 rail never scrolls away. In fullscreen the drawers stay as overlays over the

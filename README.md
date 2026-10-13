@@ -287,11 +287,15 @@ current frame.
 - `width`, `height` and `aspectRatio` size the preview; the code and
   parameter drawers overlay the canvas (left/right) at every width and never
   change the render size. They are translucent/glassy (backdrop blur) so the
-  shader stays visible; slim **edge tabs** on the left (`</>`) and right
-  (sliders) open them and disappear while the drawer is open. One drawer may
-  use up to 64 % of the stage, two are capped at 46 % each so the render stays
-  visible; on narrow screens they take nearly the full width and the resize
+  shader stays visible and are toggled from the top bar (`</>` editor and the
+  sliders button, `aria-pressed`-aware). One drawer may use up to 64 % of the
+  stage, two are capped at 46 % each so the render stays visible; on phones
+  each drawer fills the stage, opening one closes the other, and the resize
   rails are hidden.
+- The top bar is responsive: on narrow screens the title gets its own row and
+  the action buttons wrap, keeping every control visible and at least 36 px
+  tall on touch devices; controls and drawers respect the notch safe areas,
+  and form fields switch to 16 px on coarse pointers so iOS does not zoom.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles
   fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
   `aria-expanded`, and the status regions are `aria-live`.

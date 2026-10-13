@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.8.0
+ * docsify-isf v1.9.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.8.0";
+    var VERSION = "1.9.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -3346,12 +3346,13 @@
             ".isf-block{--isf-bg:#fff;--isf-drawer-bg:rgba(255,255,255,.74);--isf-surface:#f6f7f9;--isf-surface-2:#eceef2;--isf-border:#e2e4e9;--isf-text:#1c1e22;--isf-muted:#6b7280;--isf-accent:var(--theme-color,#d374d6);--isf-accent-contrast:#fff;--isf-danger:#e5484d;--isf-code-bg:#16181d;--isf-code-text:#c8ccd4;--isf-code-com:#6b7280;--isf-code-kw:#c678dd;--isf-code-type:#e5c07b;--isf-code-fn:#61afef;--isf-code-isf:#56b6c2;--isf-code-num:#d19a66;--isf-code-str:#98c379;--isf-code-var:#e06c75;position:relative;margin:1.1rem 0;border:1px solid var(--isf-border);border-radius:12px;background:var(--isf-bg);overflow:hidden;box-shadow:0 6px 18px rgba(15,18,25,.06);contain:content}",
             "@media (prefers-color-scheme:dark){.isf-block{--isf-bg:#1e1f22;--isf-drawer-bg:rgba(24,25,28,.72);--isf-surface:#24262b;--isf-surface-2:#2b2d33;--isf-border:#34373e;--isf-text:#f0f1f3;--isf-muted:#9aa0a6;--isf-danger:#ff6369;--isf-code-bg:#131418}}",
             ".isf-block *{box-sizing:border-box}",
-            ".isf-header{display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
+            ".isf-header{display:flex;align-items:center;gap:.5rem;padding:.5rem max(.6rem,env(safe-area-inset-left)) .5rem max(.6rem,env(safe-area-inset-right));border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
             ".isf-title{flex:1 1 auto;min-width:0;color:var(--isf-text);font-weight:600;font-size:.92rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-title:hover{text-decoration:underline;color:var(--isf-accent)}",
             ".isf-icon{display:block;width:15px;height:15px;fill:currentColor}",
-            ".isf-actions{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap}",
-            ".isf-btn{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;transition:background .12s ease,border-color .12s ease}",
+            ".isf-actions{display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;min-width:0;scrollbar-width:none}",
+            ".isf-actions::-webkit-scrollbar{display:none}",
+            ".isf-btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .12s ease,border-color .12s ease}",
             ".isf-btn:hover{background:var(--isf-surface-2)}",
             ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
@@ -3367,11 +3368,6 @@
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-badge{position:absolute;right:.5rem;bottom:.45rem;z-index:2;background:rgba(10,11,14,.6);color:#e7e9ee;border-radius:5px;padding:.12rem .35rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em}",
             ".isf-drawer{position:absolute;top:0;bottom:0;z-index:5;display:flex;flex-direction:column;width:min(360px,48%);max-width:92%;background:var(--isf-drawer-bg);-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);transition:transform .18s ease,opacity .18s ease;box-shadow:0 0 24px rgba(0,0,0,.18)}",
-            ".isf-edge-tab{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:24px;height:44px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--isf-border);background:var(--isf-drawer-bg);color:var(--isf-muted);cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,.18)}",
-            ".isf-edge-tab:hover{color:var(--isf-accent);background:var(--isf-surface-2)}",
-            ".isf-edge-tab-left{left:0;border-left:0;border-radius:0 8px 8px 0}",
-            ".isf-edge-tab-right{right:0;border-right:0;border-radius:8px 0 0 8px}",
-            ".isf-edge-tab .isf-icon{width:15px;height:15px}",
             ".isf-drawer-left{left:0;border-right:1px solid var(--isf-border)}",
             ".isf-drawer-right{right:0;border-left:1px solid var(--isf-border)}",
             ".isf-drawer.isf-drawer-closed{opacity:0;visibility:hidden;pointer-events:none}",
@@ -3408,7 +3404,7 @@
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
-            ".isf-editor-actions{display:flex;gap:.25rem}",
+            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0}",
             ".isf-editor-actions .isf-btn{padding:.2rem .45rem}",
             ".isf-editor{position:relative;display:flex;height:300px;background:var(--isf-code-bg);color:var(--isf-code-text);overflow:hidden;font-size:12px}",
             ".isf-gutter{flex:0 0 auto;width:3em;padding:8px 4px 8px 0;text-align:right;overflow:hidden;background:rgba(255,255,255,.03);color:#565c66;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:inherit;line-height:1.55;white-space:pre;user-select:none}",
@@ -3432,6 +3428,7 @@
             ".isf-hidden{display:none!important}",
             ".isf-block:fullscreen{position:fixed;inset:0;margin:0;border:0;border-radius:0;display:flex;flex-direction:column;background:#0b0c10;contain:none}",
             ".isf-block:fullscreen .isf-header{background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto;position:relative;z-index:6}",
+            ".isf-block:fullscreen .isf-header{padding-top:max(.5rem,env(safe-area-inset-top))}",
             ".isf-block:fullscreen .isf-title{color:#f0f1f3}",
             ".isf-block:fullscreen .isf-header .isf-btn{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:#f0f1f3}",
             ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
@@ -3486,9 +3483,9 @@
             ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
             ".isf-spinner{width:22px;height:22px;margin:0 auto .5rem;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:isf-spin .8s linear infinite}",
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
-            "@media (pointer:coarse){.isf-btn{padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem}.isf-param-control input[type=range]{height:26px}}",
+            "@media (pointer:coarse){.isf-param-control input[type=number],.isf-param-control select,.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem;min-height:36px}.isf-param-control input[type=range]{height:28px}.isf-param-control input[type=number]{padding:.3rem .35rem;font-size:.82rem}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}.isf-editor-pos{display:none}.isf-drawer{width:min(100%,94vw)!important;max-width:94vw}.isf-resize-x{display:none}}"
+            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-editor{height:min(300px,52vh)}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}"
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -5578,11 +5575,14 @@
             title: "Open " + viewer.title + " source",
             text: viewer.title
         });
+        var uid = "isf-" + (++VIEWER_SEQ);
         var actions = h("div", "isf-actions");
         var paramsButton = iconButton("params", "params", "Parameters");
+        paramsButton.setAttribute("aria-controls", uid + "-params");
         var paramsCount = h("span", "isf-count");
         paramsButton.appendChild(paramsCount);
         var editorButton = config.editor ? iconButton("editor", "editor", "Source editor") : null;
+        if (editorButton) editorButton.setAttribute("aria-controls", uid + "-editor");
         var playButton = iconButton("play", "play", "Pause");
         var resetButton = iconButton("reset", "reset", "Reset parameters and time");
         var fullscreenButton = iconButton("fullscreen", "fullscreen", "Fullscreen");
@@ -5617,7 +5617,6 @@
         stage.appendChild(overlay);
         stage.appendChild(badge);
 
-        var uid = "isf-" + (++VIEWER_SEQ);
         var paramsPanel = h("div", "isf-panel isf-params", {
             id: uid + "-params", role: "region", "aria-label": "Parameters"
         });
@@ -5648,6 +5647,7 @@
         var editor = null;
         if (config.editor) {
             editor = createEditor(viewer, config);
+            editor.el.id = uid + "-editor";
             editor.el.classList.add("isf-hidden");
             leftInner.appendChild(editor.el);
         }
@@ -5676,20 +5676,7 @@
 
         stage.appendChild(leftDrawer);
         stage.appendChild(rightDrawer);
-        var leftTab = h("button", "isf-edge-tab isf-edge-tab-left", {
-            type: "button", html: ICONS.editor,
-            title: "Code editor (Ctrl/Cmd+B)",
-            "aria-label": "Toggle the code drawer",
-            "aria-expanded": "false"
-        });
-        var rightTab = h("button", "isf-edge-tab isf-edge-tab-right", {
-            type: "button", html: ICONS.params,
-            title: "Parameters (Ctrl/Cmd+K)",
-            "aria-label": "Toggle the parameters drawer",
-            "aria-expanded": "false"
-        });
-        stage.appendChild(leftTab);
-        stage.appendChild(rightTab);
+        updateDrawerButtons();
         body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         block.appendChild(header);
@@ -5710,8 +5697,6 @@
             rightDrawer: rightDrawer,
             leftResize: leftResize,
             rightResize: rightResize,
-            leftTab: leftTab,
-            rightTab: rightTab,
             body: body,
             paramsPanel: paramsPanel,
             paramsList: paramsList,
@@ -6000,16 +5985,36 @@
             html += '</div><div class="isf-overlay-actions"><button class="isf-overlay-btn" type="button" data-isf-overlay="close">Close</button></div>';
             viewer.showOverlay(html, true);
         };
-        viewer.setDrawer = function (drawer, open) {
-            drawer.classList.toggle("isf-drawer-closed", !open);
-            if (drawer === leftDrawer) {
-                leftTab.classList.toggle("isf-hidden", open);
-                leftTab.setAttribute("aria-expanded", open ? "true" : "false");
-            } else if (drawer === rightDrawer) {
-                rightTab.classList.toggle("isf-hidden", open);
-                rightTab.setAttribute("aria-expanded", open ? "true" : "false");
+        function isNarrowLayout() {
+            var width = stage.getBoundingClientRect().width || (typeof window !== "undefined" ? window.innerWidth : 1200);
+            return width > 0 && width <= 600;
+        }
+
+        // The toolbar buttons are the single control surface for the drawers;
+        // keep their pressed/expanded state in sync wherever a drawer changes.
+        function updateDrawerButtons() {
+            var rightOpen = !isDrawerClosed(rightDrawer);
+            paramsButton.setAttribute("aria-pressed", rightOpen ? "true" : "false");
+            paramsButton.setAttribute("aria-expanded", rightOpen ? "true" : "false");
+            paramsButton.classList.toggle("is-active", rightOpen);
+            if (editorButton) {
+                var leftOpen = !isDrawerClosed(leftDrawer);
+                editorButton.setAttribute("aria-pressed", leftOpen ? "true" : "false");
+                editorButton.setAttribute("aria-expanded", leftOpen ? "true" : "false");
+                editorButton.classList.toggle("is-active", leftOpen);
             }
+        }
+        viewer.updateDrawerButtons = updateDrawerButtons;
+
+        viewer.setDrawer = function (drawer, open) {
+            if (open && isNarrowLayout()) {
+                // Phones: one drawer at a time, so the render stays reachable.
+                var other = drawer === leftDrawer ? rightDrawer : leftDrawer;
+                if (!isDrawerClosed(other)) other.classList.add("isf-drawer-closed");
+            }
+            drawer.classList.toggle("isf-drawer-closed", !open);
             clampDrawerWidths();
+            updateDrawerButtons();
         };
         viewer.isDrawerOpen = function (drawer) {
             return !isDrawerClosed(drawer);
@@ -6024,20 +6029,13 @@
             }
         };
         viewer.toggleParams = function () {
-            var open = !viewer.isDrawerOpen(rightDrawer);
-            viewer.setDrawer(rightDrawer, open);
-            paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
-            paramsButton.setAttribute("aria-expanded", open ? "true" : "false");
-            paramsButton.classList.toggle("is-active", open);
+            viewer.setDrawer(rightDrawer, !viewer.isDrawerOpen(rightDrawer));
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
             var open = !viewer.isDrawerOpen(leftDrawer);
             viewer.setDrawer(leftDrawer, open);
             if (open) showEditorPanel();
-            editorButton.setAttribute("aria-pressed", open ? "true" : "false");
-            editorButton.setAttribute("aria-expanded", open ? "true" : "false");
-            editorButton.classList.toggle("is-active", open);
             if (open && viewer.editor) viewer.editor.focus();
         };
         viewer.togglePlay = function () {
@@ -6079,8 +6077,6 @@
 
         paramsButton.addEventListener("click", viewer.toggleParams);
         if (editorButton) editorButton.addEventListener("click", viewer.toggleEditor);
-        leftTab.addEventListener("click", viewer.toggleEditor);
-        rightTab.addEventListener("click", viewer.toggleParams);
         playButton.addEventListener("click", viewer.togglePlay);
         resetButton.addEventListener("click", viewer.resetAll);
         fullscreenButton.addEventListener("click", viewer.toggleFullscreen);
@@ -6359,10 +6355,6 @@
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
             if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
             viewer.setDrawer(rightDrawer, open);
-            paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
-            paramsButton.setAttribute("aria-expanded", open ? "true" : "false");
-            paramsButton.classList.toggle("is-active", open);
-            paramsButton.setAttribute("aria-controls", viewer.dom.paramsPanel.id);
             var hasControls = config.controls && inputs.length > 0;
             paramsButton.classList.toggle("isf-hidden", !hasControls);
         };

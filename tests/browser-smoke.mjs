@@ -531,7 +531,7 @@ try {
     if (!liveControls.shortcutsShown) problems.push("shortcut overlay did not open");
     if (!/Loaded drop-test\.png/.test(liveControls.dropStatus)) problems.push("drag & drop did not load the image: " + JSON.stringify(liveControls.dropStatus));
 
-    // Real interaction regression: edge tabs, slider drag, editor typing.
+    // Real interaction regression: toolbar drawer toggles, slider drag, editor typing.
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         b.scrollIntoView({ block: "center" });
@@ -539,22 +539,20 @@ try {
         if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Parameters"]').click();
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
-    const edgeTabBefore = await page.evaluate(() => {
-        const b = document.querySelector(".isf-block");
-        const left = b.querySelector(".isf-edge-tab-left");
-        return { visible: !!left && !left.classList.contains("isf-hidden") };
-    });
-    await page.click(".isf-block .isf-edge-tab-left");
+    const lateralTabs = await page.$$eval(".isf-block .isf-edge-tab", (elements) => elements.length);
+    if (lateralTabs !== 0) problems.push("lateral edge tabs should be gone, found " + lateralTabs);
+
+    await page.click('.isf-block .isf-btn[title="Source editor"]');
     await new Promise((resolve) => setTimeout(resolve, 350));
-    const edgeTabAfter = await page.evaluate(() => {
+    const toolbarToggle = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
+        const button = b.querySelector('.isf-btn[title="Source editor"]');
         return {
             drawerOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
-            tabHidden: b.querySelector(".isf-edge-tab-left").classList.contains("isf-hidden")
+            pressed: button.getAttribute("aria-pressed") === "true" && button.classList.contains("is-active")
         };
     });
-    if (!edgeTabBefore.visible) problems.push("left edge tab missing while the drawer is closed");
-    if (!edgeTabAfter.drawerOpen || !edgeTabAfter.tabHidden) problems.push("left edge tab did not toggle the code drawer");
+    if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed) problems.push("toolbar editor button did not open the code drawer");
 
     await page.click('.isf-block .isf-btn[title="Parameters"]');
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -607,6 +605,63 @@ try {
     });
     if (!recovery.found) problems.push("test-card viewer not found for budget recovery");
     else if (!recovery.alreadyLive && !recovery.resumed) problems.push("released viewer did not resume: " + recovery.overlay);
+
+    // Modern phone: the toolbar stays usable, drawers fill the stage and
+    // swapping one for the other keeps the render reachable.
+    await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        b.scrollIntoView({ block: "center" });
+        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Source editor"]').click();
+        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Parameters"]').click();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const phone = await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        const actions = b.querySelector(".isf-actions");
+        const buttons = Array.from(actions.querySelectorAll(".isf-btn"));
+        const heights = buttons.map((button) => button.getBoundingClientRect().height);
+        return {
+            viewport: window.innerWidth,
+            blockWidth: b.getBoundingClientRect().width,
+            overflow: b.scrollWidth - b.clientWidth,
+            minButton: heights.length ? Math.min.apply(null, heights) : 0,
+            actionButtons: buttons.length,
+            stripHeight: actions.getBoundingClientRect().height
+        };
+    });
+    if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
+    if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px)");
+    if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
+
+    await page.click('.isf-block .isf-btn[title="Parameters"]');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const phoneParams = await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        const drawer = b.querySelector(".isf-drawer-right");
+        const stage = b.querySelector(".isf-stage");
+        return {
+            open: !drawer.classList.contains("isf-drawer-closed"),
+            drawerWidth: drawer.getBoundingClientRect().width,
+            stageWidth: stage.getBoundingClientRect().width
+        };
+    });
+    if (!phoneParams.open) problems.push("mobile: parameters did not open from the toolbar");
+    if (phoneParams.drawerWidth < phoneParams.stageWidth - 2) problems.push("mobile: parameters drawer should fill the stage width");
+
+    await page.click('.isf-block .isf-btn[title="Source editor"]');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const phoneSwap = await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        return {
+            editorOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
+            paramsClosed: b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")
+        };
+    });
+    if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
+    await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
+    await page.setViewport({ width: 1280, height: 1000 });
 
     if (consoleErrors.length) {
         problems.push("console errors:\n    " + consoleErrors.join("\n    "));
