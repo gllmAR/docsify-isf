@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.5.0
+ * docsify-isf v1.6.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.5.0";
+    var VERSION = "1.6.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1156,7 +1156,17 @@
         point2D: { uniform: "vec2" },
         image: { uniform: "sampler2D" },
         audio: { uniform: "sampler2D" },
-        audioFFT: { uniform: "sampler2D" }
+        audioFFT: { uniform: "sampler2D" },
+        // MadMapper generator/controller inputs surface as scalars, except
+        // floatRange which is a min/max pair indexed by [0]/[1].
+        floatRange: { uniform: "vec2" },
+        animator: { uniform: "float" },
+        shaper: { uniform: "float" },
+        incrementer: { uniform: "float" },
+        damper: { uniform: "float" },
+        pass_thru: { uniform: "float" },
+        linear_filter: { uniform: "float" },
+        adsr: { uniform: "float" }
     };
 
     // Metadata TYPE spellings are case-insensitive; `int` is a MadMapper alias
@@ -1171,7 +1181,15 @@
         point2d: "point2D",
         image: "image",
         audio: "audio",
-        audiofft: "audioFFT"
+        audiofft: "audioFFT",
+        floatrange: "floatRange",
+        animator: "animator",
+        shaper: "shaper",
+        incrementer: "incrementer",
+        damper: "damper",
+        pass_thru: "pass_thru",
+        linear_filter: "linear_filter",
+        adsr: "adsr"
     };
 
     function firstDefined() {
@@ -1494,10 +1512,89 @@
     // `#define`s are learned from the source (including inlined includes).
     // Only ever used as a retry after a shader has already failed to compile,
     // so working shaders are untouched.
-    function promoteIntegerLiterals(source, floatNames, intNames) {
+    // Per-line view of the identifiers visible in each lexical scope. The
+    // corpus reuses names like `i` or `p` for different types in different
+    // functions (`vec3 i` in one helper, `int i` in another), so a flat name
+    // list cannot decide whether a literal or identifier needs promotion.
+    function analyzeDeclarationScopes(text, seedInts, seedFloats) {
+        var lines = String(text == null ? "" : text).split("\n");
+        var frames = [{ ints: {}, floats: {} }];
+        var key;
+        if (seedInts) for (key in seedInts) if (Object.prototype.hasOwnProperty.call(seedInts, key)) frames[0].ints[key] = true;
+        if (seedFloats) for (key in seedFloats) if (Object.prototype.hasOwnProperty.call(seedFloats, key)) frames[0].floats[key] = true;
+        var intDeclRe = /\b(?:int|uint|ivec[234]|uvec[234])\s+([A-Za-z_]\w*)/g;
+        var floatDeclRe = /\b(?:float|vec[234]|mat[234])\s+([A-Za-z_]\w*)/g;
+        var defineRe = /#\s*define\s+([A-Za-z_]\w*)\s+[-+]?(?:\d+\.\d*|\.\d+)/g;
+        var result = [];
+        var pendingParams = null;
+        for (var i = 0; i < lines.length; i++) {
+            var raw = lines[i];
+            var code = raw.replace(/\/\/[^\n]*$/, "").replace(/\/\*[\s\S]*?\*\//g, "");
+            var active = { ints: {}, floats: {} };
+            for (var f = 0; f < frames.length; f++) {
+                var frame = frames[f];
+                for (key in frame.ints) if (Object.prototype.hasOwnProperty.call(frame.ints, key)) active.ints[key] = true;
+                for (key in frame.floats) if (Object.prototype.hasOwnProperty.call(frame.floats, key)) active.floats[key] = true;
+            }
+            result[i] = active;
+            defineRe.lastIndex = 0;
+            var defineMatch;
+            while ((defineMatch = defineRe.exec(raw))) frames[0].floats[defineMatch[1]] = true;
+            // Function signatures: parameters of a definition belong to the
+            // body scope (which may open on the next line), parameters of a
+            // prototype must not leak anywhere.
+            var signatureMatch = /^[ \t]*(?:void|float|int|bool|vec[234]|ivec[234]|uvec[234]|bvec[234]|mat[234])\s+[A-Za-z_]\w*\s*\(([^)]*)\)/.exec(code);
+            var signatureTail = signatureMatch ? code.slice(signatureMatch[0].length) : "";
+            var isPrototype = !!(signatureMatch && /^\s*;/.test(signatureTail));
+            var isDefinition = !!(signatureMatch && /^\s*\{/.test(signatureTail));
+            var isPendingSignature = !!(signatureMatch && !isPrototype && !isDefinition);
+            var declSource = code;
+            if (signatureMatch) declSource = isPrototype ? "" : signatureMatch[1];
+            var lineInts = {};
+            var lineFloats = {};
+            var match;
+            intDeclRe.lastIndex = 0;
+            while ((match = intDeclRe.exec(declSource))) {
+                if (declSource.charAt(intDeclRe.lastIndex) === "(") continue;
+                lineInts[match[1]] = true;
+            }
+            floatDeclRe.lastIndex = 0;
+            while ((match = floatDeclRe.exec(declSource))) lineFloats[match[1]] = true;
+            var opens = (code.match(/\{/g) || []).length;
+            var closes = (code.match(/\}/g) || []).length;
+            var net = opens - closes;
+            // Declarations on a line that opens a block (function parameters,
+            // for-counters) belong to the new scope. A one-line function
+            // definition gets its own frame too, popped at the end of the line.
+            if (isDefinition || net > 0) frames.push({ ints: {}, floats: {} });
+            var target = frames[frames.length - 1];
+            if (isPendingSignature) {
+                // `float foo(int n)` with the opening brace on the next line:
+                // hold the parameters until that brace arrives.
+                pendingParams = { ints: lineInts, floats: lineFloats };
+            } else {
+                if (pendingParams && (isDefinition || net > 0)) {
+                    for (key in pendingParams.ints) if (Object.prototype.hasOwnProperty.call(pendingParams.ints, key)) target.ints[key] = true;
+                    for (key in pendingParams.floats) if (Object.prototype.hasOwnProperty.call(pendingParams.floats, key)) target.floats[key] = true;
+                    pendingParams = null;
+                }
+                for (key in lineInts) if (Object.prototype.hasOwnProperty.call(lineInts, key)) target.ints[key] = true;
+                for (key in lineFloats) if (Object.prototype.hasOwnProperty.call(lineFloats, key)) target.floats[key] = true;
+            }
+            if (isDefinition && net <= 0) {
+                for (var popDefinition = 0; popDefinition < 1 - net && frames.length > 1; popDefinition++) frames.pop();
+            } else if (net < 0) {
+                for (var pop = 0; pop < -net && frames.length > 1; pop++) frames.pop();
+            }
+        }
+        return result;
+    }
+
+    function promoteIntegerLiterals(source, floatNames, intNames, noCastInts, intParamPositions) {
         var text = String(source == null ? "" : source);
         var names = floatNames || {};
         var integers = intNames || {};
+        var noCast = noCastInts || {};
 
         // 1. Float `const int` declarations whose name is only used in
         //    arithmetic (never as an array index, loop bound or bit operand).
@@ -1515,47 +1612,36 @@
             text = text.replace(declaration, "const float " + conversions[c].name + " = " + conversions[c].value + ".0;");
         }
 
-        // 2. Learn float identifiers from float/vec/mat declarations and
-        //    float-valued `#define`s (including inlined includes).
-        var floatDeclRe = /\b(?:const\s+)?(?:lowp\s+|mediump\s+|highp\s+)?(?:float|vec[234]|mat[234])\s+([A-Za-z_]\w*)/g;
-        var floatDecl;
-        while ((floatDecl = floatDeclRe.exec(text))) {
-            if (floatDecl[1]) names[floatDecl[1]] = true;
-        }
-        var defineRe = /#\s*define\s+([A-Za-z_]\w*)\s+[-+]?(?:\d+\.\d*|\.\d+)/g;
-        var defineMatch;
-        while ((defineMatch = defineRe.exec(text))) {
-            if (defineMatch[1]) names[defineMatch[1]] = true;
-        }
+        // 2. Scope tracking: for every line, the int and float names visible
+        //    in its scope.
+        var scopes = analyzeDeclarationScopes(text, integers, names);
+        var intVectorDims = {};
+        var intVectorRe = /\b([iu]vec([234]))\s+([A-Za-z_]\w*)/g;
+        var intVectorMatch;
+        while ((intVectorMatch = intVectorRe.exec(text))) intVectorDims[intVectorMatch[3]] = Number(intVectorMatch[2]);
 
-        // 3. Collect every int/uint identifier declared anywhere (inputs were
-        //    seeded by the caller); their lines need int/float care.
-        var intDeclRe = /\b(?:int|uint|ivec[234]|uvec[234])\s+([A-Za-z_]\w*)/g;
-        var intDecl;
-        while ((intDecl = intDeclRe.exec(text))) {
-            // `int name(` is a function return type, not an int variable.
-            if (text.charAt(intDeclRe.lastIndex) === "(") continue;
-            if (intDecl[1]) integers[intDecl[1]] = true;
+        // 3. Regexes per name set, cached: the same scope typically repeats.
+        var patternCache = {};
+        function patternsFor(intsObj, floatsObj) {
+            var intList = Object.keys(intsObj).sort();
+            var floatList = Object.keys(floatsObj).sort();
+            var cacheKey = intList.join(",") + "##" + floatList.join(",");
+            var cached = patternCache[cacheKey];
+            if (cached) return cached;
+            var patterns = {
+                ints: intsObj,
+                floats: floatsObj,
+                intKeys: intList,
+                intAssignRe: intList.length
+                    ? new RegExp("(^|[^A-Za-z0-9_])(?:" + intList.map(escapeRegExp).join("|") + ")\\s*(?:[+\\-*\\/%]?=(?!=)|\\+\\+|--)")
+                    : null,
+                nameRe: floatList.length
+                    ? new RegExp("(^|[^A-Za-z0-9_])(?:" + floatList.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)")
+                    : null
+            };
+            patternCache[cacheKey] = patterns;
+            return patterns;
         }
-        // A name also declared as float/vec/mat (e.g. `vec2 i` in a helper) is
-        // not treated as an int identifier; scoping is not tracked here.
-        var nonIntDeclRe = /\b(?:float|vec[234]|mat[234])\s+([A-Za-z_]\w*)/g;
-        var nonIntDecl;
-        while ((nonIntDecl = nonIntDeclRe.exec(text))) {
-            if (nonIntDecl[1]) delete integers[nonIntDecl[1]];
-        }
-        var intKeys = Object.keys(integers);
-        var intTestRe = intKeys.length
-            ? new RegExp("(^|[^A-Za-z0-9_])(" + intKeys.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)")
-            : null;
-        var intCastRe = intKeys.length ? new RegExp("\\b(" + intKeys.map(escapeRegExp).join("|") + ")\\b", "g") : null;
-        var intAssignRe = intKeys.length
-            ? new RegExp("(^|[^A-Za-z0-9_])(?:" + intKeys.map(escapeRegExp).join("|") + ")\\s*(?:[+\\-*\\/%]?=(?!=)|\\+\\+|--)")
-            : null;
-
-        // 4. Shared regexes for the line pass below.
-        var nameKeys = Object.keys(names);
-        var nameRe = nameKeys.length ? new RegExp("(^|[^A-Za-z0-9_])(?:" + nameKeys.map(escapeRegExp).join("|") + ")([^A-Za-z0-9_]|$)") : null;
         var promotionRe = /(^|[^\w.])(\d+)(?![\w.])(?!\.\d)/g;
 
         function insideBrackets(text, offset) {
@@ -1567,37 +1653,121 @@
             return depth > 0;
         }
 
-        function castAndPromote(fragment, declaredName, equalIndex, force, extraInts) {
+        // Bare identifiers passed to int parameters of user functions keep
+        // their int type even in an otherwise float expression.
+        var intParamRe = intParamPositions && Object.keys(intParamPositions).length
+            ? new RegExp("\\b(?:" + Object.keys(intParamPositions).map(escapeRegExp).join("|") + ")\\b")
+            : null;
+
+        // Functions that return non-int values: an int identifier used inside
+        // one of these calls is part of a float expression and can be cast.
+        var floatFunctionNames = { float: true, vec2: true, vec3: true, vec4: true, mat2: true, mat3: true, mat4: true, ivec2: true, ivec3: true, ivec4: true, uvec2: true, uvec3: true, uvec4: true };
+        for (var builtinName in GLSL_BUILTINS) {
+            if (Object.prototype.hasOwnProperty.call(GLSL_BUILTINS, builtinName)) floatFunctionNames[builtinName] = true;
+        }
+        var floatReturnRe = /\b(float|vec[234]|mat[234])\s+([A-Za-z_]\w*)\s*\(/g;
+        var floatReturnMatch;
+        while ((floatReturnMatch = floatReturnRe.exec(text))) floatFunctionNames[floatReturnMatch[2]] = true;
+        function insideFloatCall(fragment, offset) {
+            var depth = 0;
+            for (var k = offset - 1; k >= 0; k--) {
+                var ch = fragment.charAt(k);
+                if (ch === ")") depth++;
+                else if (ch === "(") {
+                    if (depth === 0) {
+                        var before = fragment.slice(0, k).replace(/[ \t]+$/, "");
+                        var nameMatch = /([A-Za-z_]\w*)$/.exec(before);
+                        return !!(nameMatch && floatFunctionNames[nameMatch[1]]);
+                    }
+                    depth--;
+                }
+            }
+            return false;
+        }
+        function protectedCallArguments(line) {
+            if (!intParamRe || !intParamRe.test(line)) return null;
+            var tokens = tokenizeGLSL(line);
+            var protectedNames = null;
+            for (var t = 0; t < tokens.length; t++) {
+                var token = tokens[t];
+                if (token.type !== "ident") continue;
+                var positions = intParamPositions[token.text];
+                if (!positions) continue;
+                var openIndex = -1;
+                for (var o = t + 1; o < tokens.length; o++) {
+                    if (tokens[o].type === "space" || tokens[o].type === "comment") continue;
+                    if (tokens[o].type === "op" && tokens[o].text === "(") openIndex = o;
+                    break;
+                }
+                if (openIndex === -1) continue;
+                var call = callArgumentTexts(tokens, openIndex);
+                if (!call) continue;
+                for (var p = 0; p < positions.length; p++) {
+                    var argument = call.args[positions[p]];
+                    var identifier = argument && /^\s*([A-Za-z_]\w*)\s*$/.exec(argument);
+                    if (!identifier) continue;
+                    if (!protectedNames) protectedNames = {};
+                    protectedNames[identifier[1]] = true;
+                }
+            }
+            return protectedNames;
+        }
+
+        function castAndPromote(fragment, declaredName, equalIndex, force, extraInts, patterns, intDeclaration, protectedNames, inlineInts) {
             var code = fragment;
+            var active = patterns || patternsFor(integers, names);
             var floatContext = /(\d+\.\d*|\.\d+|\b(float|vec[234]|mat[234])\b)/.test(code) ||
                 /\b(TIME|TIMEDELTA|RENDERSIZE|DATE|isf_FragNormCoord|gl_FragCoord|_isfMouse)\b/.test(code) ||
                 /\b(?:int|uint)\s*\(/.test(code) ||
-                !!(nameRe && nameRe.test(code));
+                !!(active.nameRe && active.nameRe.test(code));
             if (!floatContext && !force) return fragment;
-            // `int(x)` / `uint(x)` used with floats: keep the truncation.
             code = code.replace(/\b(int|uint)\s*\(\s*([^()]+?)\s*\)/g, function (match, type, inner, offset, whole) {
                 if (insideBrackets(whole, offset)) return match;
                 var before = whole.slice(Math.max(0, offset - 6), offset);
                 if (/float\($/.test(before)) return match;
+                if (intDeclaration) {
+                    // Only casts in argument position need floating: the value
+                    // assigned to the int variable is an int expression.
+                    var previous = whole.slice(0, offset).replace(/[ \t]+$/, "");
+                    if (!/[,(]$/.test(previous)) return match;
+                }
                 return "float(" + type + "(" + inner + "))";
             });
-            if (intKeys.length || (extraInts && extraInts.length)) {
-                var castNames = extraInts && extraInts.length ? intKeys.concat(extraInts) : intKeys;
-                var castRe = new RegExp("\\b(" + castNames.map(escapeRegExp).join("|") + ")\\b", "g");
-                code = code.replace(castRe, function (match, name, offset, whole) {
+            if (active.intKeys.length || (extraInts && extraInts.length)) {
+                var castNames = extraInts && extraInts.length ? active.intKeys.concat(extraInts) : active.intKeys;
+                var castRe = new RegExp("\\b(" + castNames.map(escapeRegExp).join("|") + ")((?:\\.[A-Za-z_]\\w*)*)\\b", "g");
+                code = code.replace(castRe, function (match, name, fields, offset, whole) {
                     if (insideBrackets(whole, offset)) return match;
+                    if (noCast[name]) return match;
+                    if (protectedNames && protectedNames[name]) return match;
                     if (declaredName && name === declaredName && (equalIndex === -1 || offset < equalIndex)) return match;
-                    var after = whole.slice(offset + name.length).replace(/^[ \t]+/, "");
-                    if (/^(?:\+\+|--|[+\-*\/%]?=(?!=))/.test(after)) return match;
-                    var before = whole.slice(Math.max(0, offset - 6), offset);
-                    if (/float\($/.test(before)) return match;
+                    if (intDeclaration && !insideFloatCall(whole, offset)) return match;
+                    var after = whole.slice(offset + match.length).replace(/^[ \t]+/, "");
+                    if (/^(?:\[|\+\+|--|[+\-*\/%]?=(?!=))/.test(after)) return match;
+                    if (fields) {
+                        // `ivecVar.y - x`: cast the field selection, not the vector;
+                        // but `ivecVar.x = …` is an l-value and must stay.
+                        if (/^\s*(?:[+\-*\/%]?=(?!=)|\+\+|--)/.test(after)) return match;
+                        var lastField = fields.slice(fields.lastIndexOf(".") + 1);
+                        var fieldDim = lastField.length >= 2 && lastField.length <= 4 ? lastField.length : 1;
+                        return (fieldDim === 1 ? "float(" : "vec" + fieldDim + "(") + name + fields + ")";
+                    }
+                    if (intVectorDims[name]) return "vec" + intVectorDims[name] + "(" + name + ")";
                     return "float(" + name + ")";
                 });
             }
             return code.replace(promotionRe, function (match, prefix, digits, offset, whole) {
-                if (insideBrackets(whole, offset)) return match;
-                var before = whole.slice(0, offset + prefix.length);
-                if (/[eE][+-]?$/.test(before)) return match;
+                if (insideBrackets(whole, offset + prefix.length)) return match;
+                var head = whole.slice(0, offset + prefix.length);
+                if (/[0-9][eE][+-]?$/.test(head)) return match;
+                // Keep integers compared against (or assigned to) a known int
+                // name: the original int context was valid, int/float is not.
+                var tail = whole.slice(offset + match.length);
+                var assignment = /([A-Za-z_]\w*)\s*(?:[+\-*\/%]?=(?!=)|\+\+|--)\s*$/.exec(head);
+                if (assignment && (active.ints[assignment[1]] || (inlineInts && inlineInts[assignment[1]]) || (intDeclaration && assignment[1] === declaredName))) return match;
+                var previous = /([A-Za-z_]\w*)(?:\.[A-Za-z_]\w*)*\s*(?:==|!=|<=|>=|<|>)\s*$/.exec(head);
+                var next = /^\s*(?:==|!=|<=|>=|<|>)\s*([A-Za-z_]\w*)(?:\.[A-Za-z_]\w*)*/.exec(tail);
+                if ((previous && (active.ints[previous[1]] || (inlineInts && inlineInts[previous[1]]))) || (next && (active.ints[next[1]] || (inlineInts && inlineInts[next[1]])))) return match;
                 return prefix + digits + ".0";
             });
         }
@@ -1605,48 +1775,72 @@
         var lines = text.split("\n");
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
+            // Generated overload shims must not be rewritten by the promotion
+            // pass: `int(x)` casts inside them select the int overload.
+            if (line.indexOf("docsify-isf-shim") !== -1) continue;
             var code = line.replace(/\/\/[^\n]*/g, "");
             if (/^[ \t]*#/.test(code)) continue;
             // Bitwise operators are an int context, but logical `&&`/`||` are not.
             if (/[&|^]/.test(code.replace(/&&/g, "").replace(/\|\|/g, ""))) continue;
+            var patterns = patternsFor(scopes[i].ints, scopes[i].floats);
+            var protectedNames = protectedCallArguments(code);
             // `for`/`while` headers: only the condition is an expression to fix.
+            // Inline loops after other code fall through to the general path.
             if (/\bfor\b/.test(code)) {
-                lines[i] = line.replace(/^([ \t]*for[ \t]*\(([^;]*);)([^;]*)(;)/, function (match, head, init, condition, tail) {
+                var forLine = line.replace(/^([ \t]*for[ \t]*\(([^;]*);)([^;]*)(;)/, function (match, head, init, condition, tail) {
                     var loopVars = [];
                     var loopRe = /\bint\s+([A-Za-z_]\w*)\s*=/g;
                     var loopMatch;
                     while ((loopMatch = loopRe.exec(init))) loopVars.push(loopMatch[1]);
-                    return head + castAndPromote(condition, null, -1, false, loopVars) + tail;
+                    return head + castAndPromote(condition, null, -1, false, loopVars, patterns, false, protectedNames) + tail;
                 });
-                continue;
+                if (forLine !== line) {
+                    lines[i] = forLine;
+                    continue;
+                }
             }
             if (/\bwhile\b/.test(code)) {
-                lines[i] = line.replace(/^([ \t]*while[ \t]*\()([^)]*)(\))/, function (match, head, condition, tail) {
-                    return head + castAndPromote(condition, null, -1) + tail;
+                var whileLine = line.replace(/^([ \t]*while[ \t]*\()([^)]*)(\))/, function (match, head, condition, tail) {
+                    return head + castAndPromote(condition, null, -1, false, null, patterns, false, protectedNames) + tail;
                 });
-                continue;
+                if (whileLine !== line) {
+                    lines[i] = whileLine;
+                    continue;
+                }
             }
             if (/\b(switch|case|default)\b/.test(code)) continue;
             // Assignments to int identifiers are an integer context.
-            if (intAssignRe && intAssignRe.test(code)) continue;
-            if (/\b(int|uint|ivec[234]|uvec[234]|bvec[234])\b/.test(code)) continue;
-            if (/\[|\]/.test(code)) {
-                // `floatArray[i] = <expr>;` promotes the right-hand side only.
-                if (/^[ \t]*[A-Za-z_]\w*\s*\[[^\]]*\]\s*=/.test(code)) {
-                    lines[i] = line.replace(/^([ \t]*[A-Za-z_]\w*\s*\[[^\]]*\]\s*=\s*)([^;]+)(;)/, function (match, head, rhs, tail) {
-                        var arrayName = /^\s*([A-Za-z_]\w*)/.exec(head);
-                        if (!arrayName || !names[arrayName[1]] || /\[|\]/.test(rhs)) return match;
-                        return head + castAndPromote(rhs, null, -1, true) + tail;
-                    });
-                }
+            if (patterns.intAssignRe && patterns.intAssignRe.test(code)) continue;
+            // `int x = <expr>;`: cast int identifiers used in float expressions
+            // on the right-hand side, but leave bare int() casts and literals alone.
+            var intDeclarationMatch = /^[ \t]*(?:(?:const|lowp|mediump|highp)[ \t]+)*(?:int|uint|ivec[234]|uvec[234]|bvec[234])[ \t]+([A-Za-z_]\w*)/.exec(code);
+            if (intDeclarationMatch) {
+                lines[i] = castAndPromote(line, intDeclarationMatch[1], -1, false, null, patterns, true, protectedNames);
                 continue;
             }
             if (/[%]|<<|>>/.test(code)) continue;
-            if (intAssignRe && intAssignRe.test(code)) continue;
+            if (patterns.intAssignRe && patterns.intAssignRe.test(code)) continue;
             var declarationMatch = /^[ \t]*(?:(?:const|lowp|mediump|highp)[ \t]+)*(?:float|vec[234]|mat[234]|bool)[ \t]+([A-Za-z_]\w*)[ \t]*(?:=|;|,|\[)/.exec(code);
             var declaredName = declarationMatch ? declarationMatch[1] : null;
+            var intDeclarationInline = false;
+            var inlineIntNames = null;
+            if (!declarationMatch) {
+                // `for (int i = 0; …)` and friends: protect the initialiser
+                // literal from promotion even when the line also contains
+                // floats (inline loop bodies).
+                var inlineRe = /\b(?:int|uint|ivec[234]|uvec[234])\s+([A-Za-z_]\w*)\s*=(?!=)/g;
+                var inlineMatch;
+                while ((inlineMatch = inlineRe.exec(code))) {
+                    if (!inlineIntNames) inlineIntNames = {};
+                    inlineIntNames[inlineMatch[1]] = true;
+                    if (!intDeclarationInline) {
+                        declaredName = inlineMatch[1];
+                        intDeclarationInline = true;
+                    }
+                }
+            }
             var equalIndex = code.indexOf("=");
-            lines[i] = castAndPromote(line, declaredName, equalIndex, !!(declarationMatch && declaredName && names[declaredName]));
+            lines[i] = castAndPromote(line, declaredName, equalIndex, !!declarationMatch, null, patterns, intDeclarationInline, protectedNames, inlineIntNames);
         }
         return lines.join("\n");
     }
@@ -1810,7 +2004,8 @@
         var names = {};
         var re = /\b(?:void|float|int|bool|vec[234]|ivec[234]|bvec[234]|mat[234])\s+([A-Za-z_]\w*)\s*\(/g;
         var match;
-        while ((match = re.exec(String(source || "")))) names[match[1]] = true;
+        var text = stripComments(String(source || ""));
+        while ((match = re.exec(text))) names[match[1]] = true;
         return names;
     }
 
@@ -1824,13 +2019,20 @@
 
     function valueDim(text, types) {
         var value = String(text || "");
-        var constructor = /\b(vec[234])\s*\(/.exec(value);
-        if (constructor) return Number(constructor[1].slice(3));
-        var identifierRe = /\b([A-Za-z_]\w*)\b/g;
+        var swizzledConstructor = /\b[iu]?vec[234]\s*\([^()]*\)\s*\.([xyzwrgba]{1,4})\b/.exec(value);
+        if (swizzledConstructor) return swizzledConstructor[1].length;
+        var constructor = /\b([iu]?vec[234])\s*\(/.exec(value);
+        if (constructor) return Number(constructor[1].charAt(constructor[1].length - 1));
+        var identifierRe = /\b([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)/g;
         var identifier;
         while ((identifier = identifierRe.exec(value))) {
             var declared = types[identifier[1]];
-            if (declared && /^vec[234]$/.test(declared)) return Number(declared.slice(3));
+            if (declared && /^vec[234]$/.test(declared)) {
+                var fields = identifier[2].split(".").filter(function (field) { return field; });
+                var last = fields.length ? fields[fields.length - 1] : "";
+                if (/^[xyzwrgba]{2,4}$/.test(last)) return last.length;
+                return Number(declared.slice(3));
+            }
         }
         return 0;
     }
@@ -1948,9 +2150,25 @@
             if (!call) continue;
             var replacement = resolveLibraryRename(name, call.args, types);
             if (!replacement || replacement === name) continue;
+            // The ported mm_* helpers take float vectors; convert i/uvec
+            // constructors passed straight in (starfield passes ivec2).
+            var fixedArgs = [];
+            var changed = false;
+            for (var argIndex = 0; argIndex < call.args.length; argIndex++) {
+                var originalArg = call.args[argIndex];
+                var fixedArg = originalArg.replace(/\b([iu])vec([234])\s*\(/g, "vec$2(");
+                if (fixedArg !== originalArg) changed = true;
+                fixedArgs.push(fixedArg);
+            }
             out.push(text.slice(cursor, token.start));
-            out.push(replacement);
-            cursor = token.end;
+            if (changed) {
+                out.push(replacement + "(" + fixedArgs.join(", ") + ")");
+                cursor = tokens[call.close].end;
+                i = call.close;
+            } else {
+                out.push(replacement);
+                cursor = token.end;
+            }
         }
         if (out.length) {
             out.push(text.slice(cursor));
@@ -1969,23 +2187,37 @@
         return lines;
     }
 
+    // `#ifndef GL_ES … #endif` blocks are compiled out on WebGL; signatures
+    // and shadows inside them must not influence the assembled shader.
+    function isInsideESGuardedBlock(source, index) {
+        var text = String(source || "");
+        var ifndef = text.slice(0, index).lastIndexOf("#ifndef GL_ES");
+        if (ifndef === -1) return false;
+        var endif = text.indexOf("#endif", ifndef);
+        return endif === -1 || endif > index;
+    }
+
     function collectFunctionSignatures(source) {
         var signatures = [];
-        var re = /\b(void|float|int|bool|vec[234]|mat[234])\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{/g;
+        var re = /\b(void|float|int|bool|vec[234]|ivec[234]|uvec[234]|bvec[234]|mat[234])\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{/g;
         var match;
-        while ((match = re.exec(String(source || "")))) {
+        var text = stripComments(String(source || ""));
+        while ((match = re.exec(text))) {
+            if (isInsideESGuardedBlock(text, match.index)) continue;
             var rawParams = match[3].split(",").map(function (text) { return trim(text); }).filter(function (text) { return text; });
             var params = [];
             var ok = true;
+            var hasOut = false;
             for (var i = 0; i < rawParams.length; i++) {
                 var raw = rawParams[i];
-                if (/\b(out|inout)\b/.test(raw)) { ok = false; break; }
+                var isOut = /\b(out|inout)\b/.test(raw);
                 var nameMatch = /([A-Za-z_]\w*)\s*$/.exec(raw);
-                var typeMatch = /\b(int|uint|ivec[234]|float|vec[234]|mat[234]|bool)\b/.exec(raw);
+                var typeMatch = /\b(int|uint|ivec[234]|uvec[234]|bvec[234]|float|vec[234]|mat[234]|bool)\b/.exec(raw);
                 if (!nameMatch || !typeMatch) { ok = false; break; }
-                params.push({ type: typeMatch[1], name: nameMatch[1], text: raw });
+                params.push({ type: typeMatch[1], name: nameMatch[1], text: raw, out: isOut });
+                if (isOut) hasOut = true;
             }
-            if (ok) signatures.push({ returnType: match[1], name: match[2], params: params });
+            if (ok) signatures.push({ returnType: match[1], name: match[2], params: params, hasOut: hasOut });
         }
         return signatures;
     }
@@ -1998,7 +2230,7 @@
 
     function castToOriginalType(type, expression) {
         if (type === "int" || type === "uint") return "int(" + expression + ")";
-        if (/^[iu]vec[234]$/.test(type)) return type + "(" + expression + ")";
+        if (/^[iub]vec[234]$/.test(type)) return type + "(" + expression + ")";
         return expression;
     }
 
@@ -2017,19 +2249,28 @@
         var prototypes = [];
         var definitions = [];
         var emitted = {};
+        var declared = {};
+        // Forward prototypes for every user function: the corpus has plenty of
+        // call-before-definition helpers (apollian, GetSceneDistance, hash…).
+        for (i = 0; i < signatures.length; i++) {
+            var declaredKey = signatures[i].name + "(" + signatures[i].params.map(function (param) { return param.type; }).join(",") + ")";
+            if (declared[declaredKey]) continue;
+            declared[declaredKey] = true;
+            prototypes.push(signatures[i].returnType + " " + signatures[i].name + "(" +
+                signatures[i].params.map(function (param) { return param.text; }).join(", ") + ");");
+        }
         for (i = 0; i < signatures.length; i++) {
             var signature = signatures[i];
+            if (signature.hasOut) continue;
             var hasInt = false;
             for (j = 0; j < signature.params.length; j++) {
-                if (/^(int|uint|[iu]vec[234])$/.test(signature.params[j].type)) hasInt = true;
+                if (/^(int|uint|[iub]vec[234])$/.test(signature.params[j].type)) hasInt = true;
             }
             if (!hasInt) continue;
             var floatTypes = signature.params.map(function (param) { return promoteTypeToFloat(param.type); });
             var shimKey = signature.name + "(" + floatTypes.join(",") + ")";
             if (existing[shimKey] || emitted[shimKey]) continue;
             emitted[shimKey] = true;
-            prototypes.push(signature.returnType + " " + signature.name + "(" +
-                signature.params.map(function (param) { return param.text; }).join(", ") + ");");
             var shimParams = signature.params.map(function (param, index) {
                 return floatTypes[index] + " " + param.name;
             }).join(", ");
@@ -2039,9 +2280,109 @@
             var body = signature.returnType === "void"
                 ? signature.name + "(" + args + ");"
                 : "return " + signature.name + "(" + args + ");";
-            definitions.push(signature.returnType + " " + signature.name + "(" + shimParams + ") { " + body + " }");
+            definitions.push(signature.returnType + " " + signature.name + "(" + shimParams + ") { " + body + " } // docsify-isf-shim");
         }
-        return { prototypes: prototypes, definitions: definitions };
+        // Out/inout int parameters must never be floated: they are written
+        // back through the out parameter (iter, layer, …).
+        var outIntNames = {};
+        for (i = 0; i < signatures.length; i++) {
+            if (!signatures[i].hasOut) continue;
+            for (j = 0; j < signatures[i].params.length; j++) {
+                var outParam = signatures[i].params[j];
+                if (outParam.out && /^(int|uint|[iu]vec[234])$/.test(outParam.type)) outIntNames[outParam.name] = true;
+            }
+        }
+        // Positions of int parameters per user function: bare int arguments
+        // passed there must keep their type (the float-overload shim would
+        // otherwise turn a recursive call into a shim cycle).
+        var intParamPositions = {};
+        for (i = 0; i < signatures.length; i++) {
+            var intPositions = [];
+            for (j = 0; j < signatures[i].params.length; j++) {
+                if (/^(int|uint|[iub]vec[234])$/.test(signatures[i].params[j].type)) intPositions.push(j);
+            }
+            if (intPositions.length) intParamPositions[signatures[i].name] = intPositions;
+        }
+        return { prototypes: prototypes, definitions: definitions, outIntNames: outIntNames, intParamPositions: intParamPositions };
+    }
+
+    // Dialect type keywords: `long`, `half`, `double`, float2/… constructors.
+    var TYPE_KEYWORDS = {
+        long: "int",
+        uint: "int",
+        float2: "vec2",
+        float3: "vec3",
+        float4: "vec4",
+        int2: "ivec2",
+        int3: "ivec3",
+        int4: "ivec4",
+        uint2: "ivec2",
+        uint3: "ivec3",
+        uint4: "ivec4",
+        uvec2: "ivec2",
+        uvec3: "ivec3",
+        uvec4: "ivec4",
+        bool2: "bvec2",
+        bool3: "bvec3",
+        bool4: "bvec4",
+        half: "float",
+        half2: "vec2",
+        half3: "vec3",
+        half4: "vec4",
+        double: "float",
+        dvec2: "vec2",
+        dvec3: "vec3",
+        dvec4: "vec4",
+        mat2x2: "mat2",
+        mat3x3: "mat3",
+        mat4x4: "mat4"
+    };
+
+    function replaceIdentifiers(source, replacements) {
+        var text = String(source || "");
+        var tokens = tokenizeGLSL(text);
+        var out = [];
+        var cursor = 0;
+        for (var i = 0; i < tokens.length; i++) {
+            var token = tokens[i];
+            if (token.type !== "ident") continue;
+            var replacement = replacements[token.text];
+            if (!replacement) continue;
+            out.push(text.slice(cursor, token.start));
+            out.push(replacement);
+            cursor = token.end;
+        }
+        if (out.length) {
+            out.push(text.slice(cursor));
+            return out.join("");
+        }
+        return text;
+    }
+
+    function normalizeTypeKeywords(source) {
+        return replaceIdentifiers(source, TYPE_KEYWORDS);
+    }
+
+    // GLSL forbids user functions that shadow built-ins (sign, round, …).
+    // Such shaders cannot compile anywhere, so rename the definition and all
+    // its calls to a `usr_` name.
+    function renameBuiltinShadows(source) {
+        var text = String(source || "");
+        var userFunctions = collectUserFunctions(text);
+        var renames = {};
+        for (var name in userFunctions) {
+            if (!Object.prototype.hasOwnProperty.call(userFunctions, name)) continue;
+            if (!GLSL_BUILTINS[name]) continue;
+            // `#ifndef GL_ES float distance(…) #endif`: on WebGL the builtin is
+            // intended and the shadowing definition is preprocessed away.
+            if (isInsideESGuardedBlock(text, text.search(new RegExp("\\b(?:void|float|int|bool|vec[234]|ivec[234]|bvec[234]|mat[234])\\s+" + escapeRegExp(name) + "\\s*\\(")))) continue;
+            var candidate = "usr_" + name;
+            var suffix = 1;
+            while (userFunctions[candidate] || text.indexOf(candidate) !== -1) candidate = "usr_" + name + "_" + suffix++;
+            renames[name] = candidate;
+        }
+        if (!Object.keys(renames).length) return text;
+        return replaceIdentifiers(text, renames);
     }
 
     function buildShader(parsed, options) {
@@ -2078,7 +2419,7 @@
         var intNames = {};
         for (var fn = 0; fn < inputs.length; fn++) {
             if (/^(float|vec[234])$/.test(inputs[fn].uniform)) floatNames[inputs[fn].name] = true;
-            else if (inputs[fn].uniform === "int") intNames[inputs[fn].name] = true;
+            else if (/^(int|uint|long)$/.test(inputs[fn].uniform)) intNames[inputs[fn].name] = true;
         }
         for (var fg = 0; fg < generators.length; fg++) {
             if (generators[fg].uniform === "float") floatNames[generators[fg].name] = true;
@@ -2086,8 +2427,12 @@
 
         var body = stripVersionDirective(parsed.body || "");
         body = expandIncludes(body, options.includes, warnings);
+        body = renameBuiltinShadows(normalizeTypeKeywords(body));
         var userFunctions = collectUserFunctions(body);
         var declaredTypes = collectDeclaredTypes(body);
+        for (var dt = 0; dt < inputs.length; dt++) {
+            declaredTypes[inputs[dt].name] = inputs[dt].uniform;
+        }
         body = rewriteLibraryCalls(body, { userFunctions: userFunctions, types: declaredTypes });
         var shims = buildOverloadShims(body);
         var rewritten = rewriteSpecialFunctions(body, imageNames);
@@ -2146,7 +2491,7 @@
 
         var vertexSource = options.vertexShader;
         if (vertexSource) {
-            vertexSource = expandIncludes(vertexSource, options.includes, warnings);
+            vertexSource = renameBuiltinShadows(normalizeTypeKeywords(expandIncludes(vertexSource, options.includes, warnings)));
             var vertexPrelude = aliasLines.concat(shimLines);
             if (vertexPrelude.length) vertexSource = vertexPrelude.join("\n") + "\n" + vertexSource;
         }
@@ -2159,10 +2504,10 @@
             vertex: vertex,
             fragmentES3: toES3Fragment(fragment),
             vertexES3: toES3Vertex(vertex),
-            fragmentLoose: promoteIntegerLiterals(fragment, assign({}, floatNames), assign({}, intNames)),
-            vertexLoose: promoteIntegerLiterals(vertex, assign({}, floatNames), assign({}, intNames)),
-            fragmentES3Loose: promoteIntegerLiterals(toES3Fragment(fragment), assign({}, floatNames), assign({}, intNames)),
-            vertexES3Loose: promoteIntegerLiterals(toES3Vertex(vertex), assign({}, floatNames), assign({}, intNames)),
+            fragmentLoose: promoteIntegerLiterals(fragment, assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions),
+            vertexLoose: promoteIntegerLiterals(vertex, assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions),
+            fragmentES3Loose: promoteIntegerLiterals(toES3Fragment(fragment), assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions),
+            vertexES3Loose: promoteIntegerLiterals(toES3Vertex(vertex), assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions),
             inputs: inputs,
             passes: passes,
             generators: generators,

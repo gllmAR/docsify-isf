@@ -252,9 +252,9 @@ that already works is never rewritten:
 |---|---|
 | ES 1.00 | the assembled shader |
 | WebGL2 / ES 3.00 | `#version 300 es` + macros (`varying`→`in`, `texture2D`→`texture`, `gl_FragColor`→`_isfFragColor`); enables dynamic indexing and non-constant loops |
-| Dialect rewrite | HLSL/MadMapper aliases (`saturate`, `frac`, `lerp`, `rsqrt`, `ddx`, `ddy`) and original-name → ported `mm_*` renames (`fill`→`mm_fill3/4`, `circle`→`mm_circle2/3`, the `fBm`/`ridgedNoise`/`flowNoise`/derivative noise families, …), resolved by dimension/arity and shadowed by user-defined names |
-| Overload shims | `float f(float x){ return f(int(x)); }` (plus prototypes) for every function declared with `int` parameters, so promoted calls still resolve |
-| Literal promotion | integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), int identifiers/`int()` casts are floated, for-loop counters and float array elements are handled, integer-only lines, array indices and bitwise contexts are left alone |
+| Dialect rewrite | HLSL/MadMapper aliases (`saturate`, `frac`, `lerp`, `rsqrt`, `ddx`, `ddy`) and original-name → ported `mm_*` renames (`fill`→`mm_fill3/4`, `circle`→`mm_circle2/3`, the `fBm`/`ridgedNoise`/`flowNoise`/derivative noise families, …), resolved by dimension/arity/swizzle and shadowed by user-defined names; dialect type keywords (`long`, `uint`, `float2`, `uvec2`, …) are normalised and user functions shadowing GLSL built-ins (`sign`, `round`, `distance`) are renamed when not guarded out by `#ifndef GL_ES` |
+| Overload shims & prototypes | forward prototypes for every user function (call-before-definition helpers) plus `float f(float x){ return f(int(x)); }` shims for every function declared with `int` parameters, so promoted calls still resolve; bare int arguments at int-parameter positions and `out`/`inout` int parameters are protected from floating |
+| Literal promotion | scope-aware: each line sees only the int/float names of its lexical scope (the corpus reuses `i`/`p` across functions), integer literals in float contexts become floats (`TIME * 2` → `TIME * 2.0`), int identifiers/`int()` casts and `ivec` fields are floated per context, `long`/`int` inputs are seeded, integer-only lines, array indices, cast arguments, int comparisons/initialisers and bitwise contexts are left alone |
 
 Besides those, `buildShader`/the loader implement:
 
@@ -271,12 +271,12 @@ and bound as uniforms.
 set next to `_<image>_imgSize` for shaders ported from the reference JS host.
 
 Measured against the bundled library after the include/generator/dialect work
-(`npm run test:coverage`): 409 ES 1.00 + 59 ES 3.00 + 290 ES 3.00 with
-promotion = **758/857 browser-compilable (≈88 %)** — filters 169/171,
-transitions 156/157, sources 433/529. The remaining failures are mostly
-one-off material quirks (48 int/float operand mixes on protected lines, 19
-unresolved local helpers, 15 explicit conversions, 6 missing optional
-includes) that need per-function type inference.
+(`npm run test:coverage`): 408 ES 1.00 + 65 ES 3.00 + 339 ES 3.00 with
+promotion = **812/857 browser-compilable (≈95 %)** — filters 171/171,
+transitions 156/157, sources 485/529. The remaining 45 failures are one-off
+material quirks (26 int/float operand mixes on protected lines, 10 unresolved
+local helpers, 2 missing optional includes, plus individual return-type and
+method-syntax cases) that need per-function type inference.
 
 ### 5.9 Live controls and media
 
@@ -509,7 +509,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 |---|---|---|
 | Unit | `tests/run.js` | tolerant JSON (comments, trailing commas, quotes, escapes, leading comments), expression evaluator, `IMG_*`/`vv_*` rewriting (nesting, comments, `#define`), shader assembly (uniforms, passes, `#version`, line mapping), highlighting/escaping, URL resolution/fallback, link detection |
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
-| Corpus | `node tests/run.js --corpus` | all 758 bundled `.fs` materials parse and assemble cleanly |
+| Corpus | `node tests/run.js --corpus` | all 857 bundled `.fs` materials parse and assemble cleanly |
 | Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, and the View/Quality/Export controls work, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser

@@ -277,11 +277,13 @@ if (failures.length) {
             .replace(/\d+/g, "N")
             .replace(/'.*?'/g, "'X'")
             .slice(0, 90);
-        patterns[key] = (patterns[key] || 0) + 1;
+        if (!patterns[key]) patterns[key] = { count: 0, samples: [] };
+        patterns[key].count++;
+        if (patterns[key].samples.length < 3) patterns[key].samples.push(failure.url.split("/").slice(-2)[0]);
     }
-    const top = Object.keys(patterns).sort((a, b) => patterns[b] - patterns[a]).slice(0, 12);
+    const top = Object.keys(patterns).sort((a, b) => patterns[b].count - patterns[a].count).slice(0, 10);
     console.log("\nfailure classes:");
-    for (const key of top) console.log(String(patterns[key]).padStart(5) + "  " + key);
+    for (const key of top) console.log(String(patterns[key].count).padStart(5) + "  " + key + "  [" + patterns[key].samples.join(", ") + "]");
 
     // Which helper functions still fail to resolve?
     const overloads = {};
@@ -300,5 +302,11 @@ if (failures.length) {
     console.log("\nsample failures:");
     for (const failure of failures.slice(0, 10)) {
         console.log("  " + failure.url.split("/").slice(-2).join("/") + " — " + failure.log);
+    }
+    if (process.argv.indexOf("--list") !== -1) {
+        console.log("\nall failures:");
+        for (const failure of failures) {
+            console.log(failure.url.split("/").slice(-2)[0] + " — " + String(failure.log).split("\n")[0]);
+        }
     }
 }

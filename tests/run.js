@@ -588,6 +588,52 @@ test("dimension-aware renames pick the right port", () => {
     assert(built.fragment.indexOf("mm_rect_s(") !== -1, built.fragment);
 });
 
+test("swizzled and typed inputs decide the ported overload", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"backgroundColor","TYPE":"color"},{"NAME":"fillColor","TYPE":"color"}]}*/\nvoid main(){ gl_FragColor = vec4(fill(backgroundColor.rgb, fillColor.rgb, 0.5), 1.0); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("mm_fill3(") !== -1, built.fragment);
+    assert(built.fragment.indexOf("mm_fill4(") === -1, built.fragment);
+});
+
+test("dialect type keywords are normalised", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nfloat4 helper(float2 p, uint n, long k){ return float4(p, float(n + k), 1.0); }\nvoid main(){ gl_FragColor = helper(float2(0.5), 2, 1); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("vec4 helper(vec2 p, int n, int k)") !== -1, built.fragment);
+});
+
+test("built-in shadows are renamed unless guarded out for GL_ES", () => {
+    const shadow = '/*{"ISFVSN":"2","INPUTS":[]}*/\nfloat sign(float x){ return x * 2.0; }\nvoid main(){ gl_FragColor = vec4(sign(1.0)); }';
+    const renamed = isf.buildShader(isf.parseISF(shadow), {});
+    assert(renamed.fragment.indexOf("float usr_sign(") !== -1, renamed.fragment);
+    assert(renamed.fragment.indexOf("usr_sign(1.0)") !== -1, renamed.fragment);
+    const guarded = '/*{"ISFVSN":"2","INPUTS":[]}*/\n#ifndef GL_ES\nfloat distance(vec2 a, vec2 b){ return 0.0; }\n#endif\nvoid main(){ gl_FragColor = vec4(distance(isf_FragNormCoord, isf_FragNormCoord)); }';
+    const kept = isf.buildShader(isf.parseISF(guarded), {});
+    assert(kept.fragment.indexOf("usr_distance") === -1, kept.fragment);
+    assert(kept.fragment.indexOf("float distance(vec2 a, vec2 b);") === -1, kept.fragment);
+});
+
+test("forward prototypes cover out-parameter helpers", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvoid main(){ int layer = 0; gl_FragColor = vec4(df(isf_FragNormCoord.xyy, 0.1, layer)); }\nfloat df(vec3 p, float t, out int layer){ layer = 1; return t; }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("float df(vec3 p, float t, out int layer);") !== -1, built.fragment);
+    assert(built.fragment.indexOf("df(isf_FragNormCoord.xyy, 0.1, layer)") !== -1, built.fragment);
+});
+
+test("promotion keeps scoped int counters in float bodies", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[]}*/\nvec3 hash(vec3 v){ vec3 i = floor(v); return i; }\nvoid main(){\n    float sum = 0.0;\n    for (int i = 0; i < 4; i++){ sum += sin(20.0 * i) * triggers[i]; }\n    gl_FragColor = vec4(hash(vec3(sum)));\n}';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragmentES3Loose.indexOf("sin(20.0 * i)") !== -1, built.fragmentES3Loose);
+    assert(built.fragmentES3Loose.indexOf("float(i)") === -1, built.fragmentES3Loose);
+});
+
+test("MadMapper floatRange and generator inputs map to uniforms", () => {
+    const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"width_range","TYPE":"floatRange","DEFAULT":[0,1]},{"NAME":"wobble","TYPE":"damper","DEFAULT":0.5}]}*/\nvoid main(){ gl_FragColor = vec4(width_range[0], width_range[1], wobble, 1.0); }';
+    const built = isf.buildShader(isf.parseISF(source), {});
+    assert(built.fragment.indexOf("uniform vec2 width_range;") !== -1, built.fragment);
+    assert(built.fragment.indexOf("uniform float wobble;") !== -1, built.fragment);
+    equal(built.warnings, []);
+});
+
 test("MadMapper GENERATORS are declared and exposed", () => {
     const source = '/*{"ISFVSN":"2","INPUTS":[{"NAME":"mat_speed","TYPE":"float","DEFAULT":1,"MIN":0,"MAX":4}],"GENERATORS":[{"NAME":"mat_time_source","TYPE":"time_base","PARAMS":{"speed":"mat_speed"}}]}*/\nvoid main(){ gl_FragColor = vec4(mat_time_source); }';
     const built = isf.buildShader(isf.parseISF(source), {});
