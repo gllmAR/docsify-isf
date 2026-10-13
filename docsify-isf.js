@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.0.0
+ * docsify-isf v1.1.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,7 +46,8 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.0.0";
+    var VERSION = "1.1.0";
+    var VIEWER_SEQ = 0;
 
     /* ==================================================================
      * Configuration
@@ -73,6 +74,8 @@
         editorOpen: false,
         editorLive: true,
         editorDebounce: 600,
+        editorIndent: 2,            // spaces per indent level; 0 = tab
+        persistLayout: true,        // remember editor height / side width
         imageUrl: null,
         vertexShader: "auto",       // "auto" | false
         imports: true,
@@ -180,6 +183,33 @@
 
     function isObject(value) {
         return value !== null && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function prefersReducedMotion() {
+        try {
+            return typeof window !== "undefined" && !!window.matchMedia &&
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    var LAYOUT_KEY = "docsify-isf:layout";
+
+    function loadLayout() {
+        try {
+            var raw = typeof localStorage !== "undefined" ? localStorage.getItem(LAYOUT_KEY) : null;
+            var parsed = raw ? JSON.parse(raw) : null;
+            return isObject(parsed) ? parsed : {};
+        } catch (err) {
+            return {};
+        }
+    }
+
+    function saveLayout(layout) {
+        try {
+            if (typeof localStorage !== "undefined") localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout || {}));
+        } catch (err) { /* private mode / disabled storage */ }
     }
 
     /* ==================================================================
@@ -1571,7 +1601,7 @@
             ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-count{font-variant-numeric:tabular-nums;font-size:.68rem;opacity:.75}",
-            ".isf-body{display:grid;grid-template-columns:minmax(0,1fr)}",
+            ".isf-body{position:relative;display:grid;grid-template-columns:minmax(0,1fr)}",
             ".isf-stage{position:relative;background:#0b0c10;min-height:110px;overflow:hidden}",
             ".isf-canvas{display:block;width:100%;height:100%}",
             ".isf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;background:rgba(10,11,14,.72);color:#f5f6f8;font-size:.82rem;z-index:3}",
@@ -1581,7 +1611,8 @@
             ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-badge{position:absolute;right:.5rem;bottom:.45rem;z-index:2;background:rgba(10,11,14,.6);color:#e7e9ee;border-radius:5px;padding:.12rem .35rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em}",
-            ".isf-side{border-top:1px solid var(--isf-border);background:var(--isf-bg);max-height:340px;overflow:auto}",
+            ".isf-side{border-top:1px solid var(--isf-border);background:var(--isf-bg);max-height:min(46vh,420px);overflow:hidden;position:relative;display:flex;flex-direction:column}",
+            ".isf-side-inner{flex:1 1 auto;min-height:0;overflow:auto}",
             ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
             ".isf-panel:last-child{border-bottom:0}",
             ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.4rem .65rem;font-size:.78rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
@@ -1635,14 +1666,36 @@
             ".isf-block:fullscreen{position:fixed;inset:0;margin:0;border:0;border-radius:0;display:flex;flex-direction:column;background:#0b0c10;contain:none}",
             ".isf-block:fullscreen .isf-header{background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto;position:relative;z-index:6}",
             ".isf-block:fullscreen .isf-title{color:#f0f1f3}",
-            ".isf-block:fullscreen .isf-btn{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:#f0f1f3}",
-            ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr);min-height:0}",
+            ".isf-block:fullscreen .isf-header .isf-btn{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:#f0f1f3}",
+            ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
             ".isf-block:fullscreen .isf-stage{height:100%;min-height:0}",
-            ".isf-block:fullscreen .isf-side{position:absolute;right:0;top:0;bottom:0;width:min(420px,42vw);max-height:none;border-top:0;border-left:1px solid rgba(255,255,255,.12);background:var(--isf-bg);z-index:4;overflow:auto}",
+            ".isf-block:fullscreen .isf-stage{height:100%!important;min-height:0}",
+            ".isf-block:fullscreen .isf-side{position:absolute;right:0;top:0;bottom:0;width:min(420px,42vw);max-height:none;border-top:0;border-left:1px solid rgba(255,255,255,.12);background:var(--isf-bg);z-index:4;overflow:hidden}",
             ".isf-block:fullscreen .isf-editor{height:46vh;min-height:220px}",
             ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
             "@media (min-width:900px){.isf-block.isf-wide .isf-body{grid-template-columns:minmax(0,1fr) minmax(280px,34%)}.isf-block.isf-wide .isf-side{border-top:0;border-left:1px solid var(--isf-border);max-height:none}.isf-block.isf-wide .isf-editor{height:340px}}",
-            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}}"
+            "/* audit: focus, resizers, caret line, touch and reduced motion */",
+            ".isf-block :focus-visible{outline:2px solid var(--isf-accent);outline-offset:2px;border-radius:4px}",
+            ".isf-btn:focus-visible{outline-offset:1px}",
+            ".isf-canvas:focus-visible{outline:2px solid var(--isf-accent);outline-offset:-2px}",
+            ".isf-resize-y{position:relative;flex:0 0 auto;height:9px;cursor:ns-resize;touch-action:none;background:var(--isf-surface);border-bottom:1px solid var(--isf-border);z-index:3}",
+            ".isf-resize-y::after{content:'';position:absolute;left:50%;top:3px;width:34px;height:2px;transform:translateX(-50%);border-radius:2px;background:var(--isf-border)}",
+            ".isf-resize-y:hover::after,.isf-resize-y:focus-visible::after,.isf-resize-y.is-dragging::after{background:var(--isf-accent)}",
+            ".isf-resize-x{position:absolute;top:0;bottom:0;left:0;width:8px;cursor:ew-resize;touch-action:none;z-index:5;display:none}",
+            ".isf-resize-x::after{content:'';position:absolute;top:50%;left:3px;width:2px;height:36px;transform:translateY(-50%);border-radius:2px;background:var(--isf-border)}",
+            ".isf-resize-x:hover::after,.isf-resize-x:focus-visible::after,.isf-resize-x.is-dragging::after{background:var(--isf-accent)}",
+            ".isf-block.isf-wide .isf-resize-x,.isf-block:fullscreen .isf-resize-x{display:block}",
+            ".isf-active-line{position:absolute;left:0;right:0;top:0;height:0;background:rgba(255,255,255,.055);pointer-events:none;z-index:0;border-radius:2px}",
+            ".isf-gutter-error{color:#ff7b72;font-weight:700}",
+            ".isf-editor-pos{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--isf-muted);font-size:.7rem;white-space:nowrap}",
+            ".isf-panel-close{padding:.18rem .4rem;font-size:.85rem;line-height:1}",
+            ".isf-overlay-actions{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-top:.6rem}",
+            ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
+            ".isf-spinner{width:22px;height:22px;margin:0 auto .5rem;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:isf-spin .8s linear infinite}",
+            "@keyframes isf-spin{to{transform:rotate(360deg)}}",
+            "@media (pointer:coarse){.isf-btn{padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem}.isf-param-control input[type=range]{height:26px}}",
+            "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
+            "@media (max-width:520px){.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-actions{gap:.15rem}.isf-btn{padding:.25rem .3rem}.isf-editor-pos{display:none}}"
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -1795,6 +1848,59 @@
         return String(Math.round(value * 10000) / 10000);
     }
 
+    // Clamp a parameter value to the constraints declared by the ISF metadata.
+    // The controls already constrain their widgets, but programmatic calls
+    // (console, DocsifyISF API, restored layout state) must respect MIN/MAX too.
+    function clampInputValue(input, value) {
+        if (!input) return value;
+        switch (input.type) {
+            case "float": {
+                return clamp(numberOr(value, input.default), input.min, input.max);
+            }
+            case "long": {
+                if (input.values && input.values.length) {
+                    if (input.values.indexOf(value) !== -1) return value;
+                    var numeric = Number(value);
+                    if (isFinite(numeric)) {
+                        var best = input.values[0];
+                        var bestDistance = Infinity;
+                        for (var i = 0; i < input.values.length; i++) {
+                            var distance = Math.abs(Number(input.values[i]) - numeric);
+                            if (distance < bestDistance) { bestDistance = distance; best = input.values[i]; }
+                        }
+                        return best;
+                    }
+                    return input.values[0];
+                }
+                var integer = Math.round(numberOr(value, input.defaultValue));
+                if (input.min != null) integer = Math.max(input.min, integer);
+                if (input.max != null) integer = Math.min(input.max, integer);
+                return integer;
+            }
+            case "point2D": {
+                var point = Array.isArray(value) ? value : input.default;
+                return [
+                    clamp(numberOr(point[0], input.default[0]), input.min[0], input.max[0]),
+                    clamp(numberOr(point[1], input.default[1]), input.min[1], input.max[1])
+                ];
+            }
+            case "color": {
+                var color = Array.isArray(value) ? value : input.default;
+                return [
+                    clamp(numberOr(color[0], 0), 0, 1),
+                    clamp(numberOr(color[1], 0), 0, 1),
+                    clamp(numberOr(color[2], 0), 0, 1),
+                    clamp(numberOr(color[3], 1), 0, 1)
+                ];
+            }
+            case "bool":
+            case "event":
+                return !!value;
+            default:
+                return value;
+        }
+    }
+
     /* ==================================================================
      * Parameter controls
      * ================================================================== */
@@ -1831,21 +1937,29 @@
         row.addEventListener("dblclick", onDoubleClick);
 
         if (input.type === "float") {
+            var step = Math.max((input.max - input.min) / 1000, 1e-6);
             var range = h("input", null, {
-                type: "range", min: input.min, max: input.max,
-                step: (input.max - input.min) > 0 ? (input.max - input.min) / 1000 : 0.001,
+                type: "range", min: input.min, max: input.max, step: step,
                 value: clamp(input.default, input.min, input.max)
             });
-            var number = h("input", null, { type: "number", step: "any", value: formatNumber(input.default) });
+            var number = h("input", null, {
+                type: "number", step: "any", min: input.min, max: input.max,
+                inputmode: "decimal", value: formatNumber(input.default),
+                title: "Range: " + input.min + " … " + input.max
+            });
             range.addEventListener("input", function () {
-                var value = Number(range.value);
-                number.value = formatNumber(value);
-                viewer.setParameter(input.name, value);
+                var applied = viewer.setParameter(input.name, Number(range.value));
+                number.value = formatNumber(applied);
+                number.removeAttribute("aria-invalid");
+            });
+            number.addEventListener("input", function () {
+                number.setAttribute("aria-invalid", number.checkValidity() ? "false" : "true");
             });
             number.addEventListener("change", function () {
-                var value = numberOr(number.value, input.default);
-                range.value = clamp(value, input.min, input.max);
-                viewer.setParameter(input.name, value);
+                var applied = viewer.setParameter(input.name, numberOr(number.value, input.default));
+                range.value = applied;
+                number.value = formatNumber(applied);
+                number.removeAttribute("aria-invalid");
             });
             control.appendChild(range);
             control.appendChild(number);
@@ -1873,11 +1987,12 @@
             });
             control.appendChild(select);
         } else if (input.type === "long") {
-            var intInput = h("input", null, { type: "number", step: "1", value: formatNumber(input.defaultValue) });
+            var intInput = h("input", null, { type: "number", step: "1", inputmode: "numeric", value: formatNumber(input.defaultValue) });
             if (input.min != null) intInput.min = input.min;
             if (input.max != null) intInput.max = input.max;
             intInput.addEventListener("change", function () {
-                viewer.setParameter(input.name, Math.round(numberOr(intInput.value, input.defaultValue)));
+                var applied = viewer.setParameter(input.name, numberOr(intInput.value, input.defaultValue));
+                intInput.value = formatNumber(applied);
             });
             control.appendChild(intInput);
         } else if (input.type === "color") {
@@ -1902,8 +2017,9 @@
                     axis.appendChild(h("span", null, { text: axes[axisIndex] }));
                     var axisRange = h("input", "isf-axis-range", {
                         type: "range", min: input.min[axisIndex], max: input.max[axisIndex],
-                        step: (input.max[axisIndex] - input.min[axisIndex]) > 0 ? (input.max[axisIndex] - input.min[axisIndex]) / 1000 : 0.001,
-                        value: clamp(input.default[axisIndex], input.min[axisIndex], input.max[axisIndex])
+                        step: Math.max((input.max[axisIndex] - input.min[axisIndex]) / 1000, 1e-6),
+                        value: clamp(input.default[axisIndex], input.min[axisIndex], input.max[axisIndex]),
+                        title: axes[axisIndex] + ": " + input.min[axisIndex] + " … " + input.max[axisIndex]
                     });
                     axisRange.addEventListener("input", function () {
                         var current = viewer.getParameter(input.name) || input.default.slice();
@@ -1939,7 +2055,7 @@
     function createEditor(viewer, config) {
         var wrap = h("div", "isf-panel isf-editor-wrap");
         var toolbar = h("div", "isf-editor-toolbar");
-        var status = h("span", "isf-editor-status", { text: "Ready" });
+        var status = h("span", "isf-editor-status", { text: "Ready", "aria-live": "polite" });
         var actions = h("span", "isf-editor-actions");
         var applyButton = h("button", "isf-btn", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
         var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
@@ -1947,10 +2063,16 @@
         actions.appendChild(applyButton);
         actions.appendChild(revertButton);
         actions.appendChild(copyButton);
+        var editorClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close editor", title: "Close", text: "×" });
+        actions.appendChild(editorClose);
+        editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
         toolbar.appendChild(status);
         toolbar.appendChild(actions);
 
+        var posLabel = h("span", "isf-editor-pos", { text: "Ln 1, Col 1" });
+        toolbar.insertBefore(posLabel, actions);
         var editor = h("div", "isf-editor");
+        var activeLine = h("div", "isf-active-line", { "aria-hidden": "true" });
         var gutter = h("div", "isf-gutter", { "aria-hidden": "true", text: "1" });
         var codeWrap = h("div", "isf-code");
         var highlight = h("pre", "isf-highlight", { "aria-hidden": "true" });
@@ -1960,16 +2082,31 @@
             spellcheck: "false", autocapitalize: "off", autocomplete: "off",
             autocorrect: "off", wrap: "off", "aria-label": "ISF source editor"
         });
+        codeWrap.appendChild(activeLine);
         codeWrap.appendChild(highlight);
         codeWrap.appendChild(textarea);
         editor.appendChild(gutter);
         editor.appendChild(codeWrap);
+        var resizeY = h("div", "isf-resize-y", {
+            role: "separator", "aria-orientation": "horizontal",
+            "aria-label": "Resize the editor pane", tabindex: "0",
+            title: "Drag to resize the editor — double-click to reset"
+        });
         wrap.appendChild(toolbar);
+        wrap.appendChild(resizeY);
         wrap.appendChild(editor);
 
         var highlightScheduled = false;
+        var caretScheduled = false;
         var liveTimer = null;
         var errorLine = 0;
+        var gutterLineCount = 0;
+        var gutterErrorLine = 0;
+        var lineHeight = 18.6;
+        var paddingTop = 8;
+        var caretCache = { pos: 0, line: 1, column: 1 };
+        var indentSize = numberOr(config.editorIndent, 2);
+        var indentUnit = indentSize <= 0 ? "\t" : new Array(Math.max(1, Math.round(indentSize)) + 1).join(" ");
 
         function lineCount(text) {
             var count = 1;
@@ -1977,11 +2114,26 @@
             return count;
         }
 
+        // Line height and padding are measured, never assumed: the error scroll
+        // and the active-line marker stay aligned at any font size / zoom.
+        function measureMetrics() {
+            try {
+                var style = window.getComputedStyle(textarea);
+                var measured = parseFloat(style.lineHeight);
+                lineHeight = (isFinite(measured) && measured > 0) ? measured : (parseFloat(style.fontSize) || 12) * 1.55;
+                paddingTop = parseFloat(style.paddingTop) || 0;
+            } catch (err) { /* ignore */ }
+            scheduleCaret();
+        }
+
         function renderGutter(text) {
             var count = lineCount(text);
+            if (count === gutterLineCount && errorLine === gutterErrorLine) return;
+            gutterLineCount = count;
+            gutterErrorLine = errorLine;
             if (!errorLine || errorLine > count) {
                 var plain = [];
-                for (var i = 1; i <= count; i++) plain.push(i);
+                for (var p = 1; p <= count; p++) plain.push(p);
                 gutter.textContent = plain.join("\n");
                 return;
             }
@@ -2010,10 +2162,45 @@
             requestAnimationFrame(renderHighlight);
         }
 
+        function caretInfo(pos) {
+            if (pos === caretCache.pos) return caretCache;
+            var text = textarea.value;
+            var line = 1, column = 1, i;
+            if (pos > caretCache.pos && pos - caretCache.pos < 4000) {
+                line = caretCache.line;
+                column = caretCache.column;
+                for (i = caretCache.pos; i < pos; i++) {
+                    if (text.charCodeAt(i) === 10) { line++; column = 1; } else column++;
+                }
+            } else {
+                for (i = 0; i < pos && i < text.length; i++) {
+                    if (text.charCodeAt(i) === 10) { line++; column = 1; } else column++;
+                }
+            }
+            caretCache = { pos: pos, line: line, column: column };
+            return caretCache;
+        }
+
+        function renderCaret() {
+            caretScheduled = false;
+            var info = caretInfo(textarea.selectionStart);
+            posLabel.textContent = "Ln " + info.line + ", Col " + info.column;
+            activeLine.style.transform = "translateY(" + (paddingTop + (info.line - 1) * lineHeight - textarea.scrollTop) + "px)";
+            activeLine.style.height = lineHeight + "px";
+            activeLine.classList.remove("isf-hidden");
+        }
+
+        function scheduleCaret() {
+            if (caretScheduled) return;
+            caretScheduled = true;
+            requestAnimationFrame(renderCaret);
+        }
+
         function syncScroll() {
             highlight.scrollTop = textarea.scrollTop;
             highlight.scrollLeft = textarea.scrollLeft;
             gutter.scrollTop = textarea.scrollTop;
+            scheduleCaret();
         }
 
         function setStatus(message, kind) {
@@ -2026,7 +2213,9 @@
             textarea.value = String(text == null ? "" : text);
             try { textarea.setSelectionRange(0, 0); } catch (err) { /* ignore */ }
             errorLine = 0;
+            caretCache = { pos: 0, line: 1, column: 1 };
             scheduleHighlight();
+            scheduleCaret();
             if (!options.keepScroll) {
                 textarea.scrollTop = 0;
                 textarea.scrollLeft = 0;
@@ -2038,10 +2227,32 @@
             errorLine = line || 0;
             renderGutter(textarea.value);
             if (errorLine > 0) {
-                var lineHeight = 18.6;
-                textarea.scrollTop = Math.max(0, (errorLine - 3) * lineHeight);
+                textarea.scrollTop = Math.max(0, paddingTop + (errorLine - 3) * lineHeight);
                 syncScroll();
             }
+        }
+
+        function insertText(text) {
+            var start = textarea.selectionStart;
+            var end = textarea.selectionEnd;
+            var value = textarea.value;
+            textarea.value = value.slice(0, start) + text + value.slice(end);
+            textarea.selectionStart = textarea.selectionEnd = start + text.length;
+            scheduleHighlight();
+            scheduleCaret();
+            notifyInput();
+        }
+
+        // Enter keeps the current indentation and adds one level after an
+        // opening bracket — the behaviour every code editor is expected to have.
+        function autoIndentNewline() {
+            var start = textarea.selectionStart;
+            var value = textarea.value;
+            var lineStart = value.lastIndexOf("\n", start - 1) + 1;
+            var prefix = value.slice(lineStart, start);
+            var indent = /^[ \t]*/.exec(prefix)[0];
+            var extra = /[{[(]\s*$/.test(prefix) ? indentUnit : "";
+            insertText("\n" + indent + extra);
         }
 
         function indentSelection(shift) {
@@ -2054,14 +2265,16 @@
             var block = value.slice(lineStart, lineEnd);
             var changed;
             if (shift) {
-                changed = block.replace(/^ {1,2}|^\t/gm, "");
+                var dedent = indentUnit === "\t" ? /^\t/gm : new RegExp("^ {1," + indentUnit.length + "}", "gm");
+                changed = block.replace(dedent, "");
             } else {
-                changed = block.replace(/^/gm, "  ");
+                changed = block.replace(/^/gm, indentUnit);
             }
             textarea.value = value.slice(0, lineStart) + changed + value.slice(lineEnd);
             textarea.selectionStart = lineStart;
             textarea.selectionEnd = lineStart + changed.length;
             scheduleHighlight();
+            scheduleCaret();
             notifyInput();
         }
 
@@ -2071,14 +2284,22 @@
 
         textarea.addEventListener("input", function () {
             scheduleHighlight();
+            scheduleCaret();
             setStatus("Modified — " + (config.editorLive ? "applying…" : "press Apply"), "");
             notifyInput();
         });
         textarea.addEventListener("scroll", syncScroll);
+        textarea.addEventListener("click", scheduleCaret);
+        textarea.addEventListener("keyup", scheduleCaret);
         textarea.addEventListener("keydown", function (event) {
             if (event.key === "Tab") {
                 event.preventDefault();
                 indentSelection(event.shiftKey);
+                return;
+            }
+            if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                event.preventDefault();
+                autoIndentNewline();
                 return;
             }
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -2091,6 +2312,64 @@
                 viewer.applySource();
             }
         });
+        var selectionHandler = function () {
+            if (document.activeElement === textarea) scheduleCaret();
+        };
+        document.addEventListener("selectionchange", selectionHandler);
+        viewer.listeners.push(function () { document.removeEventListener("selectionchange", selectionHandler); });
+        var metricsHandler = function () { measureMetrics(); };
+        window.addEventListener("resize", metricsHandler);
+        viewer.listeners.push(function () { window.removeEventListener("resize", metricsHandler); });
+
+        // Editor pane resize: drag, keyboard (↑/↓/Home/End) and double-click
+        // reset, persisted globally so the choice survives navigation.
+        function maxEditorHeight() {
+            return Math.max(160, Math.min(window.innerHeight * 0.85, 1400));
+        }
+        function applyEditorHeight(px, persist) {
+            var height = clamp(px, 120, maxEditorHeight());
+            editor.style.height = height + "px";
+            measureMetrics();
+            if (persist) viewer.saveLayout({ editorHeight: height });
+            return height;
+        }
+        var dragStartY = 0;
+        var dragStartHeight = 0;
+        resizeY.addEventListener("pointerdown", function (event) {
+            event.preventDefault();
+            dragStartY = event.clientY;
+            dragStartHeight = editor.getBoundingClientRect().height;
+            resizeY.classList.add("is-dragging");
+            try { resizeY.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+        });
+        resizeY.addEventListener("pointermove", function (event) {
+            if (!resizeY.classList.contains("is-dragging")) return;
+            applyEditorHeight(dragStartHeight + (dragStartY - event.clientY), false);
+        });
+        var endEditorDrag = function (event) {
+            if (!resizeY.classList.contains("is-dragging")) return;
+            resizeY.classList.remove("is-dragging");
+            try { resizeY.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+            viewer.saveLayout({ editorHeight: editor.getBoundingClientRect().height });
+        };
+        resizeY.addEventListener("pointerup", endEditorDrag);
+        resizeY.addEventListener("pointercancel", endEditorDrag);
+        resizeY.addEventListener("dblclick", function () {
+            editor.style.height = "";
+            measureMetrics();
+            viewer.saveLayout({ editorHeight: null });
+        });
+        resizeY.addEventListener("keydown", function (event) {
+            var current = editor.getBoundingClientRect().height;
+            var delta = event.shiftKey ? 64 : 16;
+            if (event.key === "ArrowUp") { event.preventDefault(); applyEditorHeight(current + delta, true); }
+            else if (event.key === "ArrowDown") { event.preventDefault(); applyEditorHeight(current - delta, true); }
+            else if (event.key === "Home") { event.preventDefault(); applyEditorHeight(160, true); }
+            else if (event.key === "End") { event.preventDefault(); applyEditorHeight(maxEditorHeight(), true); }
+        });
+        var storedEditorHeight = viewer.layout && viewer.layout.editorHeight;
+        if (storedEditorHeight && config.persistLayout !== false) applyEditorHeight(storedEditorHeight, false);
+        requestAnimationFrame(measureMetrics);
         applyButton.addEventListener("click", function () { viewer.applySource(); });
         revertButton.addEventListener("click", function () { viewer.revertSource(); });
         copyButton.addEventListener("click", function () {
@@ -2128,9 +2407,11 @@
             markError: markError,
             focus: function () {
                 try { textarea.focus({ preventScroll: true }); } catch (err) { textarea.focus(); }
+                measureMetrics();
                 syncScroll();
             },
-            scheduleHighlight: scheduleHighlight
+            scheduleHighlight: scheduleHighlight,
+            measure: measureMetrics
         };
     }
 
@@ -2376,7 +2657,7 @@
         this.lastNow = performance.now();
         this.frameIndex = 0;
         this.transitionTime = 0;
-        this.playing = !!this.config.autoplay;
+        this.playing = !!this.config.autoplay && !prefersReducedMotion();
         this.visible = true;
         this.needsRender = true;
         this.running = false;
@@ -2958,6 +3239,17 @@
         viewer.candidates = resolveCandidates(viewer.href, viewer.routePath);
         viewer.rawSource = "";
         viewer.source = "";
+        viewer.lastErrorText = "";
+        viewer.layout = loadLayout();
+        viewer.saveLayout = function (patch) {
+            if (config.persistLayout === false) return;
+            for (var key in patch) {
+                if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+                if (patch[key] === null || patch[key] === undefined) delete viewer.layout[key];
+                else viewer.layout[key] = patch[key];
+            }
+            saveLayout(viewer.layout);
+        };
 
         ensureStyle();
 
@@ -2977,7 +3269,7 @@
         paramsButton.appendChild(paramsCount);
         var editorButton = config.editor ? iconButton("editor", "editor", "Source editor") : null;
         var playButton = iconButton("play", "play", "Pause");
-        var resetButton = iconButton("reset", "reset", "Reset parameters");
+        var resetButton = iconButton("reset", "reset", "Reset parameters and time");
         var fullscreenButton = iconButton("fullscreen", "fullscreen", "Fullscreen");
         var sourceButton = config.showSource ? h("a", "isf-btn", {
             href: viewer.url,
@@ -2998,7 +3290,7 @@
 
         var body = h("div", "isf-body");
         var stage = h("div", "isf-stage");
-        var canvas = h("canvas", "isf-canvas");
+        var canvas = h("canvas", "isf-canvas", { tabindex: "0", role: "img", "aria-label": "ISF shader preview" });
         var overlay = h("div", "isf-overlay");
         var overlayInner = h("div", "isf-overlay-inner");
         overlay.appendChild(overlayInner);
@@ -3008,23 +3300,38 @@
         stage.appendChild(overlay);
         stage.appendChild(badge);
 
+        var uid = "isf-" + (++VIEWER_SEQ);
         var side = h("aside", "isf-side isf-hidden");
-        var paramsPanel = h("div", "isf-panel isf-params isf-hidden");
-        paramsPanel.appendChild(h("div", "isf-panel-title", { text: "Parameters" }));
+        var sideInner = h("div", "isf-side-inner");
+        var resizeX = h("div", "isf-resize-x", {
+            role: "separator", "aria-orientation": "vertical",
+            "aria-label": "Resize the side panel", tabindex: "0",
+            title: "Drag to resize the panel — double-click to reset"
+        });
+        var paramsPanel = h("div", "isf-panel isf-params isf-hidden", {
+            id: uid + "-params", role: "region", "aria-label": "Parameters"
+        });
+        var paramsTitle = h("div", "isf-panel-title");
+        paramsTitle.appendChild(h("span", null, { text: "Parameters" }));
+        var paramsClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close parameters", title: "Close", text: "×" });
+        paramsTitle.appendChild(paramsClose);
+        paramsPanel.appendChild(paramsTitle);
         var paramsList = h("div", "isf-params-list");
         paramsPanel.appendChild(paramsList);
-        side.appendChild(paramsPanel);
+        sideInner.appendChild(paramsPanel);
 
         var editor = null;
         if (config.editor) {
             editor = createEditor(viewer, config);
             editor.el.classList.add("isf-hidden");
-            side.appendChild(editor.el);
+            sideInner.appendChild(editor.el);
         }
+        side.appendChild(resizeX);
+        side.appendChild(sideInner);
 
         body.appendChild(stage);
         body.appendChild(side);
-        var status = h("div", "isf-status isf-hidden");
+        var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         block.appendChild(header);
         block.appendChild(body);
         block.appendChild(status);
@@ -3040,6 +3347,9 @@
             overlayInner: overlayInner,
             badge: badge,
             side: side,
+            sideInner: sideInner,
+            resizeX: resizeX,
+            body: body,
             paramsPanel: paramsPanel,
             paramsList: paramsList,
             paramsCount: paramsCount,
@@ -3055,6 +3365,107 @@
         viewer.editor = editor;
         viewer.runtime = null;
         viewer.gl = null;
+
+        /* ------------------------------------------------------- layout */
+
+        function isFullscreenActive() {
+            var fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+            return fullscreenElement === block;
+        }
+
+        function wideMode() {
+            return isFullscreenActive() || (typeof window !== "undefined" && window.innerWidth >= 900 && block.classList.contains("isf-wide"));
+        }
+
+        function applyStageLayout() {
+            if (config.aspectRatio) {
+                stage.style.aspectRatio = String(config.aspectRatio).replace(":", "/");
+                stage.style.height = "auto";
+            } else {
+                stage.style.aspectRatio = "";
+                stage.style.height = config.height || "360px";
+            }
+            if (config.width && config.width !== "100%") block.style.maxWidth = config.width;
+        }
+
+        function maxSideWidth() {
+            return Math.max(280, Math.min(640, (typeof window !== "undefined" ? window.innerWidth : 1200) * 0.75));
+        }
+
+        function applySideWidth(px, persist) {
+            var width = clamp(px, 240, maxSideWidth());
+            if (isFullscreenActive()) {
+                side.style.width = width + "px";
+            } else if (wideMode()) {
+                body.style.gridTemplateColumns = "minmax(0,1fr) " + width + "px";
+            }
+            if (persist) viewer.saveLayout({ sideWidth: width });
+            return width;
+        }
+
+        function syncSideLayout() {
+            var stored = viewer.layout && viewer.layout.sideWidth;
+            if (isFullscreenActive()) {
+                side.style.width = stored ? clamp(stored, 240, maxSideWidth()) + "px" : "";
+                body.style.gridTemplateColumns = "";
+            } else if (wideMode() && stored) {
+                side.style.width = "";
+                body.style.gridTemplateColumns = "minmax(0,1fr) " + clamp(stored, 240, maxSideWidth()) + "px";
+            } else {
+                side.style.width = "";
+                body.style.gridTemplateColumns = "";
+            }
+        }
+
+        applyStageLayout();
+        if (viewer.layout.sideWidth && config.persistLayout !== false) syncSideLayout();
+
+        var sideDragX = 0;
+        var sideDragWidth = 0;
+        resizeX.addEventListener("pointerdown", function (event) {
+            event.preventDefault();
+            sideDragX = event.clientX;
+            sideDragWidth = side.getBoundingClientRect().width;
+            resizeX.classList.add("is-dragging");
+            try { resizeX.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+        });
+        resizeX.addEventListener("pointermove", function (event) {
+            if (!resizeX.classList.contains("is-dragging")) return;
+            applySideWidth(sideDragWidth + (sideDragX - event.clientX), false);
+        });
+        var endSideDrag = function (event) {
+            if (!resizeX.classList.contains("is-dragging")) return;
+            resizeX.classList.remove("is-dragging");
+            try { resizeX.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+            viewer.saveLayout({ sideWidth: side.getBoundingClientRect().width });
+        };
+        resizeX.addEventListener("pointerup", endSideDrag);
+        resizeX.addEventListener("pointercancel", endSideDrag);
+        resizeX.addEventListener("dblclick", function () {
+            viewer.saveLayout({ sideWidth: null });
+            syncSideLayout();
+        });
+        resizeX.addEventListener("keydown", function (event) {
+            var current = side.getBoundingClientRect().width;
+            var delta = event.shiftKey ? 64 : 16;
+            if (event.key === "ArrowLeft") { event.preventDefault(); applySideWidth(current + delta, true); }
+            else if (event.key === "ArrowRight") { event.preventDefault(); applySideWidth(current - delta, true); }
+            else if (event.key === "Home") { event.preventDefault(); applySideWidth(240, true); }
+            else if (event.key === "End") { event.preventDefault(); applySideWidth(maxSideWidth(), true); }
+        });
+        var sideMetricsHandler = function () { syncSideLayout(); };
+        window.addEventListener("resize", sideMetricsHandler);
+        viewer.listeners.push(function () { window.removeEventListener("resize", sideMetricsHandler); });
+        paramsClose.addEventListener("click", function () { viewer.toggleParams(); });
+        stage.addEventListener("dblclick", function (event) {
+            if (event.target === canvas) viewer.toggleFullscreen();
+        });
+        canvas.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                viewer.toggleFullscreen();
+            }
+        });
 
         /* ---------------------------------------------------------- UI */
 
@@ -3075,12 +3486,30 @@
             overlayInner.innerHTML = html || "";
             overlay.style.display = show ? "flex" : "none";
         };
+        viewer.errorOverlay = function (title, message, rawLine) {
+            viewer.lastErrorText = String(message || "");
+            var html = "<strong>" + escapeHtml(title || "Shader error") + "</strong>";
+            html += "<pre>" + escapeHtml(viewer.lastErrorText) + "</pre>";
+            html += '<div class="isf-overlay-actions">';
+            html += '<a class="isf-overlay-btn" href="' + escapeHtml(viewer.url) + '" target="_blank" rel="noopener">Open source</a>';
+            if (viewer.editor) {
+                html += '<button class="isf-overlay-btn" type="button" data-isf-overlay="editor">' +
+                    (rawLine ? "Fix at line " + rawLine : "Fix in editor") + "</button>";
+            }
+            html += '<button class="isf-overlay-btn" type="button" data-isf-overlay="copy">Copy error</button>';
+            html += "</div>";
+            viewer.showOverlay(html, true);
+        };
         viewer.setPanel = function (panel, open) {
             panel.classList.toggle("isf-hidden", !open);
-            var anyOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden") ||
-                (viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
+            var paramsOpen = !viewer.dom.paramsPanel.classList.contains("isf-hidden");
+            var editorOpen = !!(viewer.dom.editorPanel && !viewer.dom.editorPanel.classList.contains("isf-hidden"));
+            var anyOpen = paramsOpen || editorOpen;
             side.classList.toggle("isf-hidden", !anyOpen);
             block.classList.toggle("isf-wide", anyOpen);
+            paramsButton.setAttribute("aria-expanded", paramsOpen ? "true" : "false");
+            if (viewer.dom.editorButton) editorButton.setAttribute("aria-expanded", editorOpen ? "true" : "false");
+            syncSideLayout();
         };
         viewer.toggleParams = function () {
             var open = viewer.dom.paramsPanel.classList.contains("isf-hidden");
@@ -3125,10 +3554,11 @@
             if (promise && promise.catch) promise.catch(function () { });
         };
         viewer.syncFullscreen = function () {
-            var fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
-            var active = fullscreenElement === block;
+            var active = isFullscreenActive();
             block.classList.toggle("isf-fullscreen", active);
             viewer.dom.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
+            syncSideLayout();
+            applyStageLayout();
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) viewer.setState("");
         };
@@ -3154,7 +3584,7 @@
             for (var i = 0; i < viewer.built.inputs.length; i++) {
                 var input = viewer.built.inputs[i];
                 if (input.type === "image" || input.type === "audio" || input.type === "audioFFT") continue;
-                var value = input.default;
+                var value = clampInputValue(input, input.default);
                 if (Array.isArray(value)) value = value.slice();
                 defaults[input.name] = value;
             }
@@ -3169,15 +3599,18 @@
             viewer.values = next;
         };
         viewer.setParameter = function (name, value) {
-            viewer.values[name] = Array.isArray(value) ? value.slice() : value;
+            var input = viewer.inputByName && viewer.inputByName[name];
+            var applied = input ? clampInputValue(input, value) : value;
+            viewer.values[name] = Array.isArray(applied) ? applied.slice() : applied;
             if (viewer.runtime) {
                 viewer.runtime.needsRender = true;
                 if (name === "progress") {
                     var duration = Math.max(0.5, Number(config.transitionDuration) || 4);
-                    viewer.runtime.transitionTime = clamp(value, 0, 1) * duration;
+                    viewer.runtime.transitionTime = clamp(applied, 0, 1) * duration;
                 }
                 BUDGET.touch(viewer);
             }
+            return applied;
         };
         viewer.syncParameterControl = function (name, value) {
             var control = viewer.controls && viewer.controls[name];
@@ -3232,6 +3665,8 @@
                 var controlEntry = viewer.controlsList[ci];
                 viewer.controls[controlEntry.name] = controlEntry;
             }
+            viewer.inputByName = {};
+            for (var ii = 0; ii < inputs.length; ii++) viewer.inputByName[inputs[ii].name] = inputs[ii];
             viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
             var open;
             if (!config.controls) open = false;
@@ -3241,7 +3676,9 @@
             viewer.setPanel(viewer.dom.paramsPanel, open);
             paramsButton.setAttribute("aria-pressed", open ? "true" : "false");
             paramsButton.classList.toggle("is-active", open);
-            if (!config.controls) paramsButton.classList.add("isf-hidden");
+            paramsButton.setAttribute("aria-controls", viewer.dom.paramsPanel.id);
+            var hasControls = config.controls && inputs.length > 0;
+            paramsButton.classList.toggle("isf-hidden", !hasControls);
         };
 
         /* ----------------------------------------------------- loading */
@@ -3249,7 +3686,7 @@
         viewer.load = function () {
             if (viewer.state === "loading" || viewer.state === "live") return;
             viewer.state = "loading";
-            viewer.showOverlay("<strong>Loading shader…</strong><code>" + escapeHtml(basename(viewer.url)) + "</code>", true);
+            viewer.showOverlay('<div class="isf-spinner"></div><strong>Loading shader…</strong><code>' + escapeHtml(basename(viewer.url)) + "</code>", true);
             viewer.setState("Loading " + viewer.url);
             var candidates = viewer.candidates.slice();
             loadShaderText(candidates).then(function (result) {
@@ -3308,8 +3745,7 @@
                 viewer.state = "error";
                 var message = error && error.message ? error.message : String(error);
                 viewer.setState("Error: " + message, "error");
-                viewer.showOverlay("<strong>Shader could not be loaded</strong>" + escapeHtml(message) +
-                    '<br><a class="isf-overlay-btn" style="display:inline-block;margin-top:.6rem;text-decoration:none" href="' + escapeHtml(viewer.url) + '" target="_blank" rel="noopener">Open source file</a>', true);
+                viewer.errorOverlay("Shader could not be loaded", message, error && error.isfLine);
                 if (viewer.editor && error && error.isfLine) {
                     viewer.editor.setValue(viewer.rawSource || viewer.source);
                     viewer.editor.setStatus(message, "error");
@@ -3358,6 +3794,8 @@
             if (warnings.length) viewer.setState(warnings.map(function (w) { return w.message + (w.line ? " (line " + w.line + ")" : ""); }).join("\n"), "warn");
             else viewer.setState("");
             viewer.updateBadge(viewer.runtime.playing ? "" : "paused");
+            viewer.dom.playButton.innerHTML = viewer.runtime.playing ? ICONS.pause : ICONS.play;
+            viewer.dom.playButton.title = viewer.runtime.playing ? "Pause" : "Play";
             if (viewer.editor && viewer.built.warnings && viewer.built.warnings.length) {
                 viewer.editor.setStatus(viewer.built.warnings.length + " warning(s) — see status", "");
             }
@@ -3391,7 +3829,7 @@
             }
             viewer.state = "error";
             viewer.setState(message, "error");
-            viewer.showOverlay("<strong>Shader error</strong>" + escapeHtml(message), true);
+            viewer.errorOverlay("Shader error", message, rawLine);
             if (viewer.editor) {
                 viewer.editor.setStatus(message, "error");
                 viewer.editor.markError(rawLine || null);
@@ -3433,11 +3871,13 @@
                 if (!live) viewer.setState(message, "error");
                 return false;
             }
+            var compileStarted = performance.now();
             var compileError = viewer.runtime.compile(built);
             if (compileError) {
                 viewer.runtimeError(compileError, built);
                 return false;
             }
+            var compileMs = Math.max(1, Math.round(performance.now() - compileStarted));
             viewer.parse = parsed;
             viewer.built = built;
             viewer.transition = isTransitionShader(built.inputs);
@@ -3445,7 +3885,7 @@
             viewer.rebuildParams();
             if (!viewer.runtime.running) viewer.runtime.start();
             viewer.editor.markError(0);
-            viewer.editor.setStatus("Applied · " + built.inputs.length + " input(s)", "ok");
+            viewer.editor.setStatus("Applied · " + built.inputs.length + " input(s) · " + compileMs + " ms", "ok");
             viewer.runtime.visible = viewer.visible;
             viewer.runtime.needsRender = true;
             viewer.showOverlay("", false);
@@ -3543,6 +3983,20 @@
 
         // Keep the overlay in sync when a released/click-lazy viewer is clicked.
         overlay.addEventListener("click", function (event) {
+            var action = event.target && event.target.closest ? event.target.closest("[data-isf-overlay]") : null;
+            if (action) {
+                var kind = action.getAttribute("data-isf-overlay");
+                if (kind === "editor") {
+                    viewer.showOverlay("", false);
+                    viewer.toggleEditor();
+                } else if (kind === "copy") {
+                    var text = viewer.lastErrorText || "";
+                    var markCopied = function () { action.textContent = "Copied"; };
+                    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(markCopied, markCopied);
+                    else markCopied();
+                }
+                return;
+            }
             var button = event.target && event.target.closest ? event.target.closest(".isf-overlay-btn") : null;
             if (button && button.getAttribute("href")) return; // real links keep working
             if (viewer.state === "released") viewer.initRuntime();
@@ -3627,6 +4081,8 @@
         rewriteSpecialFunctions: rewriteSpecialFunctions,
         tokenizeGLSL: tokenizeGLSL,
         highlightGLSL: highlightGLSL,
+        clampInputValue: clampInputValue,
+        prefersReducedMotion: prefersReducedMotion,
         resolveAssetUrl: resolveAssetUrl,
         resolveCandidates: resolveCandidates,
         isShaderHref: isShaderHref,

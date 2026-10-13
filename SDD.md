@@ -285,7 +285,21 @@ fullscreen and layout changes need no extra observer.
 
 Panels start collapsed according to `params: auto|open|closed` (auto opens up
 to `paramsOpenLimit` inputs). At ≥900 px viewport width the side panel sits
-next to the render; in fullscreen it becomes an overlay drawer.
+next to the render; in fullscreen it becomes an overlay drawer. `width`,
+`height` and `aspectRatio` size the preview (`aspectRatio` wins over
+`height`), and the block is capped at `width` when it is not `100%`.
+
+Both panes are resizable with a pointer or the keyboard:
+
+| Pane | Handle | Keys | Reset | Persisted |
+|---|---|---|---|---|
+| Editor height | rail above the editor | ↑/↓ (Shift = ×4), Home/End | double-click | `docsify-isf:layout` |
+| Side width | rail on the panel's left edge | ←/→, Home/End | double-click | `docsify-isf:layout` |
+
+Handles are `role="separator"` with `aria-orientation` and are clamped to
+sane ranges (editor 120 px…85 vh, panel 240…640 px / 75 vw). Persistence is
+opt-out via `persistLayout: false`. The scrolling content lives in
+`.isf-side-inner`, so the rail never scrolls away.
 
 ### 7.2 Controls
 
@@ -300,22 +314,36 @@ next to the render; in fullscreen it becomes an overlay drawer.
 | `image` | “Choose image…” file picker + drag & drop |
 | `audio`/`audioFFT` | synthetic-source indicator |
 
-Double-clicking a parameter row resets it to the metadata default.
+Double-clicking a parameter row resets it to the metadata default. Every
+value path (`setParameter`, controls, API callers, restored state) goes
+through `clampInputValue()`, so `MIN`/`MAX` are respected for `float`,
+`long`/`int` and both `point2D` axes, `color` stays in 0…1, `long` values snap
+to the declared `VALUES`, and the number field reports invalid input with
+`aria-invalid` while the user is still typing.
 
 ### 7.3 Editor
 
 The editor is a `<textarea>` over a highlighted `<pre><code>` layer (the
-Prism-Live/react-simple-code-editor approach) with a line-number gutter. It is
-dependency-free; `highlightGLSL()` classifies tokens as
+Prism-Live/react-simple-code-editor approach) with a line-number gutter and an
+absolutely positioned active-line marker. It is dependency-free;
+`highlightGLSL()` classifies tokens as
 comment/preprocessor/string/number/keyword/type/builtin/ISF/operator.
 
-- Tab/Shift+Tab indent and dedent; Ctrl/Cmd+Enter or **Apply** compiles;
-  **Revert** restores the fetched file; **Copy** copies the buffer.
-- `editorLive` recompiles after `editorDebounce` ms of inactivity.
+- Enter auto-indents (current indentation, plus one level after an opening
+  bracket); Tab/Shift+Tab indent and dedent the selection; Ctrl/Cmd+Enter or
+  **Apply** compiles; **Revert** restores the fetched file; **Copy** copies
+  the buffer. Indentation follows `editorIndent`.
+- `editorLive` recompiles after `editorDebounce` ms of inactivity and the
+  status line reports the measured compile time.
+- The gutter is rebuilt only when the line count or the error line changes;
+  line height and padding are measured from the computed style (never
+  assumed), so the active-line marker, error scroll and gutter stay aligned
+  at any font size/zoom. The caret line/column is derived incrementally and
+  shown as `Ln x, Col y`.
 - The caret/text are transparent, selection and caret stay visible; scroll is
   mirrored to the highlight layer and gutter.
 
-### 7.4 Error mapping
+### 7.4 Error mapping and recovery
 
 `buildShader()` records `preludeLines` (lines inserted before the user body)
 and `bodyStartLine` (raw-file line of the body). A WebGL log line `0:L` maps
@@ -327,8 +355,19 @@ rawLine = bodyStartLine + (L - preludeLines - 1)
 
 so compile errors point into the original `.fs` file; the editor scrolls to and
 highlights that gutter line. Header errors already carry a file line from the
-tolerant parser. Errors never blank an existing render: `compile()` swaps the
-program only after a successful link.
+tolerant parser. The overlay is actionable: **Open source**, **Fix at line N**
+(closes the overlay and focuses the editor) and **Copy error**. Errors never
+blank an existing render: `compile()` swaps the program only after a
+successful link.
+
+### 7.5 Accessibility and motion
+
+The preview canvas is focusable and toggles fullscreen on Enter/Space or
+double-click. Controls expose `aria-pressed`/`aria-expanded`/
+`aria-controls`, panels are `role="region"` with labels, status regions are
+`aria-live="polite"`, and all interactive elements use `:focus-visible`.
+`prefers-reduced-motion: reduce` starts viewers paused and disables the
+loading animation and transitions; coarse pointers get larger hit areas.
 
 ## 8. Performance and GPU context budget
 
@@ -376,7 +415,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Unit | `tests/run.js` | tolerant JSON (comments, trailing commas, quotes, escapes, leading comments), expression evaluator, `IMG_*`/`vv_*` rewriting (nesting, comments, `#define`), shader assembly (uniforms, passes, `#version`, line mapping), highlighting/escaping, URL resolution/fallback, link detection |
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all 758 bundled `.fs` materials parse and assemble cleanly |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens and highlights, a released viewer resumes via the budget, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

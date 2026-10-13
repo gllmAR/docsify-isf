@@ -170,6 +170,8 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorOpen` | `false` | Open the editor on load. |
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
+| `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
+| `persistLayout` | `true` | Remember editor height / side width across viewers and pages. |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
@@ -185,14 +187,38 @@ Every viewer also exposes `DocsifyISF` on `window` for scripting
 Press the `</>` button in the viewer header:
 
 - **GLSL syntax highlighting** for keywords, types, built-ins, ISF functions
-  and the ISF uniforms.
+  and the ISF uniforms, with an **active-line highlight**, a **line-number
+  gutter** and a live **`Ln x, Col y`** caret readout.
 - **Ctrl/Cmd + Enter** (or **Apply**) compiles; with `editorLive` the shader
-  recompiles shortly after you stop typing.
+  recompiles shortly after you stop typing and the status bar reports the
+  compile time.
+- **Enter auto-indents** (keeps the current indentation, adds one level after
+  an opening bracket); **Tab / Shift+Tab** indent and dedent the selection;
+  indentation width follows `editorIndent`.
 - Compile errors are mapped back to the original `.fs` file line — the gutter
-  highlights it, the status bar explains it.
+  highlights it, the status bar explains it, and the error overlay offers
+  **Fix at line N**, **Copy error** and **Open source**.
 - **Revert** returns to the file on disk; **Copy** puts the source on the
   clipboard.
-- Tab / Shift+Tab indent and dedent.
+- **Drag the handle above the editor** to resize it (double-click to reset,
+  or focus it and use ↑/↓/Home/End). The panel width has the same handle on
+  its left edge. Both sizes persist in `localStorage` when `persistLayout` is
+  on.
+
+## UI/UX notes
+
+- Every control respects the ISF constraints: sliders, pickers and typed
+  values are clamped to `MIN`/`MAX`, `long` values snap to `VALUES`, and
+  `point2D`/`color` components stay in range. Out-of-range typing is corrected
+  on change and flagged with `aria-invalid` while editing.
+- `width`, `height` and `aspectRatio` actually size the preview; the panel
+  stacks below the canvas on narrow screens and docks beside it from 900 px
+  (and in fullscreen, resizable).
+- The preview is keyboard focusable: **Enter/Space** or a double-click toggles
+  fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
+  `aria-expanded`, and the status regions are `aria-live`.
+- `prefers-reduced-motion: reduce` starts viewers paused and removes the
+  loading animation; coarse-pointer devices get larger touch targets.
 
 ## Supported ISF features
 

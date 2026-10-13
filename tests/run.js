@@ -270,6 +270,29 @@ test("input type aliases and defaults", () => {
     equal(inputs[4].default, [1, 0, 0, 1]);
 });
 
+test("clampInputValue respects declared MIN/MAX/VALUES", () => {
+    const inputs = isf.normalizeInputs([
+        { NAME: "f", TYPE: "float", DEFAULT: 0.5, MIN: 0, MAX: 1 },
+        { NAME: "m", TYPE: "long", DEFAULT: 1, VALUES: [0, 1, 2], LABELS: ["A", "B", "C"] },
+        { NAME: "i", TYPE: "int", DEFAULT: 3, MIN: 0, MAX: 10 },
+        { NAME: "p", TYPE: "point2D", DEFAULT: [0.5, 0.5], MIN: [0, 0], MAX: [1, 1] },
+        { NAME: "c", TYPE: "color", DEFAULT: [0.5, 0.5, 0.5, 1] }
+    ], []);
+    equal(isf.clampInputValue(inputs[0], 2), 1);
+    equal(isf.clampInputValue(inputs[0], -3), 0);
+    equal(isf.clampInputValue(inputs[1], 2), 2);
+    equal(isf.clampInputValue(inputs[1], 99), 2);
+    equal(isf.clampInputValue(inputs[2], 42), 10);
+    equal(isf.clampInputValue(inputs[2], -1), 0);
+    equal(isf.clampInputValue(inputs[3], [2, 2]), [1, 1]);
+    equal(isf.clampInputValue(inputs[3], [-1, 2]), [0, 1]);
+    equal(isf.clampInputValue(inputs[4], [1.5, -0.2, 0.5, 2]), [1, 0, 0.5, 1]);
+});
+
+test("prefersReducedMotion is a boolean helper", () => {
+    equal(typeof isf.prefersReducedMotion(), "boolean");
+});
+
 /* ------------------------------------------------------------ highlighting */
 
 console.log("\n# Syntax highlighting");

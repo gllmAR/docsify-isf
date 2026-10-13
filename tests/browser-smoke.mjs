@@ -255,7 +255,8 @@ try {
     if (crossfade.missing) problems.push("crossfade progress control not found");
     else if (crossfade.first === crossfade.second) problems.push("transition progress did not animate: " + JSON.stringify(crossfade));
 
-    // Exercise the editor: open it on the plasma viewer and check the highlighted layer.
+    // Exercise the editor: open it on the plasma viewer, check highlighting,
+    // caret feedback, pane resizing and constraint clamping.
     const plasma = await page.evaluate(() => {
         const blocks = Array.from(document.querySelectorAll(".isf-block"));
         const block = blocks.find((b) => /Plasma/i.test(b.textContent));
@@ -272,10 +273,75 @@ try {
             return editor && !block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") &&
                 editor.querySelectorAll(".isf-tok-isf, .isf-tok-kw, .isf-tok-type").length > 10;
         }, { timeout: 10000, polling: 100 }).catch(() => problems.push("editor did not open / highlight"));
+
+        const editorAudit = await page.evaluate(async () => {
+            const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+            const editor = block.querySelector(".isf-editor");
+            const pos = block.querySelector(".isf-editor-pos");
+            const active = block.querySelector(".isf-active-line");
+            const resizeY = block.querySelector(".isf-resize-y");
+            const resizeX = block.querySelector(".isf-resize-x");
+            const side = block.querySelector(".isf-side");
+
+            const heightBefore = editor.getBoundingClientRect().height;
+            resizeY.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            const heightAfter = editor.getBoundingClientRect().height;
+
+            const sideBefore = side.getBoundingClientRect().width;
+            resizeX.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 80));
+            const sideAfter = side.getBoundingClientRect().width;
+
+            const scaleRow = Array.from(block.querySelectorAll(".isf-param")).find((row) => row.dataset.isfParam === "scale");
+            const numberInput = scaleRow && scaleRow.querySelector('input[type="number"]');
+            numberInput.value = "999";
+            numberInput.dispatchEvent(new Event("change", { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 80));
+
+            let layout = null;
+            try { layout = JSON.parse(localStorage.getItem("docsify-isf:layout") || "null"); } catch (err) { layout = null; }
+
+            return {
+                pos: pos ? pos.textContent : "",
+                activeLineVisible: !!active && !active.classList.contains("isf-hidden"),
+                heightBefore: heightBefore,
+                heightAfter: heightAfter,
+                sideBefore: sideBefore,
+                sideAfter: sideAfter,
+                resizeXDisplay: getComputedStyle(resizeX).display,
+                scaleValue: Number(numberInput.value),
+                scaleMax: Number(numberInput.max),
+                layout: layout
+            };
+        });
+
+        if (!/^Ln \d+, Col \d+$/.test(editorAudit.pos)) problems.push("editor caret label missing: " + JSON.stringify(editorAudit.pos));
+        if (!editorAudit.activeLineVisible) problems.push("editor active-line marker not visible");
+        if (!(editorAudit.heightAfter < editorAudit.heightBefore)) problems.push("editor pane did not resize: " + JSON.stringify(editorAudit));
+        if (editorAudit.resizeXDisplay === "none") problems.push("side pane resizer hidden while the panel is open");
+        if (!(editorAudit.sideAfter > editorAudit.sideBefore)) problems.push("side pane did not resize: " + JSON.stringify(editorAudit));
+        if (editorAudit.scaleValue !== editorAudit.scaleMax) problems.push("out-of-range parameter was not clamped: " + JSON.stringify(editorAudit));
+        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.sideWidth == null) {
+            problems.push("pane sizes were not persisted: " + JSON.stringify(editorAudit.layout));
+        }
+
         const plasmaBlock = (await page.$$(".isf-block"))[0];
         if (plasmaBlock) {
             await plasmaBlock.screenshot({ path: path.join(here, "artifacts", "editor.png") });
         }
+
+        // The close button must collapse the pane again.
+        const closed = await page.evaluate(async () => {
+            const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+            const close = block.querySelector(".isf-editor-wrap .isf-panel-close");
+            if (!close) return { missing: true };
+            close.click();
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            return { hidden: block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") };
+        });
+        if (closed.missing) problems.push("editor close button missing");
+        else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
     }
 
     // Context budget: scroll a released viewer into view and wait for the pump.
