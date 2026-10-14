@@ -731,7 +731,10 @@ export function createRenderer(opts) {
    * first — the comparison needs that orientation.
    */
   function capture(opts) {
-    render();
+    // A frozen capture has already rendered its target frame: `render: false`
+    // captures the current drawing buffer instead of advancing the clock and
+    // FRAMEINDEX one more time (the context preserves the buffer).
+    if (!(opts && opts.render === false)) render();
     if (!canvas || !canvas.toDataURL) return null;
     if (!(opts && opts.flipY)) return canvas.toDataURL('image/png');
     if (typeof document === 'undefined') return canvas.toDataURL('image/png');

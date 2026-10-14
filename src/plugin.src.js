@@ -5903,7 +5903,11 @@
     ISFRuntime.prototype.snapshot = function (options) {
         if (!this.program || !this.gl) return null;
         try {
-            this.draw(0);
+            // A frozen capture has already drawn its target frame; `render:
+            // false` reads that buffer instead of advancing FRAMEINDEX once
+            // more (the extra draw turned frame-strobo black where OBS's
+            // cover is the white frame).
+            if (!options || options.render !== false) this.draw(0);
             var source = this.gl.canvas;
             if (options && options.flipY === false) return source.toDataURL("image/png");
             var canvas = document.createElement("canvas");
@@ -7493,14 +7497,17 @@
         if (steps === 1) {
             runtime.time = time;
             runtime.updateGenerators(time, time);
+            runtime.draw(0);
         } else {
             for (var step = 1; step <= steps; step++) {
                 runtime.time = time * step / steps;
                 runtime.draw(time / steps);
             }
         }
-        // snapshot() already flips the drawing buffer to screen orientation.
-        var dataUrl = runtime.snapshot();
+        // The frame is already drawn (`steps` frames end on FRAMEINDEX
+        // steps-1, the OBS frozen-capture convention); snapshot() only reads
+        // the buffer and flips it to screen orientation.
+        var dataUrl = runtime.snapshot({ render: false });
         if (!dataUrl) throw new Error("renderFrame: the shader did not produce a frame");
         // ISF output is straight RGBA; OBS composites it over the source
         // behind (black for a generator). Flatten by default so headless
