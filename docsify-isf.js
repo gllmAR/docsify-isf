@@ -2897,13 +2897,742 @@
       };
     })();
     
+    __modules['isf-core/render.js'] = (function () {
+    
+      const { parseISF, defaultParams, assembleShaders, VERTEX_SHADER, VERTEX_SHADER_ES3, promoteIntegerLiterals, evalSizeExpression, longUniformValue } = __modules['isf-core/parse.js'];
+      const { createGenerators } = __modules['isf-core/generators.js'];
+      const { promoteIntegerLiterals: promoteIntegerLiteralsCompat } = __modules['isf-core/compat.js'];
+    
+    const CONTEXT_ATTRS = {
+      alpha: false, depth: false, stencil: false, antialias: false,
+      premultipliedAlpha: false, preserveDrawingBuffer: true,
+    };
+    
+    function parseShaderLog(log, preludeLines, bodyStartLine) {
+      const errors = [];
+      const warnings = [];
+      for (const raw of String(log || '').split('\n')) {
+        const m = /^(ERROR|WARNING):\s*\d+:(\d+):\s*(.*)$/.exec(raw.trim());
+        if (!m) continue;
+        const shaderLine = Number(m[2]);
+        const bodyLine = shaderLine - preludeLines;
+        const entry = {
+          severity: m[1].toLowerCase(),
+          shaderLine,
+          bodyLine: bodyLine > 0 ? bodyLine : null,
+          fileLine: bodyLine > 0 ? bodyLine + (bodyStartLine || 1) - 1 : null,
+          message: m[3] || raw.trim(),
+        };
+        (entry.severity === 'error' ? errors : warnings).push(entry);
+      }
+      if (!errors.length && !warnings.length && String(log || '').trim()) {
+        warnings.push({ severity: 'warning', shaderLine: null, bodyLine: null, fileLine: null, message: String(log).trim() });
+      }
+      return { errors, warnings };
+    }
+    
+    function compile(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      const ok = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+      const log = gl.getShaderInfoLog(shader) || '';
+      if (!ok) gl.deleteShader(shader);
+      return { shader, ok, log };
+    }
+    
+    function createProgram(gl, vs, fs) {
+      const program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      const ok = gl.getProgramParameter(program, gl.LINK_STATUS);
+      const log = gl.getProgramInfoLog(program) || '';
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      if (!ok) gl.deleteProgram(program);
+      return { program, ok, log };
+    }
+    
+    function evalSize(expr, fallback, width, height) {
+      if (expr == null || expr === '') return fallback;
+      const value = evalSizeExpression(expr, {
+        $WIDTH: width, $HEIGHT: height, WIDTH: width, HEIGHT: height, width, height,
+      }, NaN);
+      if (!Number.isFinite(value)) return fallback;
+      return Math.max(1, Math.round(value));
+    }
+    
+    function createRenderer(opts) {
+      const options = opts || {};
+      const canvas = options.canvas || null;
+      const gl = options.gl || ((canvas && typeof canvas.getContext === 'function')
+        ? (canvas.getContext('webgl2', CONTEXT_ATTRS)
+          || canvas.getContext('webgl', CONTEXT_ATTRS)
+          || canvas.getContext('experimental-webgl', CONTEXT_ATTRS))
+        : null);
+    
+      const api = options.api || (gl && gl.__isfApi) || (gl && typeof WebGL2RenderingContext !== 'undefined'
+        && gl instanceof WebGL2RenderingContext ? 'es3' : 'es1');
+      let activeApi = api;
+      const state = {
+        ok: false, error: null, errors: [], warnings: [], api,
+        colorSpace: (options.colorSpace === 'raw' || (options.colorSpace !== 'obs')) ? 'raw' : 'obs',
+        parsed: null, params: {}, width: 320, height: 180,
+        time: 0, delta: 0, frame: 0, passCount: 0, sources: [],
+        date: null,
+        mouse: [0, 0, 0, 0],
+      };
+    
+      const isGL2 = !!(gl && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
+      const floatRenderable = (() => {
+        if (!gl) return false;
+        try {
+          if (isGL2) { if (!gl.getExtension('EXT_color_buffer_float')) return false; }
+          else if (!gl.getExtension('OES_texture_float')) return false;
+          const texture = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+          gl.texImage2D(gl.TEXTURE_2D, 0, isGL2 ? gl.RGBA32F : gl.RGBA, 4, 4, 0, gl.RGBA, gl.FLOAT, null);
+          const fbo = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+          const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.deleteFramebuffer(fbo);
+          gl.deleteTexture(texture);
+          return status === gl.FRAMEBUFFER_COMPLETE;
+        } catch (error) {
+          return false;
+        }
+      })();
+      const floatLinear = (() => {
+        try { return !!(gl && gl.getExtension('OES_texture_float_linear')); } catch (error) { return false; }
+      })();
+    
+      let generators = null;
+      let quad = null;
+      const textures = new Map();
+      let present = null;
+      let encode = null;
+      let outTarget = null;
+      let lastTime = null;
+      let raf = 0;
+      let onFrame = null;
+    
+      if (gl) gl.disable(gl.DEPTH_TEST);
+    
+      const srgb = () => api === 'es3' && state.colorSpace === 'obs';
+      const srgbImageFormat = () => (srgb() && gl.SRGB8_ALPHA8) || null;
+    
+      function ensureQuad() {
+        if (quad || !gl) return quad;
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        quad = { buffer };
+        return quad;
+      }
+    
+      function bindQuad(program) {
+        ensureQuad();
+    
+        let loc = gl.getAttribLocation(program, 'isf_position');
+        if (loc < 0) loc = gl.getAttribLocation(program, 'aPos');
+        if (loc >= 0) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, quad.buffer);
+          gl.enableVertexAttribArray(loc);
+          gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        }
+        return loc >= 0;
+      }
+    
+      const wrapMode = (value, fallback) => {
+        const text = String(value == null ? '' : value).toUpperCase();
+        if (text.indexOf('MIRROR') >= 0) return gl.MIRRORED_REPEAT;
+        if (text.indexOf('REPEAT') >= 0) return gl.REPEAT;
+        if (text.indexOf('CLAMP') >= 0) return gl.CLAMP_TO_EDGE;
+        return fallback;
+      };
+      const filterMode = (value, fallback) => {
+        const text = String(value == null ? '' : value).toUpperCase();
+        if (text.indexOf('NEAREST') >= 0) return gl.NEAREST;
+        if (text.indexOf('LINEAR') >= 0) return gl.LINEAR;
+        return fallback;
+      };
+    
+      function textureFor(name, width, height, opts) {
+        const o = opts || {};
+        const existing = textures.get(name);
+        const sameOpts = existing && existing.wrap === o.wrap && existing.minFilter === o.minFilter && existing.magFilter === o.magFilter;
+        if (existing && existing.width === width && existing.height === height && sameOpts) return existing;
+        if (existing) gl.deleteTexture(existing.texture);
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        const wrap = wrapMode(o.wrap, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filterMode(o.minFilter, gl.LINEAR));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filterMode(o.magFilter, gl.LINEAR));
+    
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        const entry = { texture, width, height, source: null,
+          wrap: o.wrap, minFilter: o.minFilter, magFilter: o.magFilter };
+        textures.set(name, entry);
+        return entry;
+      }
+    
+      function createPassTarget(name, width, height, opts) {
+        const o = opts || {};
+        const useFloat = !!(o.float && floatRenderable);
+        const filter = useFloat && !floatLinear ? gl.NEAREST : gl.LINEAR;
+        const make = () => {
+          const texture = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+          gl.texImage2D(gl.TEXTURE_2D, 0, useFloat && isGL2 ? gl.RGBA32F : gl.RGBA, width, height, 0, gl.RGBA,
+            useFloat ? gl.FLOAT : gl.UNSIGNED_BYTE, null);
+          const fbo = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          return { texture, fbo };
+        };
+        const entry = {
+          name, width, height, pair: [make(), make()], read: 0,
+          readTexture() { return entry.pair[entry.read].texture; },
+          readFbo() { return entry.pair[entry.read].fbo; },
+          writeFbo() { return entry.pair[1 - entry.read].fbo; },
+          flip() { entry.read = 1 - entry.read; },
+        };
+        textures.set(name, entry);
+        return entry;
+      }
+    
+      function readTarget(name) {
+        if (!gl) return null;
+        const entry = textures.get(name);
+        if (!entry) return null;
+        const fbo = entry.readFbo ? entry.readFbo() : entry.fbo;
+        if (!fbo) return null;
+        const width = entry.width;
+        const height = entry.height;
+        const data = new Uint8Array(width * height * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { width, height, data: Array.from(data) };
+      }
+    
+      function setImage(name, source, opts) {
+        if (!gl || !name) return null;
+        const width = source.width || source.videoWidth || 1;
+        const height = source.height || source.videoHeight || 1;
+        const entry = textureFor(name, width, height, opts);
+        gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+    
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        const imageFormat = srgbImageFormat();
+        if (imageFormat) gl.texImage2D(gl.TEXTURE_2D, 0, imageFormat, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        entry.source = source;
+        return entry;
+      }
+    
+      function setParams(params) {
+        state.params = Object.assign({}, state.params, params || {});
+        return state.params;
+      }
+    
+      function setParam(name, value) {
+        state.params[name] = value;
+        return value;
+      }
+    
+      function setTime(seconds) {
+        state.time = Number(seconds) || 0;
+        return state.time;
+      }
+    
+      function setMouse(value) {
+        if (Array.isArray(value) && value.length >= 4) state.mouse = value.slice(0, 4).map((part) => Number(part) || 0);
+        return state.mouse;
+      }
+    
+      function setDate(value) {
+        if (value == null) { state.date = null; return null; }
+        if (Array.isArray(value) && value.length >= 4) {
+          state.date = value.slice(0, 4).map((part) => Number(part) || 0);
+          return state.date;
+        }
+        const date = value instanceof Date ? value : new Date(value);
+        state.date = Number.isFinite(date.getTime())
+          ? [date.getFullYear(), date.getMonth() + 1, date.getDate(),
+            date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds()]
+          : null;
+        return state.date;
+      }
+    
+      function applyUniform(program, name, setter) {
+        const loc = gl.getUniformLocation(program, name);
+        if (loc == null) return;
+        setter(loc);
+      }
+    
+      function setSource(source, size, opts2) {
+        state.parsed = parseISF(source);
+        state.errors = [];
+        state.warnings = state.parsed.warnings.slice();
+        state.params = {};
+        state.ok = false;
+        state.error = state.parsed.error || null;
+        if (!state.parsed.valid) return state;
+        if (!gl) { state.error = { message: 'No WebGL context' }; return state; }
+    
+        const width = Math.max(1, Math.round((size && size.width) || state.width));
+        const height = Math.max(1, Math.round((size && size.height) || state.height));
+        state.width = width;
+        state.height = height;
+    
+        const order = api === 'es3' ? ['es3', 'es1'] : ['es1', 'es3'];
+        const vsSource = (opts2 && opts2.vs) || null;
+        const attempts = [];
+        for (const dialect of order) {
+          attempts.push({ api: dialect, promote: false, identifiers: false });
+          attempts.push({ api: dialect, promote: true, identifiers: false });
+        }
+        for (const dialect of order) {
+          attempts.push({ api: dialect, promote: true, identifiers: true });
+        }
+    
+        const namesFor = (source) => {
+          const floats = new Set(['PI', 'TIME', 'TIMEDELTA', 'RENDERSIZE', 'DATE',
+            'isf_FragNormCoord', 'gl_FragCoord', '_isfMouse']);
+          const ints = new Set();
+    
+          for (const input of state.parsed.inputs) {
+            if (/^(float|vec[234])$/.test(input.uniform)) floats.add(input.name);
+            else if (/^(int|uint|long)$/.test(input.uniform)) ints.add(input.name);
+          }
+          for (const generator of state.parsed.generators || []) {
+            if (generator.uniform === 'float') floats.add(generator.name);
+          }
+          return { floatNames: [...floats], intNames: [...ints] };
+        };
+    
+        let programs = [];
+        let attemptErrors = [];
+        let lastAttemptErrors = [];
+        const attemptReports = [];
+        for (let a = 0; a < attempts.length; a += 1) {
+          const attempt = attempts[a];
+          let shaders = assembleShaders(state.parsed, {
+            api: attempt.api, includes: (opts2 && opts2.includes) || null, vs: vsSource,
+          });
+          if (attempt.promote) {
+            shaders = shaders.map((entry) => {
+              const names = namesFor(entry.fs);
+              return {
+                ...entry,
+                fs: promoteIntegerLiteralsCompat(entry.fs, attempt.identifiers
+                  ? Object.assign({}, names, entry.promoteOptions, { identifiers: true })
+                  : { floatNames: names.floatNames, intNames: [], identifiers: false }),
+              };
+            });
+          }
+          const compiled = [];
+          const errors = [];
+          const warnings = [];
+          for (const entry of shaders) {
+            const vertexSource = entry.vertex || (attempt.api === 'es3' ? VERTEX_SHADER_ES3 : VERTEX_SHADER);
+            const vs = compile(gl, gl.VERTEX_SHADER, vertexSource);
+            const fs = compile(gl, gl.FRAGMENT_SHADER, entry.fs);
+            const vsLog = parseShaderLog(vs.log, 0, 1);
+            const fsLog = parseShaderLog(fs.log, entry.preludeLines, state.parsed.bodyStartLine);
+            const before = errors.length;
+            errors.push(...vsLog.errors.map((e) => ({ ...e, pass: entry.index })), ...fsLog.errors.map((e) => ({ ...e, pass: entry.index })));
+            warnings.push(...vsLog.warnings.map((e) => ({ ...e, pass: entry.index })), ...fsLog.warnings.map((e) => ({ ...e, pass: entry.index })));
+            if (!vs.ok || !fs.ok) {
+              if (errors.length === before) errors.push({ severity: 'error', pass: entry.index, message: 'shader did not compile' });
+              continue;
+            }
+            const linked = createProgram(gl, vs.shader, fs.shader);
+            if (!linked.ok) { errors.push({ severity: 'error', pass: entry.index, message: linked.log || 'Program link failed' }); continue; }
+            compiled.push({ entry, program: linked.program });
+          }
+          if (compiled.length === shaders.length && shaders.length) {
+            state.attemptErrors = attemptReports;
+            state.sources = shaders;
+            state.api = attempt.api;
+            activeApi = attempt.api;
+            state.errors = [];
+            state.warnings.push(...warnings);
+            if (a > 0) {
+              state.warnings.push({ message: 'compiled with compatibility mode: '
+                + (attempt.api === 'es3' ? 'ES 3.00' : 'ES 1.00')
+                + (attempt.promote ? ' + literal promotion' : '')
+                + (attempt.identifiers ? ' + int casts' : '') });
+            }
+            programs = compiled.map(({ entry, program }) => {
+              const pass = entry.pass;
+              let target = null;
+              if (pass) {
+                target = createPassTarget(pass.target,
+                  pass.widthExpr ? evalSize(pass.widthExpr, width, width, height) : width,
+                  pass.heightExpr ? evalSize(pass.heightExpr, height, width, height) : height,
+                  { float: pass.float });
+              }
+              return { pass, program, target, images: entry.images };
+            });
+            break;
+          }
+    
+          if (a === 0) attemptErrors = errors;
+          lastAttemptErrors = errors.map((e) => ({ ...e,
+            attempt: a, api: attempt.api, promote: attempt.promote, identifiers: attempt.identifiers }));
+          attemptReports.push({
+            attempt: a, api: attempt.api, promote: attempt.promote, identifiers: attempt.identifiers,
+            messages: errors.map((e) => e.message),
+          });
+        }
+        if (!programs.length) {
+          state.attemptErrors = attemptReports;
+          state.errors = attemptErrors;
+          state.compatErrors = lastAttemptErrors;
+          state.sources = state.sources || [];
+        }
+        state.programs = programs;
+        state.passCount = programs.length;
+        state.params = defaultParams(state.parsed.inputs);
+        generators = createGenerators(state.parsed.generators || []);
+        state.generatorTime = 0;
+        state.generatorValues = {};
+        state.ok = state.errors.length === 0 && programs.length > 0;
+        if (!state.ok && !state.errors.length) state.error = { message: 'The material has no renderable pass' };
+        return state;
+      }
+    
+      function applyGenerators(upto) {
+        if (!generators) return;
+        const step = 1 / 60;
+        if (upto + 1e-9 < state.generatorTime) {
+          generators = createGenerators(state.parsed.generators || []);
+          state.generatorTime = 0;
+        }
+        let t = state.generatorTime;
+        let guard = 0;
+        while (t < upto - 1e-9 && guard < 60000) {
+          const dt = Math.min(step, upto - t);
+          t += dt;
+          generators.advance(dt, t, state.params);
+          guard += 1;
+        }
+        state.generatorTime = t;
+        state.generatorValues = Object.assign({}, generators.outputs);
+      }
+    
+      function uniformValue(input) {
+        const value = state.params[input.name];
+        if (value === undefined) return input.default;
+        return value;
+      }
+    
+      function renderPass(entry, index, framebuffer) {
+        const { program, target, pass } = entry;
+        gl.useProgram(program);
+        bindQuad(program);
+        const [w, h] = target ? [target.width, target.height] : [state.width, state.height];
+        gl.viewport(0, 0, w, h);
+        if (target) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, target.writeFbo ? target.writeFbo() : (target.fbo || null));
+    
+          if (!(pass && pass.persistent)) {
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+          }
+        } else {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer || null);
+        }
+    
+        applyUniform(program, 'RENDERSIZE', (loc) => gl.uniform2f(loc, w, h));
+        applyUniform(program, 'TIME', (loc) => gl.uniform1f(loc, state.time));
+        applyUniform(program, 'TIMEDELTA', (loc) => gl.uniform1f(loc, state.delta));
+        applyUniform(program, 'PASSINDEX', (loc) => gl.uniform1i(loc, index));
+        applyUniform(program, 'FRAMEINDEX', (loc) => gl.uniform1i(loc, state.frame));
+        const date = state.date || [0, 0, 0, 0];
+        applyUniform(program, 'DATE', (loc) => gl.uniform4f(loc, date[0], date[1], date[2], date[3]));
+        applyUniform(program, '_isfMouse', (loc) => gl.uniform4f(loc, state.mouse[0], state.mouse[1], state.mouse[2], state.mouse[3]));
+    
+        for (const generator of state.parsed.generators || []) {
+          const value = state.generatorValues[generator.name];
+          applyUniform(program, generator.name, (loc) => {
+            if (generator.uniform === 'bool') gl.uniform1i(loc, value ? 1 : 0);
+            else gl.uniform1f(loc, Number(value) || 0);
+          });
+        }
+    
+        for (const input of state.parsed.inputs) {
+          const value = uniformValue(input);
+          applyUniform(program, input.name, (loc) => {
+            if (input.type === 'image' || input.type === 'audio' || input.type === 'audioFFT') return;
+            if (input.type === 'float') gl.uniform1f(loc, Number(value) || 0);
+            else if (input.type === 'bool' || input.type === 'event') gl.uniform1i(loc, value ? 1 : 0);
+            else if (input.type === 'long') gl.uniform1i(loc, longUniformValue(input, value));
+            else if (input.type === 'color') gl.uniform4f(loc, value[0], value[1], value[2], value[3]);
+            else if (input.type === 'point2D') gl.uniform2f(loc, value[0], value[1]);
+          });
+        }
+    
+        const maxUnits = (gl.getParameter && gl.MAX_TEXTURE_IMAGE_UNITS
+          ? gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) : 0) || 8;
+        let unit = 0;
+        for (const name of entry.images || []) {
+          const source = textures.get(name);
+          if (!source || unit >= maxUnits) continue;
+          const texture = source.readTexture ? source.readTexture() : source.texture;
+          gl.activeTexture(gl.TEXTURE0 + unit);
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          applyUniform(program, name, (loc) => gl.uniform1i(loc, unit));
+          applyUniform(program, '_' + name + '_imgSize', (loc) => gl.uniform2f(loc, source.width, source.height));
+    
+          applyUniform(program, '_' + name + '_imgRect', (loc) => gl.uniform4f(loc, 0, 0, 1, 1));
+          applyUniform(program, '_' + name + '_flip', (loc) => gl.uniform1i(loc, 0));
+          unit += 1;
+        }
+    
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (target && target.flip) target.flip();
+        if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { pass, target, width: w, height: h };
+      }
+    
+      function ensureEncode() {
+        if (encode || !gl) return encode;
+        const vs = compile(gl, gl.VERTEX_SHADER, activeApi === 'es3' ? VERTEX_SHADER_ES3 : VERTEX_SHADER);
+        const fs = compile(gl, gl.FRAGMENT_SHADER, [
+          activeApi === 'es3' ? '#version 300 es' : 'precision highp float;',
+          activeApi === 'es3' ? 'precision highp float;' : '',
+          activeApi === 'es3' ? 'in vec2 isf_FragNormCoord;' : 'varying vec2 isf_FragNormCoord;',
+          'uniform sampler2D uSrc;',
+          activeApi === 'es3' ? 'out vec4 _isfFragColor;' : '',
+          'vec3 linearToSrgb(vec3 c) {',
+          '  vec3 lo = c * 12.92;',
+          '  vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;',
+          '  return mix(lo, hi, step(vec3(0.0031308), c));',
+          '}',
+          'void main() {',
+          activeApi === 'es3' ? '  _isfFragColor' : '  gl_FragColor',
+          ' = vec4(linearToSrgb((' + (activeApi === 'es3' ? 'texture(uSrc, isf_FragNormCoord)' : 'texture2D(uSrc, isf_FragNormCoord)') + ').rgb), 1.0);',
+          '}',
+        ].filter(Boolean).join('\n'));
+        const linked = createProgram(gl, vs.shader, fs.shader);
+        if (!linked.ok) {
+          state.errors.push({ severity: 'error', pass: 'encode', message: linked.log || 'encode blit failed' });
+          state.ok = false;
+        }
+        encode = linked.ok ? { program: linked.program } : null;
+        return encode;
+      }
+    
+      function ensureOutputTarget(width, height) {
+        if (outTarget && outTarget.width === width && outTarget.height === height) return outTarget;
+        if (outTarget && outTarget.fbo) gl.deleteFramebuffer(outTarget.fbo);
+        if (outTarget) gl.deleteTexture(outTarget.texture);
+        const entry = textureFor('__isf_output', width, height);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, entry.texture, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        entry.fbo = fbo;
+        outTarget = entry;
+        return entry;
+      }
+    
+      function blitEncode(source) {
+        const p = ensureEncode();
+        if (!p || !source) return;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, state.width, state.height);
+        gl.useProgram(p.program);
+        bindQuad(p.program);
+        applyUniform(p.program, 'uSrc', (loc) => gl.uniform1i(loc, 0));
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, source.texture);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+    
+      function ensurePresent() {
+        if (present || !gl) return present;
+        const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+        const fs = compile(gl, gl.FRAGMENT_SHADER, [
+          'precision highp float;',
+          'uniform sampler2D inputImage;',
+          'varying vec2 isf_FragNormCoord;',
+          'void main() { gl_FragColor = texture2D(inputImage, isf_FragNormCoord); }',
+        ].join('\n'));
+        const linked = createProgram(gl, vs.shader, fs.shader);
+        present = linked.ok ? { program: linked.program } : null;
+        return present;
+      }
+    
+      function resize(width, height) {
+        const w = Math.max(1, Math.round(width || state.width));
+        const h = Math.max(1, Math.round(height || state.height));
+        if (w === state.width && h === state.height) return { width: w, height: h };
+        state.width = w;
+        state.height = h;
+        if (!gl) return { width: w, height: h };
+        for (const entry of state.programs || []) {
+          const pass = entry.pass;
+          if (!pass) continue;
+          if (entry.target && entry.target.pair) {
+            for (const side of entry.target.pair) {
+              gl.deleteTexture(side.texture);
+              gl.deleteFramebuffer(side.fbo);
+            }
+          }
+          entry.target = createPassTarget(pass.target,
+            pass.widthExpr ? evalSize(pass.widthExpr, w, w, h) : w,
+            pass.heightExpr ? evalSize(pass.heightExpr, h, w, h) : h,
+            { float: pass.float });
+        }
+        return { width: w, height: h };
+      }
+    
+      function presentTarget(name) {
+        if (!gl) return false;
+        const entry = textures.get(name);
+        if (!entry) return false;
+        const target = entry.readTexture ? { texture: entry.readTexture() } : entry;
+        const p = target.texture && ensurePresent();
+        if (!p || !target.texture) return false;
+        gl.useProgram(p.program);
+        bindQuad(p.program);
+        gl.viewport(0, 0, state.width, state.height);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        applyUniform(p.program, 'inputImage', (loc) => gl.uniform1i(loc, 0));
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, target.texture);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        return true;
+      }
+    
+      function render() {
+        if (!state.ok || !gl) return null;
+        const dt = lastTime == null ? 0 : Math.max(0, state.time - lastTime);
+        state.delta = dt;
+        lastTime = state.time;
+        applyGenerators(state.time);
+        const filterPath = srgb();
+        let presented = false;
+        let output = null;
+        for (let i = 0; i < state.programs.length; i += 1) {
+          const last = i === state.programs.length - 1;
+          const offscreen = filterPath && last && !state.programs[i].target
+            ? ensureOutputTarget(state.width, state.height)
+            : null;
+          const out = renderPass(state.programs[i], i, offscreen ? offscreen.fbo : null);
+          if (offscreen) output = offscreen;
+          if (!out.target) presented = true;
+        }
+        if (filterPath) {
+    
+          const last = state.programs.length ? state.programs[state.programs.length - 1].target : null;
+          const source = output || (last && last.readTexture ? { texture: last.readTexture() } : last);
+          blitEncode(source);
+        } else if (!presented && state.programs.length) {
+    
+          const lastTarget = state.programs[state.programs.length - 1].target;
+          const target = lastTarget && lastTarget.readTexture
+            ? { texture: lastTarget.readTexture() } : lastTarget;
+          const p = target && ensurePresent();
+          if (p && target) {
+            gl.useProgram(p.program);
+            bindQuad(p.program);
+            gl.viewport(0, 0, state.width, state.height);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            applyUniform(p.program, 'inputImage', (loc) => gl.uniform1i(loc, 0));
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, target.texture);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          }
+        }
+        state.frame += 1;
+        return { width: state.width, height: state.height };
+      }
+    
+      function start(callback) {
+        onFrame = callback || null;
+        if (!gl || raf) return;
+        const tick = () => {
+          raf = requestAnimationFrame(tick);
+          render();
+          if (onFrame) onFrame({ time: state.time, frame: state.frame, width: state.width, height: state.height });
+        };
+        if (typeof requestAnimationFrame === 'function') raf = requestAnimationFrame(tick);
+      }
+    
+      function stop() {
+        if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    
+      function capture(opts) {
+    
+        if (!(opts && opts.render === false)) render();
+        if (!canvas || !canvas.toDataURL) return null;
+        if (!(opts && opts.flipY)) return canvas.toDataURL('image/png');
+        if (typeof document === 'undefined') return canvas.toDataURL('image/png');
+        const out = document.createElement('canvas');
+        out.width = canvas.width;
+        out.height = canvas.height;
+        const ctx = out.getContext('2d');
+        if (!ctx) return canvas.toDataURL('image/png');
+        ctx.translate(0, out.height);
+        ctx.scale(1, -1);
+        ctx.drawImage(canvas, 0, 0);
+        return out.toDataURL('image/png');
+      }
+    
+      return {
+        gl, canvas, state,
+        available: !!gl,
+        setSource, setParams, setParam, setImage, setTime, setDate, setMouse, resize, render, presentTarget,
+        start, stop, capture, readTarget,
+        targetNames: () => Array.from(textures.keys()),
+        get programs() { return state.programs || []; },
+        destroy() {
+          stop();
+          if (!gl) return;
+          for (const entry of textures.values()) {
+            if (entry.pair) entry.pair.forEach((side) => { gl.deleteTexture(side.texture); gl.deleteFramebuffer(side.fbo); });
+            else gl.deleteTexture(entry.texture);
+          }
+          textures.clear();
+          if (quad) gl.deleteBuffer(quad.buffer);
+        },
+      };
+    }
+    
+      return {
+        createRenderer
+      };
+    })();
+    
     __modules['isf-core/api.js'] = (function () {
     
       const parse = __modules['isf-core/parse.js'];
       const compat = __modules['isf-core/compat.js'];
       const generators = __modules['isf-core/generators.js'];
+      const render = __modules['isf-core/render.js'];
     
-    const api = { parse, compat, generators };
+    const api = { parse, compat, generators, render };
       const __default = api;
     
       return {
@@ -3168,7 +3897,8 @@
         autoplay: true,
         loopTransition: true,
         transitionDuration: 4.0,
-        resolution: "auto",         // "auto" | 2 | 1 | 0.5
+        resolution: "auto",
+        runtime: "core",             // "core" (shared ISF kernel) | "legacy"         // "auto" | 2 | 1 | 0.5
         maxPixelRatio: 2,
         maxFps: 0,                  // 0 = unlimited, otherwise cap the render loop
         includePaths: [],           // extra directories for #include "file.glsl"
@@ -6868,6 +7598,296 @@
     };
 
     /* ==================================================================
+     * K2 runtime: the shared ISF core behind the plugin's UI
+     *
+     * `ISFRuntimeCore` keeps the surface the viewer/editor consume (time,
+     * playing, events, inputSources, previewTarget, qualityScale, snapshot,
+     * stats) but delegates parsing, compiling, the pass loop, buffers, image
+     * upload and the snapshot buffer to `ISFCore.render.createRenderer`.
+     * `config.runtime === "legacy"` selects the old loop while K2 settles.
+     * ================================================================== */
+
+    function ISFRuntimeCore(viewer, gl) {
+        this.viewer = viewer;
+        this.config = viewer.config;
+        this.gl = gl;
+        this.isGL2 = gl.__isfContextName === "webgl2";
+        this.renderer = ISFCore.render.createRenderer({ canvas: gl.canvas, gl: gl, colorSpace: "raw" });
+        this.floatSupported = detectFloatRenderable(gl, this.isGL2);
+        this.compiled = false;
+        this.inputs = [];
+        this.passes = [];
+        this.generators = [];
+        this.images = [];
+        this.inputSources = {};
+        this.uploaded = {};
+        this.audioCanvases = {};
+        this.values = viewer.values;
+        this.events = {};
+        this.time = 0;
+        this.lastNow = performance.now();
+        this.frameIndex = 0;
+        this.transitionTime = 0;
+        this.playing = !!this.config.autoplay && (!!this.config.forcePlay || !prefersReducedMotion());
+        this.visible = true;
+        this.needsRender = true;
+        this.running = false;
+        this.destWidth = 1;
+        this.destHeight = 1;
+        this.frameCount = 0;
+        this.statsAt = 0;
+        this.fps = 0;
+        this.maxFps = Math.max(0, Number(this.config.maxFps) || 0);
+        this._lastDrawAt = 0;
+        this.previewTarget = null;
+        this.qualityScale = null;
+        this.mouse = [0, 0, 0, 0];
+        this.pointerDown = false;
+        this.fixedDate = null;
+        this.compatibilityLabel = "";
+        var self = this;
+        this._tick = function (now) { self.tick(now); };
+        this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
+        gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
+        this.setupGeometry();
+        this.bindPointer();
+        this.resize(true);
+    }
+
+    ISFRuntimeCore.prototype = Object.create(ISFRuntime.prototype);
+    ISFRuntimeCore.prototype.constructor = ISFRuntimeCore;
+
+    /** Choose the runtime: the shared core by default, legacy on request. */
+    function createRuntime(viewer, gl) {
+        if (viewer.config && viewer.config.runtime === "legacy") return new ISFRuntime(viewer, gl);
+        return new ISFRuntimeCore(viewer, gl);
+    }
+
+    ISFRuntimeCore.prototype.compile = function (shader) {
+        var source = (this.viewer.parse && this.viewer.parse.raw) || (shader && shader.source) || "";
+        if (!source) return { message: "The material source is not available" };
+        this.resize(false);
+        var state = this.renderer.setSource(source, { width: this.destWidth, height: this.destHeight }, {
+            includes: this.viewer.includes || null,
+            vs: this.viewer.vertexSource || null,
+        });
+        this.inputs = shader.inputs || (state.parsed && state.parsed.inputs) || [];
+        this.passes = shader.passes || (state.parsed && state.parsed.passes) || [];
+        this.generators = shader.generators || (state.parsed && state.parsed.generators) || [];
+        this.images = shader.images || [];
+        this.uploaded = {};
+        this.needsRender = true;
+        if (!state.ok) {
+            this.compiled = false;
+            return this.compileError(state);
+        }
+        this.compiled = true;
+        // The plugin's convention: an ISF material targets ES 1.00, so
+        // rendering it through ES 3.00 on WebGL2 is itself compatibility mode;
+        // the core only warns when it needed a retry.
+        var warning = "";
+        var warnings = state.warnings || [];
+        for (var wi = 0; wi < warnings.length; wi++) {
+            if (/compatibility mode/i.test(warnings[wi].message || "")) warning = warnings[wi].message;
+        }
+        if (state.api === "es3") {
+            this.compatibilityLabel = warning
+                ? (/int casts/i.test(warning) ? "Compatibility mode · ES 3.00 + int casts"
+                    : /literal promotion/i.test(warning) ? "Compatibility mode · ES 3.00 + literal promotion"
+                        : "Compatibility mode · WebGL2 / GLSL ES 3.00")
+                : "Compatibility mode · WebGL2 / GLSL ES 3.00";
+        } else {
+            this.compatibilityLabel = warning
+                ? (/int casts/i.test(warning) ? "Compatibility mode · int casts" : "Compatibility mode · literal promotion")
+                : "";
+        }
+        return null;
+    };
+
+    /** The viewer's error UI expects the old compiler's message shape. */
+    ISFRuntimeCore.prototype.compileError = function (state) {
+        var errs = state.errors || [];
+        if (!errs.length) return { message: (state.error && state.error.message) || "The material did not compile" };
+        var first = errs[0];
+        return {
+            log: errs.map(function (e) { return e.message; }).join("\n"),
+            message: first.message,
+            label: first.pass === 'vertex' ? "vertex shader" : "fragment shader",
+            context: this.compatibilityLabel || "compile",
+            messages: errs.map(function (e) {
+                return { severity: e.severity || "error", line: e.line || 1, message: e.message };
+            }),
+            fileLine: first.fileLine,
+        };
+    };
+
+    ISFRuntimeCore.prototype.resize = function (force) {
+        ISFRuntime.prototype.resize.call(this, force);
+        var canvas = this.gl && this.gl.canvas;
+        if (canvas && (canvas.width !== this.destWidth || canvas.height !== this.destHeight)) {
+            canvas.width = this.destWidth;
+            canvas.height = this.destHeight;
+        }
+        this.renderer.resize(this.destWidth, this.destHeight);
+    };
+
+    ISFRuntimeCore.prototype.updateInputTextures = function () {
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind === "pass" || image.kind === "audio") continue;
+            var source = this.inputSources[image.name];
+            if (!source && image.kind === "input") source = this.defaultImageSource(image.input);
+            if (!source || this.uploaded[image.name] === source) continue;
+            var hints = image.import
+                ? { wrap: image.import.wrap, minFilter: image.import.minFilter, magFilter: image.import.magFilter }
+                : undefined;
+            try {
+                this.renderer.setImage(image.name, source, hints);
+                this.uploaded[image.name] = source;
+            } catch (err) { /* a missing imported asset stays unbound */ }
+        }
+    };
+
+    ISFRuntimeCore.prototype.updateAudioTextures = function () {
+        var analyser = this.viewer.audioState ? this.viewer.audioState.analyser : null;
+        var buffer = this.viewer.audioState ? this.viewer.audioState.data : null;
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind !== "audio" || !image.input) continue;
+            var input = image.input;
+            var samples = input.samples || 512;
+            var canvas = this.audioCanvases[input.name];
+            if (!canvas) {
+                canvas = document.createElement("canvas");
+                canvas.width = samples;
+                canvas.height = 1;
+                this.audioCanvases[input.name] = canvas;
+            }
+            var context = canvas.getContext("2d");
+            var pixels = context.createImageData(samples, 1);
+            var data = pixels.data;
+            var time = this.time;
+            if (analyser && buffer) {
+                if (buffer.length !== analyser.frequencyBinCount) {
+                    buffer = new Uint8Array(analyser.frequencyBinCount);
+                    this.viewer.audioState.data = buffer;
+                }
+                if (input.type === "audio") analyser.getByteTimeDomainData(buffer);
+                else analyser.getByteFrequencyData(buffer);
+                var binCount = buffer.length;
+                for (var m = 0; m < samples; m++) {
+                    var bin = Math.min(binCount - 1, Math.round(m / samples * binCount));
+                    var byte = buffer[bin];
+                    data[m * 4] = byte; data[m * 4 + 1] = byte; data[m * 4 + 2] = byte; data[m * 4 + 3] = 255;
+                }
+            } else {
+                for (var x = 0; x < samples; x++) {
+                    var t = x / samples;
+                    var value;
+                    if (input.type === "audio") {
+                        var envelope = Math.sin(Math.PI * t);
+                        value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
+                    } else {
+                        var falloff = Math.pow(1 - t, 1.7);
+                        value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
+                    }
+                    var synth = Math.max(0, Math.min(255, Math.round(value * 255)));
+                    data[x * 4] = synth; data[x * 4 + 1] = synth; data[x * 4 + 2] = synth; data[x * 4 + 3] = 255;
+                }
+            }
+            context.putImageData(pixels, 0, 0);
+            try { this.renderer.setImage(input.name, canvas); } catch (err) { /* ignore */ }
+        }
+    };
+
+    // the core integrates generators against its own clock, and rewinds them
+    // when a frozen capture goes back in time
+    ISFRuntimeCore.prototype.resetGenerators = function () {};
+    ISFRuntimeCore.prototype.updateGenerators = function () {};
+
+    ISFRuntimeCore.prototype.draw = function (delta) {
+        if (!this.compiled) return;
+        this.resize(false);
+        if (this.destWidth <= 1 || this.destHeight <= 1) return;
+        this.updateInputTextures();
+        this.updateAudioTextures();
+        if (this.viewer.transition && this.config.loopTransition && this.playing) {
+            var duration = Math.max(0.5, Number(this.config.transitionDuration) || 4);
+            this.transitionTime += delta || 0;
+            var cycle = this.transitionTime % (duration * 2);
+            if (cycle < 0) cycle += duration * 2;
+            var progress = cycle <= duration ? cycle / duration : 2 - cycle / duration;
+            this.values.progress = progress;
+            if (this.viewer.syncParameterControl) this.viewer.syncParameterControl("progress", progress);
+        }
+        var params = assign({}, this.values);
+        for (var i = 0; i < this.inputs.length; i++) {
+            var input = this.inputs[i];
+            if (input.type === "event") params[input.name] = !!this.events[input.name];
+        }
+        this.renderer.setParams(params);
+        var now = this.fixedDate || new Date();
+        this.renderer.setTime(this.time);
+        this.renderer.setMouse(this.mouse);
+        this.renderer.setDate([now.getFullYear(), now.getMonth() + 1, now.getDate(),
+            now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()]);
+        this.renderer.render();
+        if (this.previewTarget && this.renderer.presentTarget) this.renderer.presentTarget(this.previewTarget);
+        this.events = {};
+        this.frameIndex++;
+        this.frameCount++;
+        var nowMs = performance.now();
+        if (!this.statsAt) this.statsAt = nowMs;
+        if (nowMs - this.statsAt >= 500) {
+            this.fps = Math.round(this.frameCount * 1000 / (nowMs - this.statsAt));
+            this.frameCount = 0;
+            this.statsAt = nowMs;
+            this.viewer.updateBadge(this.fps + " fps · " + this.destWidth + "×" + this.destHeight + (this.passes.length > 1 ? " · " + this.passes.length + " passes" : ""));
+            if (this.viewer.syncClock) this.viewer.syncClock(this.time, this.playing);
+        }
+    };
+
+    ISFRuntimeCore.prototype.snapshot = function (options) {
+        if (!this.compiled || !this.gl) return null;
+        try {
+            if (!options || options.render !== false) this.draw(0);
+            var source = this.gl.canvas;
+            if (options && options.flipY === false) return source.toDataURL("image/png");
+            var canvas = document.createElement("canvas");
+            canvas.width = source.width;
+            canvas.height = source.height;
+            var context = canvas.getContext("2d");
+            context.translate(0, canvas.height);
+            context.scale(1, -1);
+            context.drawImage(source, 0, 0);
+            return canvas.toDataURL("image/png");
+        } catch (err) {
+            return null;
+        }
+    };
+
+    ISFRuntimeCore.prototype.dispose = function () {
+        this.stop();
+        try {
+            var stage = this.viewer.dom.stage;
+            if (this._onPointerMove) stage.removeEventListener("pointermove", this._onPointerMove);
+            if (this._onPointerDown) stage.removeEventListener("pointerdown", this._onPointerDown);
+            if (this._onPointerLeave) stage.removeEventListener("pointerleave", this._onPointerLeave);
+            if (this._onPointerUp) window.removeEventListener("pointerup", this._onPointerUp);
+        } catch (err) { /* ignore */ }
+        try { this.gl.canvas.removeEventListener("webglcontextlost", this._contextLost, false); } catch (err) { /* ignore */ }
+        try { if (this.renderer) this.renderer.destroy(); } catch (err) { /* ignore */ }
+        this.renderer = null;
+        if (this.paint) { try { this.gl.deleteProgram(this.paint.program); } catch (err) { /* ignore */ } this.paint = null; }
+        if (this.vertexBuffer) { try { this.gl.deleteBuffer(this.vertexBuffer); } catch (err) { /* ignore */ } this.vertexBuffer = null; }
+        try {
+            var lose = this.gl.getExtension("WEBGL_lose_context");
+            if (lose && this.gl.canvas === this.viewer.dom.canvas) lose.loseContext();
+        } catch (err) { /* ignore */ }
+        this.gl = null;
+    };
+
+    /* ==================================================================
      * GPU context budget
      * ================================================================== */
 
@@ -7975,7 +8995,7 @@
                 viewer.showOverlay("<strong>WebGL is not available</strong>This browser or GPU cannot render ISF shaders.", true);
                 return;
             }
-            viewer.runtime = new ISFRuntime(viewer, viewer.gl);
+            viewer.runtime = createRuntime(viewer, viewer.gl);
             var compileError = viewer.runtime.compile(viewer.built);
             if (compileError) {
                 viewer.runtimeError(compileError, viewer.built);

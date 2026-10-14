@@ -663,6 +663,56 @@ export function createRenderer(opts) {
     return present;
   }
 
+  /**
+   * Resize the canvas and the pass targets without recompiling: container and
+   * quality-scale changes hit this instead of a full setSource().
+   */
+  function resize(width, height) {
+    const w = Math.max(1, Math.round(width || state.width));
+    const h = Math.max(1, Math.round(height || state.height));
+    if (w === state.width && h === state.height) return { width: w, height: h };
+    state.width = w;
+    state.height = h;
+    if (!gl) return { width: w, height: h };
+    for (const entry of state.programs || []) {
+      const pass = entry.pass;
+      if (!pass) continue;   // the canvas pass has no target
+      if (entry.target && entry.target.pair) {
+        for (const side of entry.target.pair) {
+          gl.deleteTexture(side.texture);
+          gl.deleteFramebuffer(side.fbo);
+        }
+      }
+      entry.target = createPassTarget(pass.target,
+        pass.widthExpr ? evalSize(pass.widthExpr, w, w, h) : w,
+        pass.heightExpr ? evalSize(pass.heightExpr, h, w, h) : h,
+        { float: pass.float });
+    }
+    return { width: w, height: h };
+  }
+
+  /**
+   * Draw a PASSES target to the canvas: the per-pass preview the plugin's
+   * pass picker offers, without a readback.
+   */
+  function presentTarget(name) {
+    if (!gl) return false;
+    const entry = textures.get(name);
+    if (!entry) return false;
+    const target = entry.readTexture ? { texture: entry.readTexture() } : entry;
+    const p = target.texture && ensurePresent();
+    if (!p || !target.texture) return false;
+    gl.useProgram(p.program);
+    bindQuad(p.program);
+    gl.viewport(0, 0, state.width, state.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    applyUniform(p.program, 'inputImage', (loc) => gl.uniform1i(loc, 0));
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, target.texture);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return true;
+  }
+
   /** Draw one frame. Returns the render size. */
   function render() {
     if (!state.ok || !gl) return null;
@@ -752,7 +802,8 @@ export function createRenderer(opts) {
   return {
     gl, canvas, state,
     available: !!gl,   // false when the canvas has no WebGL (tests, old hosts)
-    setSource, setParams, setParam, setImage, setTime, setDate, setMouse, render, start, stop, capture, readTarget,
+    setSource, setParams, setParam, setImage, setTime, setDate, setMouse, resize, render, presentTarget,
+    start, stop, capture, readTarget,
     targetNames: () => Array.from(textures.keys()),
     get programs() { return state.programs || []; },
     destroy() {

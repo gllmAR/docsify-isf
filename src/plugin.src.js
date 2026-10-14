@@ -68,7 +68,8 @@
         autoplay: true,
         loopTransition: true,
         transitionDuration: 4.0,
-        resolution: "auto",         // "auto" | 2 | 1 | 0.5
+        resolution: "auto",
+        runtime: "core",             // "core" (shared ISF kernel) | "legacy"         // "auto" | 2 | 1 | 0.5
         maxPixelRatio: 2,
         maxFps: 0,                  // 0 = unlimited, otherwise cap the render loop
         includePaths: [],           // extra directories for #include "file.glsl"
@@ -5964,6 +5965,296 @@
     };
 
     /* ==================================================================
+     * K2 runtime: the shared ISF core behind the plugin's UI
+     *
+     * `ISFRuntimeCore` keeps the surface the viewer/editor consume (time,
+     * playing, events, inputSources, previewTarget, qualityScale, snapshot,
+     * stats) but delegates parsing, compiling, the pass loop, buffers, image
+     * upload and the snapshot buffer to `ISFCore.render.createRenderer`.
+     * `config.runtime === "legacy"` selects the old loop while K2 settles.
+     * ================================================================== */
+
+    function ISFRuntimeCore(viewer, gl) {
+        this.viewer = viewer;
+        this.config = viewer.config;
+        this.gl = gl;
+        this.isGL2 = gl.__isfContextName === "webgl2";
+        this.renderer = ISFCore.render.createRenderer({ canvas: gl.canvas, gl: gl, colorSpace: "raw" });
+        this.floatSupported = detectFloatRenderable(gl, this.isGL2);
+        this.compiled = false;
+        this.inputs = [];
+        this.passes = [];
+        this.generators = [];
+        this.images = [];
+        this.inputSources = {};
+        this.uploaded = {};
+        this.audioCanvases = {};
+        this.values = viewer.values;
+        this.events = {};
+        this.time = 0;
+        this.lastNow = performance.now();
+        this.frameIndex = 0;
+        this.transitionTime = 0;
+        this.playing = !!this.config.autoplay && (!!this.config.forcePlay || !prefersReducedMotion());
+        this.visible = true;
+        this.needsRender = true;
+        this.running = false;
+        this.destWidth = 1;
+        this.destHeight = 1;
+        this.frameCount = 0;
+        this.statsAt = 0;
+        this.fps = 0;
+        this.maxFps = Math.max(0, Number(this.config.maxFps) || 0);
+        this._lastDrawAt = 0;
+        this.previewTarget = null;
+        this.qualityScale = null;
+        this.mouse = [0, 0, 0, 0];
+        this.pointerDown = false;
+        this.fixedDate = null;
+        this.compatibilityLabel = "";
+        var self = this;
+        this._tick = function (now) { self.tick(now); };
+        this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
+        gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
+        this.setupGeometry();
+        this.bindPointer();
+        this.resize(true);
+    }
+
+    ISFRuntimeCore.prototype = Object.create(ISFRuntime.prototype);
+    ISFRuntimeCore.prototype.constructor = ISFRuntimeCore;
+
+    /** Choose the runtime: the shared core by default, legacy on request. */
+    function createRuntime(viewer, gl) {
+        if (viewer.config && viewer.config.runtime === "legacy") return new ISFRuntime(viewer, gl);
+        return new ISFRuntimeCore(viewer, gl);
+    }
+
+    ISFRuntimeCore.prototype.compile = function (shader) {
+        var source = (this.viewer.parse && this.viewer.parse.raw) || (shader && shader.source) || "";
+        if (!source) return { message: "The material source is not available" };
+        this.resize(false);
+        var state = this.renderer.setSource(source, { width: this.destWidth, height: this.destHeight }, {
+            includes: this.viewer.includes || null,
+            vs: this.viewer.vertexSource || null,
+        });
+        this.inputs = shader.inputs || (state.parsed && state.parsed.inputs) || [];
+        this.passes = shader.passes || (state.parsed && state.parsed.passes) || [];
+        this.generators = shader.generators || (state.parsed && state.parsed.generators) || [];
+        this.images = shader.images || [];
+        this.uploaded = {};
+        this.needsRender = true;
+        if (!state.ok) {
+            this.compiled = false;
+            return this.compileError(state);
+        }
+        this.compiled = true;
+        // The plugin's convention: an ISF material targets ES 1.00, so
+        // rendering it through ES 3.00 on WebGL2 is itself compatibility mode;
+        // the core only warns when it needed a retry.
+        var warning = "";
+        var warnings = state.warnings || [];
+        for (var wi = 0; wi < warnings.length; wi++) {
+            if (/compatibility mode/i.test(warnings[wi].message || "")) warning = warnings[wi].message;
+        }
+        if (state.api === "es3") {
+            this.compatibilityLabel = warning
+                ? (/int casts/i.test(warning) ? "Compatibility mode · ES 3.00 + int casts"
+                    : /literal promotion/i.test(warning) ? "Compatibility mode · ES 3.00 + literal promotion"
+                        : "Compatibility mode · WebGL2 / GLSL ES 3.00")
+                : "Compatibility mode · WebGL2 / GLSL ES 3.00";
+        } else {
+            this.compatibilityLabel = warning
+                ? (/int casts/i.test(warning) ? "Compatibility mode · int casts" : "Compatibility mode · literal promotion")
+                : "";
+        }
+        return null;
+    };
+
+    /** The viewer's error UI expects the old compiler's message shape. */
+    ISFRuntimeCore.prototype.compileError = function (state) {
+        var errs = state.errors || [];
+        if (!errs.length) return { message: (state.error && state.error.message) || "The material did not compile" };
+        var first = errs[0];
+        return {
+            log: errs.map(function (e) { return e.message; }).join("\n"),
+            message: first.message,
+            label: first.pass === 'vertex' ? "vertex shader" : "fragment shader",
+            context: this.compatibilityLabel || "compile",
+            messages: errs.map(function (e) {
+                return { severity: e.severity || "error", line: e.line || 1, message: e.message };
+            }),
+            fileLine: first.fileLine,
+        };
+    };
+
+    ISFRuntimeCore.prototype.resize = function (force) {
+        ISFRuntime.prototype.resize.call(this, force);
+        var canvas = this.gl && this.gl.canvas;
+        if (canvas && (canvas.width !== this.destWidth || canvas.height !== this.destHeight)) {
+            canvas.width = this.destWidth;
+            canvas.height = this.destHeight;
+        }
+        this.renderer.resize(this.destWidth, this.destHeight);
+    };
+
+    ISFRuntimeCore.prototype.updateInputTextures = function () {
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind === "pass" || image.kind === "audio") continue;
+            var source = this.inputSources[image.name];
+            if (!source && image.kind === "input") source = this.defaultImageSource(image.input);
+            if (!source || this.uploaded[image.name] === source) continue;
+            var hints = image.import
+                ? { wrap: image.import.wrap, minFilter: image.import.minFilter, magFilter: image.import.magFilter }
+                : undefined;
+            try {
+                this.renderer.setImage(image.name, source, hints);
+                this.uploaded[image.name] = source;
+            } catch (err) { /* a missing imported asset stays unbound */ }
+        }
+    };
+
+    ISFRuntimeCore.prototype.updateAudioTextures = function () {
+        var analyser = this.viewer.audioState ? this.viewer.audioState.analyser : null;
+        var buffer = this.viewer.audioState ? this.viewer.audioState.data : null;
+        for (var i = 0; i < this.images.length; i++) {
+            var image = this.images[i];
+            if (image.kind !== "audio" || !image.input) continue;
+            var input = image.input;
+            var samples = input.samples || 512;
+            var canvas = this.audioCanvases[input.name];
+            if (!canvas) {
+                canvas = document.createElement("canvas");
+                canvas.width = samples;
+                canvas.height = 1;
+                this.audioCanvases[input.name] = canvas;
+            }
+            var context = canvas.getContext("2d");
+            var pixels = context.createImageData(samples, 1);
+            var data = pixels.data;
+            var time = this.time;
+            if (analyser && buffer) {
+                if (buffer.length !== analyser.frequencyBinCount) {
+                    buffer = new Uint8Array(analyser.frequencyBinCount);
+                    this.viewer.audioState.data = buffer;
+                }
+                if (input.type === "audio") analyser.getByteTimeDomainData(buffer);
+                else analyser.getByteFrequencyData(buffer);
+                var binCount = buffer.length;
+                for (var m = 0; m < samples; m++) {
+                    var bin = Math.min(binCount - 1, Math.round(m / samples * binCount));
+                    var byte = buffer[bin];
+                    data[m * 4] = byte; data[m * 4 + 1] = byte; data[m * 4 + 2] = byte; data[m * 4 + 3] = 255;
+                }
+            } else {
+                for (var x = 0; x < samples; x++) {
+                    var t = x / samples;
+                    var value;
+                    if (input.type === "audio") {
+                        var envelope = Math.sin(Math.PI * t);
+                        value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
+                    } else {
+                        var falloff = Math.pow(1 - t, 1.7);
+                        value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
+                    }
+                    var synth = Math.max(0, Math.min(255, Math.round(value * 255)));
+                    data[x * 4] = synth; data[x * 4 + 1] = synth; data[x * 4 + 2] = synth; data[x * 4 + 3] = 255;
+                }
+            }
+            context.putImageData(pixels, 0, 0);
+            try { this.renderer.setImage(input.name, canvas); } catch (err) { /* ignore */ }
+        }
+    };
+
+    // the core integrates generators against its own clock, and rewinds them
+    // when a frozen capture goes back in time
+    ISFRuntimeCore.prototype.resetGenerators = function () {};
+    ISFRuntimeCore.prototype.updateGenerators = function () {};
+
+    ISFRuntimeCore.prototype.draw = function (delta) {
+        if (!this.compiled) return;
+        this.resize(false);
+        if (this.destWidth <= 1 || this.destHeight <= 1) return;
+        this.updateInputTextures();
+        this.updateAudioTextures();
+        if (this.viewer.transition && this.config.loopTransition && this.playing) {
+            var duration = Math.max(0.5, Number(this.config.transitionDuration) || 4);
+            this.transitionTime += delta || 0;
+            var cycle = this.transitionTime % (duration * 2);
+            if (cycle < 0) cycle += duration * 2;
+            var progress = cycle <= duration ? cycle / duration : 2 - cycle / duration;
+            this.values.progress = progress;
+            if (this.viewer.syncParameterControl) this.viewer.syncParameterControl("progress", progress);
+        }
+        var params = assign({}, this.values);
+        for (var i = 0; i < this.inputs.length; i++) {
+            var input = this.inputs[i];
+            if (input.type === "event") params[input.name] = !!this.events[input.name];
+        }
+        this.renderer.setParams(params);
+        var now = this.fixedDate || new Date();
+        this.renderer.setTime(this.time);
+        this.renderer.setMouse(this.mouse);
+        this.renderer.setDate([now.getFullYear(), now.getMonth() + 1, now.getDate(),
+            now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()]);
+        this.renderer.render();
+        if (this.previewTarget && this.renderer.presentTarget) this.renderer.presentTarget(this.previewTarget);
+        this.events = {};
+        this.frameIndex++;
+        this.frameCount++;
+        var nowMs = performance.now();
+        if (!this.statsAt) this.statsAt = nowMs;
+        if (nowMs - this.statsAt >= 500) {
+            this.fps = Math.round(this.frameCount * 1000 / (nowMs - this.statsAt));
+            this.frameCount = 0;
+            this.statsAt = nowMs;
+            this.viewer.updateBadge(this.fps + " fps · " + this.destWidth + "×" + this.destHeight + (this.passes.length > 1 ? " · " + this.passes.length + " passes" : ""));
+            if (this.viewer.syncClock) this.viewer.syncClock(this.time, this.playing);
+        }
+    };
+
+    ISFRuntimeCore.prototype.snapshot = function (options) {
+        if (!this.compiled || !this.gl) return null;
+        try {
+            if (!options || options.render !== false) this.draw(0);
+            var source = this.gl.canvas;
+            if (options && options.flipY === false) return source.toDataURL("image/png");
+            var canvas = document.createElement("canvas");
+            canvas.width = source.width;
+            canvas.height = source.height;
+            var context = canvas.getContext("2d");
+            context.translate(0, canvas.height);
+            context.scale(1, -1);
+            context.drawImage(source, 0, 0);
+            return canvas.toDataURL("image/png");
+        } catch (err) {
+            return null;
+        }
+    };
+
+    ISFRuntimeCore.prototype.dispose = function () {
+        this.stop();
+        try {
+            var stage = this.viewer.dom.stage;
+            if (this._onPointerMove) stage.removeEventListener("pointermove", this._onPointerMove);
+            if (this._onPointerDown) stage.removeEventListener("pointerdown", this._onPointerDown);
+            if (this._onPointerLeave) stage.removeEventListener("pointerleave", this._onPointerLeave);
+            if (this._onPointerUp) window.removeEventListener("pointerup", this._onPointerUp);
+        } catch (err) { /* ignore */ }
+        try { this.gl.canvas.removeEventListener("webglcontextlost", this._contextLost, false); } catch (err) { /* ignore */ }
+        try { if (this.renderer) this.renderer.destroy(); } catch (err) { /* ignore */ }
+        this.renderer = null;
+        if (this.paint) { try { this.gl.deleteProgram(this.paint.program); } catch (err) { /* ignore */ } this.paint = null; }
+        if (this.vertexBuffer) { try { this.gl.deleteBuffer(this.vertexBuffer); } catch (err) { /* ignore */ } this.vertexBuffer = null; }
+        try {
+            var lose = this.gl.getExtension("WEBGL_lose_context");
+            if (lose && this.gl.canvas === this.viewer.dom.canvas) lose.loseContext();
+        } catch (err) { /* ignore */ }
+        this.gl = null;
+    };
+
+    /* ==================================================================
      * GPU context budget
      * ================================================================== */
 
@@ -7071,7 +7362,7 @@
                 viewer.showOverlay("<strong>WebGL is not available</strong>This browser or GPU cannot render ISF shaders.", true);
                 return;
             }
-            viewer.runtime = new ISFRuntime(viewer, viewer.gl);
+            viewer.runtime = createRuntime(viewer, viewer.gl);
             var compileError = viewer.runtime.compile(viewer.built);
             if (compileError) {
                 viewer.runtimeError(compileError, viewer.built);

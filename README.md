@@ -214,6 +214,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `resolution` | `"auto"` | `"auto"` or a fixed multiplier (`0.5`, `1`, `2`). |
 | `maxPixelRatio` | `2` | Upper bound for `auto` rendering scale. |
 | `maxContexts` | `8` | Live WebGL contexts; the least visible viewer is released past this. |
+| `runtime` | `"core"` | Rendering kernel: the shared ISF core (`core`, the same one the editors use) or the plugin's legacy GL loop (`legacy`). |
 | `editor` | `true` | Show the source-editor button. |
 | `editorOpen` | `false` | Open the editor on load. |
 | `editorLive` | `true` | Recompile while typing (debounced). |

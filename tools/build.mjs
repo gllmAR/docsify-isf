@@ -57,6 +57,7 @@ const CORE_MODULES = [
     'isf-core/compat.js',
     'isf-core/parse.js',
     'isf-core/generators.js',
+    'isf-core/render.js',
     'isf-core/api.js',
 ];
 
