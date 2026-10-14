@@ -4723,9 +4723,14 @@
 
             "/* bare mode: a self-contained fullscreen viewer for OBS browser sources */",
             ".isf-block.isf-bare{position:fixed;inset:0;margin:0;border:0;border-radius:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;contain:none;box-shadow:none}",
-            ".isf-bare .isf-header,.isf-bare .isf-status,.isf-bare .isf-drawer{display:none!important}",
+            ".isf-bare:not(.isf-revealed) .isf-header,.isf-bare:not(.isf-revealed) .isf-status,.isf-bare:not(.isf-revealed) .isf-drawer{display:none!important}",
             ".isf-bare .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
             ".isf-bare .isf-stage{height:100%!important;min-height:0;aspect-ratio:auto!important}",
+            ".isf-reveal-btn{position:absolute;right:10px;bottom:10px;z-index:2147483002;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:9px;border:1px solid rgba(255,255,255,.18);background:rgba(12,13,16,.55);color:#e7e9ee;opacity:0;cursor:pointer;transition:opacity .16s ease;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}",
+            ".isf-reveal-btn .isf-icon{width:18px;height:18px}",
+            ".isf-bare:hover .isf-reveal-btn,.isf-bare .isf-reveal-btn:focus-visible{opacity:.45}",
+            ".isf-bare .isf-reveal-btn:hover{opacity:1}",
+            ".isf-bare.isf-revealed .isf-reveal-btn{opacity:.85}",
 
             "/* audit: focus, resizers, caret line, touch and reduced motion */",
             ".isf-block :focus-visible{outline:2px solid var(--isf-accent);outline-offset:2px;border-radius:4px}",
@@ -4815,6 +4820,7 @@
         share: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         copy: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
         check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        eye: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
         chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
     };
 
@@ -7144,6 +7150,44 @@
         viewer.runtime = null;
         viewer.gl = null;
 
+        // Bare viewers (the share/OBS URL) hide every control by default but
+        // keep the whole editing experience one gesture away: hover or focus
+        // the corner button, press H, or click it; Escape hides it back.
+        if (config.bare) {
+            block.classList.add("isf-bare");
+            var revealButton = h("button", "isf-reveal-btn", {
+                type: "button", html: ICONS.eye,
+                title: "Show controls (H)", "aria-label": "Show controls", "aria-pressed": "false"
+            });
+            block.appendChild(revealButton);
+            var setRevealed = function (revealed) {
+                block.classList.toggle("isf-revealed", !!revealed);
+                revealButton.title = revealed ? "Hide controls (H)" : "Show controls (H)";
+                revealButton.setAttribute("aria-label", revealed ? "Hide controls" : "Show controls");
+                revealButton.setAttribute("aria-pressed", revealed ? "true" : "false");
+                if (viewer.runtime) viewer.runtime.needsRender = true;
+            };
+            viewer.setRevealed = setRevealed;
+            viewer.dom.revealButton = revealButton;
+            revealButton.addEventListener("click", function () {
+                setRevealed(!block.classList.contains("isf-revealed"));
+            });
+            var revealKeyHandler = function (event) {
+                if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+                var target = event.target;
+                if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" ||
+                    target.tagName === "SELECT" || target.isContentEditable)) return;
+                if (event.key === "h" || event.key === "H") {
+                    event.preventDefault();
+                    setRevealed(!block.classList.contains("isf-revealed"));
+                } else if (event.key === "Escape" && block.classList.contains("isf-revealed")) {
+                    setRevealed(false);
+                }
+            };
+            document.addEventListener("keydown", revealKeyHandler);
+            viewer.listeners.push(function () { document.removeEventListener("keydown", revealKeyHandler); });
+        }
+
         /* ------------------------------------------------------- layout */
 
         function isFullscreenActive() {
@@ -8243,11 +8287,12 @@
         ensureStyle();
         var routePath = currentRoutePath(vm);
         var bareConfig = assign({}, config, {
-            mode: "replace", lazy: "none", controls: true, params: "closed",
-            editor: false, editorOpen: false, share: false, showStats: false, showSource: false,
+            mode: "replace", lazy: "none", params: "closed",
+            editor: true, editorOpen: false, controls: true,
+            share: true, showStats: true, showSource: true,
             autoplay: true, forcePlay: true, loopTransition: true,
             persistLayout: false, persistValues: false, resolution: 1, maxPixelRatio: 1,
-            aspectRatio: null, height: "100%", width: "100%"
+            aspectRatio: null, height: "100%", width: "100%", bare: true
         });
         try {
             document.documentElement.style.overflow = "hidden";
@@ -8267,7 +8312,6 @@
         holder.appendChild(anchor);
         document.body.appendChild(holder);
         var viewer = createViewer(anchor, basename(flags.shader), bareConfig, routePath);
-        viewer.dom.block.classList.add("isf-bare");
         holder.replaceChild(viewer.dom.block, anchor);
         instances.push(viewer);
     }

@@ -823,6 +823,34 @@ try {
     if (obsParameterized === null || Math.abs(obsParameterized - 1.9) > 0.05) {
         problems.push("the OBS URL did not apply the encoded parameters: " + obsParameterized);
     }
+
+    // The shared viewer hides every control by default but keeps the full
+    // editing experience one gesture away, and can be hidden back.
+    const obsReveal = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = document.querySelector(".isf-block.isf-bare");
+        const header = block.querySelector(".isf-header");
+        const reveal = block.querySelector(".isf-reveal-btn");
+        const headerHidden = getComputedStyle(header).display === "none";
+        reveal.click();
+        await sleep(300);
+        const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
+        block.querySelector('.isf-btn[title="Source editor"]').click();
+        await sleep(400);
+        const editorOpen = !block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") &&
+            getComputedStyle(block.querySelector(".isf-drawer-left")).display !== "none";
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(300);
+        const hiddenAgain = getComputedStyle(header).display === "none";
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+        await sleep(300);
+        const keyboardReveal = getComputedStyle(header).display !== "none";
+        return { headerHidden: headerHidden, revealed: revealed, editorOpen: editorOpen, hiddenAgain: hiddenAgain, keyboardReveal: keyboardReveal };
+    });
+    if (!obsReveal.headerHidden || !obsReveal.revealed || !obsReveal.editorOpen ||
+        !obsReveal.hiddenAgain || !obsReveal.keyboardReveal) {
+        problems.push("the shared viewer's hidden controls did not reveal/hide: " + JSON.stringify(obsReveal));
+    }
     await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
     await sleep(600);
 

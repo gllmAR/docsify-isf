@@ -248,6 +248,12 @@ that fills the viewport and always plays. That is the capture an OBS
 flags work by hand (`isf-editor=1`, `isf-controls=1` still control the normal
 page viewer).
 
+The bare viewer keeps the whole editing experience one gesture away: hover
+the bottom-right corner and click the eye button (or press **H**) to reveal
+the toolbar, parameters and editor; **Escape** (or the same button/key) hides
+everything back to the clean capture. OBS's *Interact* window forwards both
+the mouse and the keyboard.
+
 ## Editor
 
 The code pane fills the available vertical space of its drawer and follows
