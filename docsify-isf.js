@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.14.0";
+    var VERSION = "1.15.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1250,8 +1250,14 @@
                 define: /\bgenerate_as_define\b/.test(String(firstDefined(raw.FLAGS, raw.Flags, "")))
             };
             if (type === "float" || /^(animator|shaper|incrementer|damper|pass_thru|linear_filter|adsr)$/.test(type)) {
-                input.min = numberOr(firstDefined(raw.MIN, raw.Min), 0);
-                input.max = numberOr(firstDefined(raw.MAX, raw.Max), 1);
+                var explicitMin = firstDefined(raw.MIN, raw.Min);
+                var explicitMax = firstDefined(raw.MAX, raw.Max);
+                // The 0…1 pair is the *control* range for materials that omit
+                // MIN/MAX; values must not be clamped to it (`depth: 3`).
+                input.boundedMin = explicitMin !== undefined && explicitMin !== null;
+                input.boundedMax = explicitMax !== undefined && explicitMax !== null;
+                input.min = numberOr(explicitMin, 0);
+                input.max = numberOr(explicitMax, 1);
                 if (input.min > input.max) { var swap = input.min; input.min = input.max; input.max = swap; }
                 if (input.min === input.max) { input.min -= 0.5; input.max += 0.5; }
                 input.default = numberOr(firstDefined(raw.DEFAULT, raw.Default, 0), 0);
@@ -2056,6 +2062,17 @@
         }
 
         function castAndPromote(fragment, declaredName, equalIndex, force, extraInts, patterns, intDeclaration, protectedNames, inlineInts, extraFloats) {
+            // True when the identifier is a parameter (or local) declaration
+            // name in a signature such as `float octaves,` or `inout int n)`:
+            // promoting an int-typed input there would emit `float
+            // float(octaves)`, which is a syntax error.
+            function inParameterList(text, at) {
+                var before = text.slice(0, at);
+                var typed = /(?:(?:lowp|mediump|highp|const|in|out|inout|uniform)\s+)*(?:void|float|int|uint|bool|[biu]vec[234]|mat[234](?:x[234])?)\s+$/.exec(before);
+                if (!typed) return false;
+                var head = before.slice(0, typed.index).replace(/[ \t]+$/, "");
+                return head === "" || /[(,]$/.test(head);
+            }
             var code = fragment;
             var active = patterns || patternsFor(integers, names);
             var floatContext = /(\d+\.\d*|\.\d+|\b(float|vec[234]|mat[234])\b)/.test(code) ||
@@ -2078,6 +2095,7 @@
                         var bareAfter = whole.slice(offset + match.length).replace(/^[ \t]+/, "");
                         if (/[(,]$/.test(bareBefore) && /^[,)]/.test(bareAfter)) return match;
                     }
+                    if (inParameterList(whole, offset)) return match;
                     if (declaredName && name === declaredName && (equalIndex === -1 || offset < equalIndex)) return match;
                     var enclosing = enclosingCall(whole, offset);
                     if (enclosing && /^(?:float|int|uint)$/.test(enclosing.name)) {
@@ -3693,7 +3711,9 @@
             case "pass_thru":
             case "linear_filter":
             case "adsr": {
-                return clamp(numberOr(value, input.default), input.min, input.max);
+                var lower = input.boundedMin === true ? input.min : -Infinity;
+                var upper = input.boundedMax === true ? input.max : Infinity;
+                return clamp(numberOr(value, input.default), lower, upper);
             }
             case "floatRange": {
                 var range = Array.isArray(value) ? value : input.default;
@@ -3704,18 +3724,40 @@
             }
             case "long": {
                 if (input.values && input.values.length) {
-                    if (input.values.indexOf(value) !== -1) return value;
-                    var numeric = Number(value);
-                    if (isFinite(numeric)) {
-                        var best = input.values[0];
-                        var bestDistance = Infinity;
-                        for (var i = 0; i < input.values.length; i++) {
-                            var distance = Math.abs(Number(input.values[i]) - numeric);
-                            if (distance < bestDistance) { bestDistance = distance; best = input.values[i]; }
+                    // The shader uniform is the 0-based *index* for label sets
+                    // (`["Red","Green",…]` compared with `== 0`) and the
+                    // numeric entry for value sets (`[1..9]`); the panel's
+                    // <select> also stores the index. Resolve both shapes to
+                    // the shader value (isf/header.lua's long_shader_value).
+                    var longLabels = input.labels && input.labels.length ? input.labels : input.values.map(String);
+                    var longValue = value;
+                    if (typeof longValue === "string") {
+                        var labelIndex = longLabels.indexOf(longValue);
+                        if (labelIndex !== -1) {
+                            var mapped = input.values[labelIndex];
+                            return typeof mapped === "number" && isFinite(mapped) ? mapped : labelIndex;
                         }
-                        return best;
+                        var parsedLabel = Number(longValue);
+                        longValue = isFinite(parsedLabel) ? parsedLabel : 0;
                     }
-                    return input.values[0];
+                    var numericLong = Number(longValue);
+                    if (!isFinite(numericLong)) numericLong = 0;
+                    var hasNumericValues = false;
+                    for (var valueIndex = 0; valueIndex < input.values.length; valueIndex++) {
+                        if (isFinite(Number(input.values[valueIndex]))) hasNumericValues = true;
+                    }
+                    if (hasNumericValues) {
+                        var bestLong = Number(input.values[0]);
+                        var bestLongDistance = Infinity;
+                        for (var longIndex = 0; longIndex < input.values.length; longIndex++) {
+                            var candidate = Number(input.values[longIndex]);
+                            if (!isFinite(candidate)) continue;
+                            var longDistance = Math.abs(candidate - numericLong);
+                            if (longDistance < bestLongDistance) { bestLongDistance = longDistance; bestLong = candidate; }
+                        }
+                        return bestLong;
+                    }
+                    return Math.max(0, Math.min(input.values.length - 1, Math.round(numericLong)));
                 }
                 var integer = Math.round(numberOr(value, input.defaultValue));
                 if (input.min != null) integer = Math.max(input.min, integer);
@@ -3783,15 +3825,20 @@
         row.addEventListener("dblclick", onDoubleClick);
 
         if (input.type === "float" || /^(animator|shaper|incrementer|damper|pass_thru|linear_filter|adsr)$/.test(input.type)) {
-            var step = Math.max((input.max - input.min) / 1000, 1e-6);
+            // Materials without MIN/MAX still need a usable slider: extend the
+            // 0…1 control range so it covers the material's default.
+            var initialValue = numberOr(initial, input.default);
+            var minBound = input.boundedMin === true ? input.min : Math.min(input.min, initialValue);
+            var maxBound = input.boundedMax === true ? input.max : Math.max(input.max, initialValue);
+            var step = Math.max((maxBound - minBound) / 1000, 1e-6);
             var range = h("input", null, {
-                type: "range", min: input.min, max: input.max, step: step,
-                value: clamp(initial, input.min, input.max)
+                type: "range", min: minBound, max: maxBound, step: step,
+                value: clamp(initialValue, minBound, maxBound)
             });
             var number = h("input", null, {
-                type: "number", step: "any", min: input.min, max: input.max,
-                inputmode: "decimal", value: formatNumber(clamp(initial, input.min, input.max)),
-                title: "Range: " + input.min + " … " + input.max
+                type: "number", step: "any", min: minBound, max: maxBound,
+                inputmode: "decimal", value: formatNumber(clamp(initialValue, minBound, maxBound)),
+                title: "Range: " + minBound + " … " + maxBound
             });
             range.addEventListener("input", function () {
                 var applied = viewer.setParameter(input.name, Number(range.value));
@@ -5661,6 +5708,10 @@
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, buffer.writeTexture(), 0);
         } else {
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            // A target-less pass draws straight to the screen: it is the
+            // displayed pass, so the previous target must not be painted
+            // over it afterwards.
+            this.lastPassTarget = null;
         }
         gl.viewport(0, 0, width, height);
         gl.clearColor(0, 0, 0, 0);
