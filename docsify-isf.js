@@ -46,7 +46,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
 
-    var VERSION = "1.15.0";
+    var VERSION = "1.16.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -1781,6 +1781,73 @@
         return text;
     }
 
+    // OBS's shader compiler lowers `pow(x, <positive integer>)` to repeated
+    // multiplication, so a negative base keeps its sign (`pow(-2.0, 3.0)` is
+    // -8.0). GLSL leaves `pow` undefined for a negative base and SwiftShader
+    // turns it into NaN (written as black); the core applies the same
+    // lowering, so the two kernels stay pixel-identical. Comments are copied
+    // verbatim; only literal exponents 2…8 are rewritten.
+    function lowerIntegerPowers(source) {
+        var src = String(source == null ? "" : source);
+        function isIdent(c) { return /[A-Za-z0-9_]/.test(c || ""); }
+        var out = "";
+        var i = 0;
+        while (i < src.length) {
+            var c = src.charAt(i);
+            if (c === "/" && src.charAt(i + 1) === "/") {
+                var nl = src.indexOf("\n", i);
+                var lineEnd = nl < 0 ? src.length : nl;
+                out += src.slice(i, lineEnd);
+                i = lineEnd;
+                continue;
+            }
+            if (c === "/" && src.charAt(i + 1) === "*") {
+                var close = src.indexOf("*/", i + 2);
+                var blockEnd = close < 0 ? src.length : close + 2;
+                out += src.slice(i, blockEnd);
+                i = blockEnd;
+                continue;
+            }
+            if (c === "p" && src.substr(i, 3) === "pow" && !isIdent(src.charAt(i - 1)) && !isIdent(src.charAt(i + 3))) {
+                var j = i + 3;
+                while (j < src.length && /\s/.test(src.charAt(j))) j++;
+                if (src.charAt(j) === "(") {
+                    var depth = 0;
+                    var comma = -1;
+                    var k = j;
+                    for (; k < src.length; k++) {
+                        var ch = src.charAt(k);
+                        if (ch === "(") depth++;
+                        else if (ch === ")") { depth--; if (depth === 0) break; }
+                        else if (ch === "," && depth === 1) { comma = k; break; }
+                    }
+                    if (comma > 0) {
+                        depth = 1;
+                        var m = comma + 1;
+                        for (; m < src.length; m++) {
+                            if (src.charAt(m) === "(") depth++;
+                            else if (src.charAt(m) === ")") { depth--; if (depth === 0) break; }
+                        }
+                        if (m < src.length) {
+                            var first = src.slice(j + 1, comma).trim();
+                            var second = src.slice(comma + 1, m);
+                            var literal = /^\s*([2-8])(?:\.0*)?\s*$/.exec(second);
+                            if (first && literal) {
+                                var part = "(" + first + ")";
+                                out += new Array(Number(literal[1]) + 1).join(part + " * ").replace(/ \* $/, "");
+                                i = m + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            out += c;
+            i += 1;
+        }
+        return out;
+    }
+
     function promoteIntegerLiterals(source, floatNames, intNames, noCastInts, intParamPositions, intReturnFunctions) {
         var text = String(source == null ? "" : source);
         var names = floatNames || {};
@@ -2976,6 +3043,7 @@
         body = rewriteLibraryCalls(body, { userFunctions: userFunctions, types: declaredTypes });
         var shims = buildOverloadShims(body);
         var rewritten = rewriteSpecialFunctions(body, imageNames);
+        rewritten.source = lowerIntegerPowers(rewritten.source);
         var bodyOffset = (parsed.bodyStartLine || 1) - 1;
         var rewriteWarnings = rewritten.warnings || [];
         for (var w = 0; w < rewriteWarnings.length; w++) {
@@ -3062,6 +3130,13 @@
             vertex: vertex,
             fragmentES3: toES3Fragment(fragment),
             vertexES3: toES3Vertex(vertex),
+            // Literal-only promotion (the core's safe transform): no int
+            // names, no shim positions, so only numeric literals and the
+            // mm_* call coercions change.
+            fragmentPromoted: promoteIntegerLiterals(fragment, assign({}, floatNames), {}, {}, {}, {}),
+            vertexPromoted: promoteIntegerLiterals(vertex, assign({}, floatNames), {}, {}, {}, {}),
+            fragmentES3Promoted: promoteIntegerLiterals(toES3Fragment(fragment), assign({}, floatNames), {}, {}, {}, {}),
+            vertexES3Promoted: promoteIntegerLiterals(toES3Vertex(vertex), assign({}, floatNames), {}, {}, {}, {}),
             fragmentLoose: promoteIntegerLiterals(fragment, assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions, shims.intReturnFunctions),
             vertexLoose: promoteIntegerLiterals(vertex, assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions, shims.intReturnFunctions),
             fragmentES3Loose: promoteIntegerLiterals(toES3Fragment(fragment), assign({}, floatNames), assign({}, intNames), shims.outIntNames, shims.intParamPositions, shims.intReturnFunctions),
@@ -5271,41 +5346,50 @@
 
     ISFRuntime.prototype.compile = function (shader) {
         var gl = this.gl;
-        var result = createProgram(gl, shader.vertex, shader.fragment);
+        // Attempt order mirrors the editor core's `setSource`: ES 3.00 first on
+        // WebGL2, then the dialect swap, with the safe literal-only promotion
+        // before the identifier casts (which can change the maths).
+        var attempts = this.isGL2 && shader.fragmentES3
+            ? [
+                { mode: "es3", label: "WebGL2 / GLSL ES 3.00", vertex: shader.vertexES3, fragment: shader.fragmentES3 },
+                { mode: "es3-lit", label: "ES 3.00 + literal promotion", vertex: shader.vertexES3Promoted, fragment: shader.fragmentES3Promoted },
+                { mode: "es1", label: "GLSL ES 1.00", vertex: shader.vertex, fragment: shader.fragment },
+                { mode: "es1-lit", label: "literal promotion", vertex: shader.vertexPromoted, fragment: shader.fragmentPromoted },
+                { mode: "es3-promoted", label: "ES 3.00 + int casts", vertex: shader.vertexES3Loose, fragment: shader.fragmentES3Loose },
+                { mode: "es1-promoted", label: "int casts", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
+            ]
+            : [
+                { mode: "es1", label: "GLSL ES 1.00", vertex: shader.vertex, fragment: shader.fragment },
+                { mode: "es1-lit", label: "literal promotion", vertex: shader.vertexPromoted, fragment: shader.fragmentPromoted },
+                { mode: "es1-promoted", label: "int casts", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
+            ];
+        var result = null;
         var mode = "es1";
-        var lastError = result.error;
-        if (!result.ok) {
-            var fallbacks = this.isGL2 && shader.fragmentES3
-                ? [
-                    { mode: "es3", label: "ES 3.00", vertex: shader.vertexES3, fragment: shader.fragmentES3 },
-                    { mode: "es3-promoted", label: "ES 3.00 + literal promotion", vertex: shader.vertexES3Loose, fragment: shader.fragmentES3Loose }
-                ]
-                : [
-                    { mode: "es1-promoted", label: "literal promotion", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
-                ];
-            for (var f = 0; f < fallbacks.length; f++) {
-                var attempt = fallbacks[f];
-                if (!attempt.fragment || !attempt.vertex) continue;
-                var attemptResult = createProgram(gl, attempt.vertex, attempt.fragment);
-                if (attemptResult.ok) {
-                    result = attemptResult;
-                    mode = attempt.mode;
-                    break;
-                }
-                if (attemptResult.error) {
-                    attemptResult.error.context = attempt.label;
-                    lastError = attemptResult.error;
-                }
+        var lastError = null;
+        for (var a = 0; a < attempts.length; a++) {
+            var attempt = attempts[a];
+            if (!attempt.fragment || !attempt.vertex) continue;
+            var attemptResult = createProgram(gl, attempt.vertex, attempt.fragment);
+            if (attemptResult.ok) {
+                result = attemptResult;
                 mode = attempt.mode;
+                break;
             }
+            if (attemptResult.error) {
+                attemptResult.error.context = attempt.label;
+                lastError = attemptResult.error;
+            }
+            mode = attempt.mode;
         }
-        if (!result.ok) return lastError || result.error;
+        if (!result) return lastError || { message: "The material did not compile" };
 
         this.compatibilityMode = mode;
         this.usedES3 = mode.indexOf("es3") === 0;
         this.compatibilityLabel = mode === "es3" ? "Compatibility mode · WebGL2 / GLSL ES 3.00"
-            : mode === "es3-promoted" ? "Compatibility mode · ES 3.00 + literal promotion"
-            : mode === "es1-promoted" ? "Compatibility mode · literal promotion"
+            : mode === "es3-lit" ? "Compatibility mode · ES 3.00 + literal promotion"
+            : mode === "es3-promoted" ? "Compatibility mode · ES 3.00 + int casts"
+            : mode === "es1-lit" ? "Compatibility mode · literal promotion"
+            : mode === "es1-promoted" ? "Compatibility mode · int casts"
             : "";
         this.cleanupProgram();
         this.program = result.program;
