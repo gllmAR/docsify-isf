@@ -422,7 +422,7 @@ try {
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-        const share = plasma.querySelector('.isf-btn[title="Copy a link with the current parameters"]');
+        const share = plasma.querySelector('.isf-btn[title="Copy a fullscreen link for OBS (current parameters)"]');
         const quality = plasma.querySelector('select[aria-label="Render quality"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
@@ -738,6 +738,93 @@ try {
     if (phoneFold.grew < 24) problems.push("mobile: folding the toolbar freed only " + phoneFold.grew + "px");
     await page.screenshot({ path: path.join(here, "artifacts", "mobile-folded.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
+
+    // ── UI: the stats pill belongs to the top bar, never over the shader ──
+    const badgeHome = await page.evaluate(() => {
+        const block = document.querySelector(".isf-block");
+        const badge = block && block.querySelector(".isf-badge");
+        return badge ? {
+            inHeader: badge.parentElement.classList.contains("isf-header"),
+            inStage: !!badge.closest(".isf-stage"),
+            position: getComputedStyle(badge).position
+        } : null;
+    });
+    if (!badgeHome || !badgeHome.inHeader || badgeHome.inStage || badgeHome.position === "absolute") {
+        problems.push("the stats badge should live in the top bar, not over the shader: " + JSON.stringify(badgeHome));
+    }
+
+    // ── UI: the code editor fills the drawer and follows a taller stage ──
+    const editorFill = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = document.querySelector(".isf-block");
+        block.querySelector('.isf-btn[title="Source editor"]').click();
+        await sleep(400);
+        // a stored manual height would pin the editor; reset to the flex fill
+        block.querySelector(".isf-resize-y").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        await sleep(300);
+        const editor = block.querySelector(".isf-editor");
+        const drawer = block.querySelector(".isf-drawer-left");
+        const toolbar = block.querySelector(".isf-editor-toolbar");
+        const stage = block.querySelector(".isf-stage");
+        const measure = () => ({
+            editor: Math.round(editor.getBoundingClientRect().height),
+            available: Math.round(drawer.getBoundingClientRect().height - toolbar.getBoundingClientRect().height)
+        });
+        const first = measure();
+        stage.style.height = "620px";
+        await sleep(400);
+        const taller = measure();
+        stage.style.height = "";
+        return { first: first, taller: taller };
+    });
+    if (editorFill.first.editor < editorFill.first.available - 24) {
+        problems.push("the editor does not fill the drawer: " + JSON.stringify(editorFill.first));
+    }
+    if (editorFill.taller.editor < editorFill.taller.available - 24 ||
+        editorFill.taller.editor <= editorFill.first.editor + 100) {
+        problems.push("the editor did not follow the taller stage: " + JSON.stringify(editorFill));
+    }
+
+    // ── share: the OBS URL mounts a bare fullscreen viewer with values ──
+    const shaderUrl = url + "samples/plasma.fs";
+    const encodeValues = (values) => Buffer.from(JSON.stringify(values)).toString("base64")
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const obsBase = url + "?isf-shader=" + encodeURIComponent(shaderUrl) + "&isf-fullscreen=1";
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    await page.goto(obsBase, { waitUntil: "networkidle0", timeout: 60000 });
+    await sleep(1800);
+    const obsDefault = await page.evaluate(() => {
+        const block = document.querySelector(".isf-block.isf-bare");
+        if (!block) return null;
+        const rect = block.getBoundingClientRect();
+        const canvas = block.querySelector(".isf-canvas");
+        return {
+            fills: Math.abs(rect.width - window.innerWidth) < 4 && Math.abs(rect.height - window.innerHeight) < 4,
+            headerHidden: getComputedStyle(block.querySelector(".isf-header")).display === "none",
+            statusHidden: getComputedStyle(block.querySelector(".isf-status")).display === "none",
+            canvas: canvas ? canvas.width : 0,
+            status: block.querySelector(".isf-status").textContent,
+            overlayVisible: block.querySelector(".isf-overlay").style.display !== "none"
+        };
+    });
+    if (!obsDefault || !obsDefault.fills || !obsDefault.headerHidden || !obsDefault.statusHidden ||
+        !obsDefault.canvas || /error/i.test(obsDefault.status) || obsDefault.overlayVisible) {
+        problems.push("the OBS fullscreen URL did not mount a bare viewer: " + JSON.stringify(obsDefault));
+    }
+    const obsValues = obsBase + "&isf-values=" + encodeValues({ [shaderUrl]: { speed: 1.9, scale: 12 } });
+    await page.goto(obsValues, { waitUntil: "networkidle0", timeout: 60000 });
+    await sleep(1800);
+    const obsParameterized = await page.evaluate(() => {
+        const block = document.querySelector(".isf-block.isf-bare");
+        const row = block && block.querySelector('.isf-param[data-isf-param="speed"]');
+        const range = row && row.querySelector('input[type="range"]');
+        return range ? Number(range.value) : null;
+    });
+    if (obsParameterized === null || Math.abs(obsParameterized - 1.9) > 0.05) {
+        problems.push("the OBS URL did not apply the encoded parameters: " + obsParameterized);
+    }
+    await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
+    await sleep(600);
 
     if (consoleErrors.length) {
         problems.push("console errors:\n    " + consoleErrors.join("\n    "));

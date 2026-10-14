@@ -517,8 +517,8 @@ test("ES3 variants are generated for the WebGL2 fallback", () => {
     assert(built.fragmentES3.indexOf("#define gl_FragColor _isfFragColor") !== -1);
     assert(built.fragmentES3.indexOf("out vec4 _isfFragColor;") !== -1);
     equal(built.vertexES3.indexOf("#version 300 es"), 0);
-    assert(built.vertexES3.indexOf("#define attribute in") !== -1);
-    assert(built.vertexES3.indexOf("#define varying out") !== -1);
+    assert(built.vertexES3.indexOf("in vec2 isf_position;") !== -1);
+    assert(built.vertexES3.indexOf("out vec2 isf_FragNormCoord;") !== -1);
 });
 
 test("literal promotion leaves floats, exponents and int contexts alone", () => {

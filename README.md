@@ -221,7 +221,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
 | `persistLayout` | `true` | Remember editor height, folded toolbar and drawer widths across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
-| `share` | `true` | Show the “copy link” button (parameters + panel state). |
+| `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
@@ -232,7 +232,28 @@ All keys are optional and live under `window.$docsify.isf`:
 Every viewer also exposes `DocsifyISF` on `window` for scripting
 (`parseISF`, `buildShader`, `highlightGLSL`, …).
 
+## OBS / fullscreen link
+
+The share button copies a URL shaped like
+
+```
+https://site/page/?isf-shader=<shader-url>&isf-fullscreen=1&isf-values=<base64url>
+```
+
+`isf-shader` names the shader, `isf-values` carries its current parameters
+(self-contained: no local storage or page links are needed) and
+`isf-fullscreen=1` mounts one bare viewer — no header, drawers or status —
+that fills the viewport and always plays. That is the capture an OBS
+**Browser** source wants: paste the URL, set the source size, done. The same
+flags work by hand (`isf-editor=1`, `isf-controls=1` still control the normal
+page viewer).
+
 ## Editor
+
+The code pane fills the available vertical space of its drawer and follows
+window/stage resizes; dragging the splitter pins a manual height (double-click
+resets it), and folding the toolbar grows the pane by exactly the freed
+rows.
 
 Press the `</>` button in the viewer header:
 
@@ -330,7 +351,8 @@ current frame.
 - One `requestAnimationFrame` loop per live viewer; offscreen viewers skip
   work and hidden tabs pause automatically.
 - Rendering scale is `devicePixelRatio` capped at `maxPixelRatio` (`auto`), or
-  a fixed multiplier; the size is reported in the corner badge.
+  a fixed multiplier; the fps/size/pass stats live in the top bar, never over
+  the shader.
 - Browsers only allow a limited number of live WebGL contexts. When more than
   `maxContexts` viewers want a context, the least-recently-visible one is
   released (its GPU resources are deleted) and resumes automatically when
@@ -401,6 +423,12 @@ steps for feedback/multi-pass shaders; `--strict` exits non-zero above
 ## Development and tests
 
 ```bash
+# build the single-file artifact from the vendored canonical kernel
+# (vendor/isf-core/, synced from obs-lua-projection-mapping with
+#  scripts/isf-plugin-sync.mjs) — edit src/plugin.src.js, never docsify-isf.js
+node tools/build.mjs          # writes docsify-isf.js
+node tools/build.mjs --check  # CI: fails when the artifact is out of date
+
 # unit tests: header parser, expression evaluator, IMG_* rewriting, URL
 # resolution, highlighting, shader assembly and every sample in samples/
 node tests/run.js
