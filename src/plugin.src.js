@@ -68,8 +68,7 @@
         autoplay: true,
         loopTransition: true,
         transitionDuration: 4.0,
-        resolution: "auto",
-        runtime: "core",             // "core" (shared ISF kernel) | "legacy"         // "auto" | 2 | 1 | 0.5
+        resolution: "auto",             // "auto" | 2 | 1 | 0.5
         maxPixelRatio: 2,
         maxFps: 0,                  // 0 = unlimited, otherwise cap the render loop
         includePaths: [],           // extra directories for #include "file.glsl"
@@ -4822,73 +4821,6 @@
         return messages;
     }
 
-    function compileShader(gl, type, source, label) {
-        var shader = gl.createShader(type);
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            var log = gl.getShaderInfoLog(shader) || "Shader failed to compile";
-            gl.deleteShader(shader);
-            return { ok: false, error: { label: label, log: log, messages: parseGLCompileLog(log) } };
-        }
-        return { ok: true, shader: shader, error: null };
-    }
-
-    function createProgram(gl, vertexSource, fragmentSource) {
-        var vs = compileShader(gl, gl.VERTEX_SHADER, vertexSource, "vertex shader");
-        if (!vs.ok) return { ok: false, error: vs.error };
-        var fs = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource, "fragment shader");
-        if (!fs.ok) {
-            gl.deleteShader(vs.shader);
-            return { ok: false, error: fs.error };
-        }
-        var program = gl.createProgram();
-        gl.attachShader(program, vs.shader);
-        gl.attachShader(program, fs.shader);
-        gl.linkProgram(program);
-        gl.deleteShader(vs.shader);
-        gl.deleteShader(fs.shader);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            var log = gl.getProgramInfoLog(program) || "Program failed to link";
-            gl.deleteProgram(program);
-            return { ok: false, error: { label: "program", log: log, messages: parseGLCompileLog(log) } };
-        }
-        return { ok: true, program: program, error: null };
-    }
-
-    function setUniform(gl, location, type, value) {
-        if (location === null || location === undefined) return;
-        switch (type) {
-            case "float": gl.uniform1f(location, Number(value) || 0); break;
-            case "int": gl.uniform1i(location, Math.round(Number(value) || 0)); break;
-            case "bool": gl.uniform1i(location, value ? 1 : 0); break;
-            case "vec2": gl.uniform2f(location, Number(value[0]) || 0, Number(value[1]) || 0); break;
-            case "vec3": gl.uniform3f(location, Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0); break;
-            case "vec4": gl.uniform4f(location, Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0, value[3] === undefined ? 1 : (Number(value[3]) || 0)); break;
-            case "sampler2D": gl.uniform1i(location, value | 0); break;
-            default: break;
-        }
-    }
-
-    function makeTexture(gl) {
-        var texture = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.bindTexture(gl.TEXTURE_2D, null);
-        return texture;
-    }
-
-    function uploadImage(gl, texture, source) {
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-        texture.__width = source.naturalWidth || source.videoWidth || source.width || 0;
-        texture.__height = source.naturalHeight || source.videoHeight || source.height || 0;
-    }
-
     function detectFloatRenderable(gl, isGL2) {
         try {
             if (isGL2) {
@@ -4914,1056 +4846,6 @@
         }
     }
 
-    function supportsLinearFloat(gl) {
-        try { return !!gl.getExtension("OES_texture_float_linear"); } catch (err) { return false; }
-    }
-
-    /* ==================================================================
-     * Pass buffers
-     * ================================================================== */
-
-    function PassBuffer(gl, pass, floatSupported, isGL2, linearFloat) {
-        this.gl = gl;
-        this.pass = pass;
-        this.name = pass.target;
-        this.float = !!(pass.float && floatSupported);
-        this.isGL2 = isGL2;
-        this.linearFloat = linearFloat;
-        this.width = 0;
-        this.height = 0;
-        this.index = 0;
-        this.textures = [this.createTexture(), this.createTexture()];
-        this.fbo = gl.createFramebuffer();
-    }
-
-    PassBuffer.prototype.createTexture = function () {
-        var gl = this.gl;
-        var texture = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        var filter = (this.float && !this.linearFloat) ? gl.NEAREST : gl.LINEAR;
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-        gl.bindTexture(gl.TEXTURE_2D, null);
-        texture.__width = 0;
-        texture.__height = 0;
-        return texture;
-    };
-
-    PassBuffer.prototype.setSize = function (width, height) {
-        if (this.width === width && this.height === height) return;
-        this.width = width;
-        this.height = height;
-        var gl = this.gl;
-        var type = this.float ? gl.FLOAT : gl.UNSIGNED_BYTE;
-        var internal = this.float && this.isGL2 ? gl.RGBA32F : gl.RGBA;
-        for (var i = 0; i < this.textures.length; i++) {
-            gl.bindTexture(gl.TEXTURE_2D, this.textures[i]);
-            gl.texImage2D(gl.TEXTURE_2D, 0, internal, width, height, 0, gl.RGBA, type, null);
-            this.textures[i].__width = width;
-            this.textures[i].__height = height;
-        }
-        gl.bindTexture(gl.TEXTURE_2D, null);
-    };
-
-    PassBuffer.prototype.readTexture = function () { return this.textures[this.index]; };
-    PassBuffer.prototype.writeTexture = function () { return this.textures[1 - this.index]; };
-    PassBuffer.prototype.flip = function () { this.index = 1 - this.index; };
-
-    PassBuffer.prototype.destroy = function () {
-        var gl = this.gl;
-        for (var i = 0; i < this.textures.length; i++) gl.deleteTexture(this.textures[i]);
-        gl.deleteFramebuffer(this.fbo);
-        this.textures = [];
-    };
-
-    /* ==================================================================
-     * WebGL runtime
-     * ================================================================== */
-
-    var PAINT_VERTEX = [
-        "attribute vec2 isf_position;",
-        "varying vec2 vUV;",
-        "void main(){ gl_Position = vec4(isf_position, 0.0, 1.0); vUV = isf_position * 0.5 + 0.5; }"
-    ].join("\n");
-    var PAINT_FRAGMENT = [
-        "precision mediump float;",
-        "uniform sampler2D tex;",
-        "varying vec2 vUV;",
-        "void main(){ gl_FragColor = texture2D(tex, vUV); }"
-    ].join("\n");
-
-    /* ==================================================================
-     * ISF CPU generators — faithful port of the shared core
-     *
-     * The same engine the ISF editor uses (`editors/ui/isf/generators.js`,
-     * itself a port of `modules/src/isf-source/isf/generators.lua`): speed
-     * changes do not teleport the animation, generator parameters may
-     * reference inputs or another generator's same-frame output, and the
-     * speed_curve / strob / BPM handling matches OBS. Wrapped in an IIFE so
-     * its helper names stay out of the plugin scope.
-     * ================================================================== */
-    var createGenerators = (function () {
-
-
-        const clamp = (x, lo, hi) => (x < lo ? lo : x > hi ? hi : x);
-        const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
-        const log2 = (x) => Math.log(x) / Math.log(2);
-
-        /* deterministic 1D value noise, used by the `animator` Noise shape */
-        const hash1 = (i) => {
-          const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-          return x - Math.floor(x);
-        };
-        const smoothstep = (t) => t * t * (3 - 2 * t);
-        const noise1 = (x) => {
-          const i = Math.floor(x);
-          const f = x - i;
-          const a = hash1(i);
-          const b = hash1(i + 1);
-          return a + (b - a) * smoothstep(f);
-        };
-
-        /* quantise a speed onto a power-of-two order of magnitude (BPM sync helper) */
-        function powerOfTwo(x) {
-          if (x <= 0) return 0;
-          let e = Math.floor(log2(x) + 0.5);
-          if (e < -6) e = -6; else if (e > 6) e = 6;
-          return Math.pow(2, e);
-        }
-
-        const param = (def, key, fallback) => {
-          const v = def.params ? def.params[key] : undefined;
-          return v === undefined ? fallback : v;
-        };
-
-        /* ── resolvers ──────────────────────────────────────────────────────────── */
-
-        function resolve(self, v, inputs) {
-          if (typeof v === 'number') return v;
-          if (typeof v === 'boolean') return v ? 1 : 0;
-          if (typeof v === 'string') {
-            const out = self.outputs[v];
-            if (out !== undefined) return out;
-            const p = inputs ? inputs[v] : undefined;
-            if (typeof p === 'boolean') return p ? 1 : 0;
-            if (typeof p === 'number') return p;
-            if (p !== undefined && p !== null) return Number(p) || 0;
-            if (v === 'TIME') return self.time || 0;
-            if (v === 'FRAMEINDEX') return self.frame || 0;
-            return 0;
-          }
-          return 0;
-        }
-
-        function resolveBool(v, inputs) {
-          if (typeof v === 'boolean') return v;
-          if (typeof v === 'number') return v !== 0;
-          if (typeof v === 'string') {
-            const p = inputs ? inputs[v] : undefined;
-            if (typeof p === 'boolean') return p;
-            if (typeof p === 'number') return p !== 0;
-            if (p !== undefined && p !== null) return p !== 0 && p !== '';
-            const low = v.toLowerCase();
-            return low === 'true' || low === '1';
-          }
-          return false;
-        }
-
-        /* ── handlers ───────────────────────────────────────────────────────────── */
-
-        /** time_base: out = out + speed·dt, with reverse / curve / strob / BPM. */
-        function timeBaseStep(self, gen, dt, inputs) {
-          let speed = resolve(self, param(gen.def, 'speed', 0), inputs);
-          const curve = resolve(self, param(gen.def, 'speed_curve', 1), inputs);
-          const strob = resolve(self, param(gen.def, 'strob', 0), inputs);
-          const reverse = resolveBool(param(gen.def, 'reverse', false), inputs);
-          const bpmSync = resolveBool(param(gen.def, 'bpm_sync', false), inputs);
-          const linkBpm = resolveBool(param(gen.def, 'link_speed_to_global_bpm', false), inputs);
-
-          if (curve && curve !== 1) speed = sign(speed) * Math.pow(Math.abs(speed), curve);
-          if (reverse) speed = -speed;
-          if (linkBpm && self.bpm && self.bpm > 0) speed = (speed * self.bpm) / 120;
-          if (bpmSync && self.bpm && self.bpm > 0) speed = (powerOfTwo(speed) * self.bpm) / 60;
-
-          let effectiveDt = dt;
-          if (strob && strob > 0) {
-            gen.strobAcc = (gen.strobAcc || 0) + dt;
-            if (gen.strobAcc >= strob) { effectiveDt = gen.strobAcc; gen.strobAcc = 0; }
-            else effectiveDt = 0;
-          }
-          gen.tb = (gen.tb || 0) + speed * effectiveDt;
-          return gen.tb;
-        }
-
-        const handlers = {
-          time_base(self, gen, dt, _now, inputs) {
-            gen.out = timeBaseStep(self, gen, dt, inputs);
-            return gen.out;
-          },
-
-          animator(self, gen, dt, _now, inputs) {
-            const t = timeBaseStep(self, gen, dt, inputs);
-            let shape = param(gen.def, 'shape', 'Smooth');
-            if (typeof shape !== 'string') shape = 'Smooth';
-            const p = t - Math.floor(t);
-            let v;
-            if (shape === 'In') v = p;
-            else if (shape === 'Out') v = 1 - p;
-            else if (shape === 'Linear') v = 1 - Math.abs(2 * p - 1);
-            else if (shape === 'Cut') v = p < 0.5 ? 0 : 1;
-            else if (shape === 'Noise') v = noise1(t);
-            else v = 0.5 - 0.5 * Math.cos(2 * Math.PI * p);   // Smooth
-            gen.out = v;
-            return v;
-          },
-
-          damper(self, gen, dt, _now, inputs) {
-            const target = resolve(self, param(gen.def, 'input_value', 0), inputs);
-            const hardness = clamp(resolve(self, param(gen.def, 'hardness', 0.1), inputs), 0, 1);
-            const damping = clamp(resolve(self, param(gen.def, 'damping', 0.8), inputs), 0, 1);
-            let k = (1 - damping) * (0.05 + 0.95 * hardness);
-            if (k <= 0) { gen.out = gen.out === undefined ? target : gen.out; return gen.out; }
-            k = 1 - Math.pow(1 - k, dt * 60);
-            const from = gen.out === undefined ? target : gen.out;
-            gen.out = from + (target - from) * k;
-            return gen.out;
-          },
-
-          adsr(self, gen, dt, _now, inputs) {
-            const target = resolve(self, param(gen.def, 'input_value', 0), inputs);
-            const attack = clamp(resolve(self, param(gen.def, 'attack', 0), inputs), 0, 1);
-            const release = clamp(resolve(self, param(gen.def, 'release', 0), inputs), 0, 1);
-            const decay = Math.max(0, resolve(self, param(gen.def, 'decay', 0), inputs));
-            let out = gen.out === undefined ? 0 : gen.out;
-
-            const maxInc = attack <= 0 ? Infinity : dt / (0.1 + 9.9 * attack);
-            const maxDec = release <= 0 ? Infinity : dt / (0.1 + 9.9 * release);
-
-            if (target > out) {
-              out = Math.min(target, out + maxInc);
-              gen.decayAcc = 0;
-            } else if (target < out) {
-              gen.decayAcc = (gen.decayAcc || 0) + dt;
-              if (gen.decayAcc >= decay) out = Math.max(target, out - maxDec);
-            } else {
-              gen.decayAcc = 0;
-            }
-            gen.out = out;
-            return out;
-          },
-
-          linear_filter(self, gen, dt, now, inputs) { return filterStep(self, gen, now, inputs, false); },
-          ease_filter(self, gen, dt, now, inputs) { return filterStep(self, gen, now, inputs, true); },
-
-          multiplier(self, gen, _dt, _now, inputs) {
-            let v = 1;
-            for (let i = 1; i <= 4; i += 1) v *= resolve(self, param(gen.def, 'value' + i, 1), inputs);
-            gen.out = v;
-            return v;
-          },
-
-          incrementer(self, gen, _dt, _now, inputs) {
-            const inc = resolveBool(param(gen.def, 'increment', false), inputs);
-            const dec = resolveBool(param(gen.def, 'decrement', false), inputs);
-            if (inc && !gen.prevInc) gen.out = (gen.out || 0) + 1;
-            if (dec && !gen.prevDec) gen.out = (gen.out || 0) - 1;
-            gen.prevInc = inc;
-            gen.prevDec = dec;
-            return gen.out;
-          },
-
-          pass_thru(self, gen, _dt, _now, inputs) {
-            gen.out = resolve(self, param(gen.def, 'input_value', 0), inputs);
-            return gen.out;
-          },
-        };
-
-        /** shared interpolation used by linear_filter / ease_filter */
-        function filterStep(self, gen, now, inputs, ease) {
-          const target = resolve(self, param(gen.def, 'input_value', 0), inputs);
-          const duration = Math.max(0, resolve(self, param(gen.def, 'duration', 0.5), inputs));
-
-          if (gen.target === undefined || target !== gen.target) {
-            gen.start = gen.out === undefined ? target : gen.out;
-            gen.t0 = now;
-            gen.target = target;
-          }
-          if (duration <= 0) { gen.out = target; return gen.out; }
-          let p = clamp((now - (gen.t0 === undefined ? now : gen.t0)) / duration, 0, 1);
-          if (ease) {
-            const curve = Math.max(1, resolve(self, param(gen.def, 'curve', 2), inputs));
-            const etype = param(gen.def, 'type', 'EaseInOut');
-            if (etype === 'EaseIn') p = Math.pow(p, curve);
-            else if (etype === 'EaseOut') p = 1 - Math.pow(1 - p, curve);
-            else if (p < 0.5) p = 0.5 * Math.pow(2 * p, curve);
-            else p = 1 - 0.5 * Math.pow(2 * (1 - p), curve);
-          }
-          gen.out = gen.start + (target - gen.start) * p;
-          return gen.out;
-        }
-
-        /**
-         * @param {Array<{name,type,params}>} defs normalised GENERATORS
-         * @param {{bpm?:number}} [opts]
-         */
-        function createGenerators(defs, opts) {
-          const options = opts || {};
-          const self = {
-            defs: defs || [],
-            gens: [],
-            outputs: {},
-            bpm: options.bpm || 0,
-            time: 0,
-            frame: 0,
-          };
-          for (const def of self.defs) self.gens.push({ def, out: 0, state: {} });
-
-          self.setBpm = (bpm) => { self.bpm = Number(bpm) || 0; };
-
-          /** dt: seconds since the last tick; now: accumulated engine time. */
-          self.advance = (dt, now, inputs) => {
-            const step = dt || 0;
-            self.time = now === undefined || now === null ? self.time + step : now;
-            self.frame += 1;
-            for (const gen of self.gens) {
-              const handler = handlers[gen.def.type];
-              if (!handler) continue;
-              try {
-                self.outputs[gen.def.name] = handler(self, gen, step, self.time, inputs || {});
-              } catch (e) {
-                self.outputs[gen.def.name] = gen.out || 0;
-              }
-            }
-            return self.outputs;
-          };
-
-          self.get = (name) => self.outputs[name];
-          return self;
-        }
-
-        return createGenerators;
-    })();
-
-    function ISFRuntime(viewer, gl) {
-        this.viewer = viewer;
-        this.config = viewer.config;
-        this.gl = gl;
-        this.isGL2 = gl.__isfContextName === "webgl2";
-        this.floatSupported = detectFloatRenderable(gl, this.isGL2);
-        this.linearFloat = supportsLinearFloat(gl);
-        this.program = null;
-        this.paint = null;
-        this.vertexBuffer = null;
-        this.locations = {};
-        this.passBuffers = {};
-        this.inputTextures = {};
-        this.inputSources = {};
-        this.importTextures = {};
-        this.audioTextures = {};
-        this.audioData = {};
-        this.images = [];
-        this.inputs = [];
-        this.passes = [];
-        this.generators = [];
-        this.generatorEngine = createGenerators([], {});
-        this.values = viewer.values;
-        this.events = {};
-        this.time = 0;
-        this.lastNow = performance.now();
-        this.frameIndex = 0;
-        this.transitionTime = 0;
-        this.playing = !!this.config.autoplay && (!!this.config.forcePlay || !prefersReducedMotion());
-        this.visible = true;
-        this.needsRender = true;
-        this.running = false;
-        this.destWidth = 1;
-        this.destHeight = 1;
-        this.frameCount = 0;
-        this.statsAt = 0;
-        this.fps = 0;
-        this.maxFps = Math.max(0, Number(this.config.maxFps) || 0);
-        this._lastDrawAt = 0;
-        this.lastPassTarget = null;
-        this.lastLog = 0;
-        this.warnedSizes = {};
-        this.mouse = [0, 0, 0, 0];
-        this.pointerDown = false;
-        this.previewTarget = null;
-        this.qualityScale = null;
-        var self = this;
-        this._tick = function (now) { self.tick(now); };
-        this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
-        gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
-        this.setupGeometry();
-        this.setupPaint();
-        this.bindPointer();
-        this.resize(true);
-    }
-
-    // docsify-isf pointer extension: `_isfMouse` is a vec4 with Shadertoy
-    // semantics (xy = position in pixels, zw = click position, z negative when
-    // the button is up) so imported shaders are interactive out of the box.
-    ISFRuntime.prototype.bindPointer = function () {
-        var self = this;
-        var stage = this.viewer.dom.stage;
-        // Only feed the pointer extension from the render surface; UI events
-        // (sliders, selects, the editor) must keep their native behaviour.
-        function isRenderTarget(target) {
-            return target === self.viewer.dom.canvas;
-        }
-        function point(event) {
-            var canvas = self.viewer.dom.canvas;
-            var rect = canvas.getBoundingClientRect();
-            var width = Math.max(1, rect.width);
-            var height = Math.max(1, rect.height);
-            var x = (event.clientX - rect.left) / width * self.destWidth;
-            var y = (1 - (event.clientY - rect.top) / height) * self.destHeight;
-            return [clamp(x, 0, self.destWidth), clamp(y, 0, self.destHeight)];
-        }
-        this._onPointerMove = function (event) {
-            if (!isRenderTarget(event.target)) return;
-            var p = point(event);
-            self.mouse[0] = p[0];
-            self.mouse[1] = p[1];
-            self.mouse[2] = self.pointerDown ? self._clickX : -Math.abs(self._clickX);
-            self.mouse[3] = self._clickY;
-            self.needsRender = true;
-        };
-        this._onPointerDown = function (event) {
-            if (!isRenderTarget(event.target)) return;
-            var p = point(event);
-            self.pointerDown = true;
-            self._clickX = p[0];
-            self._clickY = p[1];
-            self.mouse = [p[0], p[1], p[0], p[1]];
-            self.needsRender = true;
-            event.preventDefault();
-        };
-        this._onPointerUp = function () {
-            self.pointerDown = false;
-            self.mouse[2] = -Math.abs(self._clickX);
-            self.needsRender = true;
-        };
-        this._onPointerLeave = function () {
-            self.pointerDown = false;
-            self.mouse[2] = -Math.abs(self._clickX);
-        };
-        stage.addEventListener("pointermove", this._onPointerMove);
-        stage.addEventListener("pointerdown", this._onPointerDown);
-        stage.addEventListener("pointerleave", this._onPointerLeave);
-        window.addEventListener("pointerup", this._onPointerUp);
-    };
-
-    ISFRuntime.prototype.setupGeometry = function () {
-        var gl = this.gl;
-        this.vertexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    };
-
-    ISFRuntime.prototype.setupPaint = function () {
-        var gl = this.gl;
-        var result = createProgram(gl, PAINT_VERTEX, PAINT_FRAGMENT);
-        if (!result.ok) { this.paint = null; return; }
-        var program = result.program;
-        var position = gl.getAttribLocation(program, "isf_position");
-        this.paint = { program: program, position: position, tex: gl.getUniformLocation(program, "tex") };
-    };
-
-    ISFRuntime.prototype.compile = function (shader) {
-        var gl = this.gl;
-        // Attempt order mirrors the editor core's `setSource`: ES 3.00 first on
-        // WebGL2, then the dialect swap, with the safe literal-only promotion
-        // before the identifier casts (which can change the maths).
-        var attempts = this.isGL2 && shader.fragmentES3
-            ? [
-                { mode: "es3", label: "WebGL2 / GLSL ES 3.00", vertex: shader.vertexES3, fragment: shader.fragmentES3 },
-                { mode: "es3-lit", label: "ES 3.00 + literal promotion", vertex: shader.vertexES3Promoted, fragment: shader.fragmentES3Promoted },
-                { mode: "es1", label: "GLSL ES 1.00", vertex: shader.vertex, fragment: shader.fragment },
-                { mode: "es1-lit", label: "literal promotion", vertex: shader.vertexPromoted, fragment: shader.fragmentPromoted },
-                { mode: "es3-promoted", label: "ES 3.00 + int casts", vertex: shader.vertexES3Loose, fragment: shader.fragmentES3Loose },
-                { mode: "es1-promoted", label: "int casts", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
-            ]
-            : [
-                { mode: "es1", label: "GLSL ES 1.00", vertex: shader.vertex, fragment: shader.fragment },
-                { mode: "es1-lit", label: "literal promotion", vertex: shader.vertexPromoted, fragment: shader.fragmentPromoted },
-                { mode: "es1-promoted", label: "int casts", vertex: shader.vertexLoose, fragment: shader.fragmentLoose }
-            ];
-        var result = null;
-        var mode = "es1";
-        var lastError = null;
-        for (var a = 0; a < attempts.length; a++) {
-            var attempt = attempts[a];
-            if (!attempt.fragment || !attempt.vertex) continue;
-            var attemptResult = createProgram(gl, attempt.vertex, attempt.fragment);
-            if (attemptResult.ok) {
-                result = attemptResult;
-                mode = attempt.mode;
-                break;
-            }
-            if (attemptResult.error) {
-                attemptResult.error.context = attempt.label;
-                lastError = attemptResult.error;
-            }
-            mode = attempt.mode;
-        }
-        if (!result) return lastError || { message: "The material did not compile" };
-
-        this.compatibilityMode = mode;
-        this.usedES3 = mode.indexOf("es3") === 0;
-        this.compatibilityLabel = mode === "es3" ? "Compatibility mode · WebGL2 / GLSL ES 3.00"
-            : mode === "es3-lit" ? "Compatibility mode · ES 3.00 + literal promotion"
-            : mode === "es3-promoted" ? "Compatibility mode · ES 3.00 + int casts"
-            : mode === "es1-lit" ? "Compatibility mode · literal promotion"
-            : mode === "es1-promoted" ? "Compatibility mode · int casts"
-            : "";
-        this.cleanupProgram();
-        this.program = result.program;
-        this.shader = shader;
-        this.inputs = shader.inputs;
-        this.passes = shader.passes;
-        this.images = shader.images;
-        this.locations = {};
-        var i;
-        for (i = 0; i < this.inputs.length; i++) {
-            this.locations[this.inputs[i].name] = { location: gl.getUniformLocation(this.program, this.inputs[i].name), type: this.inputs[i].uniform };
-        }
-        this.generators = shader.generators || [];
-        this.generatorEngine = createGenerators(this.generators, { bpm: (this.config && this.config.bpm) || 0 });
-        for (i = 0; i < this.generators.length; i++) {
-            this.locations[this.generators[i].name] = { location: gl.getUniformLocation(this.program, this.generators[i].name), type: this.generators[i].uniform };
-        }
-        this.positionLocation = gl.getAttribLocation(this.program, "isf_position");
-        for (i = 0; i < this.images.length; i++) {
-            var image = this.images[i];
-            this.locations[image.name] = { location: gl.getUniformLocation(this.program, image.name), type: "sampler2D" };
-            this.locations["_" + image.name + "_imgSize"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgSize"), type: "vec2" };
-            this.locations["_" + image.name + "_imgRect"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_imgRect"), type: "vec4" };
-            this.locations["_" + image.name + "_flip"] = { location: gl.getUniformLocation(this.program, "_" + image.name + "_flip"), type: "bool" };
-            if (image.kind === "audio") this.setupAudioTexture(image.input);
-        }
-        this.locations._isfMouse = { location: gl.getUniformLocation(this.program, "_isfMouse"), type: "vec4" };
-        this.locations.TIME = { location: gl.getUniformLocation(this.program, "TIME"), type: "float" };
-        this.locations.TIMEDELTA = { location: gl.getUniformLocation(this.program, "TIMEDELTA"), type: "float" };
-        this.locations.DATE = { location: gl.getUniformLocation(this.program, "DATE"), type: "vec4" };
-        this.locations.FRAMEINDEX = { location: gl.getUniformLocation(this.program, "FRAMEINDEX"), type: "int" };
-        this.locations.PASSINDEX = { location: gl.getUniformLocation(this.program, "PASSINDEX"), type: "int" };
-        this.locations.RENDERSIZE = { location: gl.getUniformLocation(this.program, "RENDERSIZE"), type: "vec2" };
-
-        // Pass buffers (reuse when the target set is unchanged).
-        var nextBuffers = {};
-        for (i = 0; i < this.passes.length; i++) {
-            var pass = this.passes[i];
-            if (!pass.target) continue;
-            var existing = this.passBuffers[pass.target];
-            if (existing && existing.pass.persistent === pass.persistent && existing.pass.float === pass.float && existing.pass.width === pass.width && existing.pass.height === pass.height) {
-                existing.pass = pass;
-                nextBuffers[pass.target] = existing;
-            } else {
-                if (existing) existing.destroy();
-                nextBuffers[pass.target] = new PassBuffer(gl, pass, this.floatSupported, this.isGL2, this.linearFloat);
-            }
-        }
-        for (var name in this.passBuffers) {
-            if (Object.prototype.hasOwnProperty.call(this.passBuffers, name) && !nextBuffers[name]) this.passBuffers[name].destroy();
-        }
-        this.passBuffers = nextBuffers;
-        this.needsRender = true;
-        return null;
-    };
-
-    ISFRuntime.prototype.cleanupProgram = function () {
-        var gl = this.gl;
-        if (this.program) gl.deleteProgram(this.program);
-        this.program = null;
-        for (var name in this.passBuffers) {
-            if (Object.prototype.hasOwnProperty.call(this.passBuffers, name)) this.passBuffers[name].destroy();
-        }
-        this.passBuffers = {};
-    };
-
-    ISFRuntime.prototype.handleContextLost = function () {
-        this.running = false;
-        if (this.viewer) this.viewer.handleContextLost();
-    };
-
-    ISFRuntime.prototype.setNumber = function (name, value, type) {
-        var entry = this.locations[name];
-        if (!entry || !this.program) return;
-        setUniform(this.gl, entry.location, type || entry.type, value);
-    };
-
-    ISFRuntime.prototype.resolveGeneratorParam = function (params, key, fallback) {
-        if (!params || params[key] === undefined || params[key] === null) return fallback;
-        var raw = params[key];
-        if (typeof raw === "string") {
-            var input = this.viewer.inputByName && this.viewer.inputByName[raw];
-            var value = this.viewer.values ? this.viewer.values[raw] : undefined;
-            if (input && value !== undefined) {
-                if (input.type === "bool" || input.type === "event") return value ? 1 : 0;
-                if (isFiniteNumber(value)) return value;
-                if (Array.isArray(value)) return numberOr(value[0], fallback);
-            }
-            return fallback;
-        }
-        if (isFiniteNumber(raw)) return raw;
-        if (raw === true) return 1;
-        if (raw === false) return 0;
-        return fallback;
-    };
-
-    // Minimal MadMapper generator runtime: time clocks, pass-throughs,
-    // multipliers and one-pole smoothing. Unknown types hold their value and
-    // are reported once in the status bar by the viewer.
-    ISFRuntime.prototype.resetGenerators = function () {
-        this.generatorEngine = createGenerators(this.generators, { bpm: (this.config && this.config.bpm) || 0 });
-    };
-
-    ISFRuntime.prototype.updateGenerators = function (delta, now) {
-        if (!this.generatorEngine) return;
-        var outputs = this.generatorEngine.advance(delta || 0, now === undefined ? this.time : now, this.values);
-        for (var i = 0; i < this.generators.length; i++) {
-            var generator = this.generators[i];
-            var value = outputs[generator.name];
-            if (generator.uniform === "bool") this.setNumber(generator.name, !!value, "bool");
-            else this.setNumber(generator.name, Number(value) || 0, "float");
-        }
-    };
-
-    ISFRuntime.prototype.resize = function (force) {
-        var canvas = this.gl.canvas;
-        var rect;
-        try { rect = canvas.getBoundingClientRect(); } catch (err) { rect = null; }
-        var cssWidth = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || 1));
-        var cssHeight = Math.max(1, Math.round((rect && rect.height) || canvas.clientHeight || 1));
-        var dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
-        var resolution = this.qualityScale !== null && this.qualityScale !== undefined ? this.qualityScale : this.config.resolution;
-        var scale;
-        if (resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
-        else scale = Number(resolution) || 1;
-        if (!isFinite(scale) || scale <= 0) scale = 1;
-        var maxSize = 0;
-        try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { maxSize = 4096; }
-        var width = clamp(Math.round(cssWidth * scale), 1, Math.min(maxSize, 8192));
-        var height = clamp(Math.round(cssHeight * scale), 1, Math.min(maxSize, 8192));
-        if (force || canvas.width !== width || canvas.height !== height) {
-            canvas.width = width;
-            canvas.height = height;
-            this.needsRender = true;
-        }
-        this.destWidth = width;
-        this.destHeight = height;
-    };
-
-    ISFRuntime.prototype.evaluateSize = function (expression, fallback) {
-        var variables = { WIDTH: this.destWidth, HEIGHT: this.destHeight };
-        for (var name in this.values) {
-            if (!Object.prototype.hasOwnProperty.call(this.values, name)) continue;
-            var value = this.values[name];
-            if (typeof value === "number") variables[name] = value;
-            else if (typeof value === "boolean") variables[name] = value ? 1 : 0;
-        }
-        var result = evalExpression(expression, variables);
-        if (!result.ok) {
-            if (!this.warnedSizes[expression]) {
-                this.warnedSizes[expression] = true;
-                this.viewer.warn("Unsupported size equation '" + expression + "' — using " + fallback);
-            }
-            return fallback;
-        }
-        var maxSize = 4096;
-        try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { /* ignore */ }
-        return clamp(Math.round(result.value), 1, Math.min(maxSize, 8192));
-    };
-
-    ISFRuntime.prototype.setupInputTexture = function (name) {
-        if (this.inputTextures[name]) return this.inputTextures[name];
-        var gl = this.gl;
-        var texture = makeTexture(gl);
-        this.inputTextures[name] = texture;
-        return texture;
-    };
-
-    ISFRuntime.prototype.defaultImageSource = function (input) {
-        var self = this;
-        var name = input.name;
-        if (this.inputSources[name]) return this.inputSources[name];
-        var variant = /end/i.test(name) ? "b" : "a";
-        var canvas = createTestPattern(512, 512, variant);
-        this.inputSources[name] = canvas;
-        if (this.config.imageUrl) {
-            var image = new Image();
-            image.crossOrigin = "anonymous";
-            image.onload = function () {
-                self.inputSources[name] = image;
-                self.viewer.needsRender = true;
-                self.needsRender = true;
-            };
-            image.onerror = function () { self.viewer.warn("Could not load imageUrl for " + name); };
-            image.src = this.config.imageUrl;
-        }
-        return canvas;
-    };
-
-    ISFRuntime.prototype.setupAudioTexture = function (input) {
-        var gl = this.gl;
-        var samples = input.samples || 512;
-        var texture = this.audioTextures[input.name];
-        if (!texture) {
-            texture = makeTexture(gl);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.bindTexture(gl.TEXTURE_2D, null);
-            this.audioTextures[input.name] = texture;
-            this.audioData[input.name] = new Uint8Array(samples * 4);
-            texture.__width = samples;
-            texture.__height = 1;
-        }
-        return texture;
-    };
-
-    ISFRuntime.prototype.updateAudioTextures = function () {
-        var gl = this.gl;
-        var analyser = this.viewer.audioState ? this.viewer.audioState.analyser : null;
-        var buffer = this.viewer.audioState ? this.viewer.audioState.data : null;
-        for (var i = 0; i < this.images.length; i++) {
-            var image = this.images[i];
-            if (image.kind !== "audio" || !image.input) continue;
-            var input = image.input;
-            var texture = this.audioTextures[input.name];
-            var data = this.audioData[input.name];
-            if (!texture || !data) {
-                texture = this.setupAudioTexture(input);
-                data = this.audioData[input.name];
-            }
-            if (!texture || !data) continue;
-            var samples = texture.__width;
-            var time = this.time;
-
-            if (analyser && buffer) {
-                // Live audio: time-domain data for `audio`, FFT bins for `audioFFT`.
-                if (buffer.length !== analyser.frequencyBinCount) {
-                    buffer = new Uint8Array(analyser.frequencyBinCount);
-                    this.viewer.audioState.data = buffer;
-                }
-                if (input.type === "audio") analyser.getByteTimeDomainData(buffer);
-                else analyser.getByteFrequencyData(buffer);
-                var binCount = buffer.length;
-                for (var m = 0; m < samples; m++) {
-                    var bin = Math.min(binCount - 1, Math.round(m / samples * binCount));
-                    var byte = buffer[bin];
-                    data[m * 4] = byte;
-                    data[m * 4 + 1] = byte;
-                    data[m * 4 + 2] = byte;
-                    data[m * 4 + 3] = 255;
-                }
-            } else {
-                for (var x = 0; x < samples; x++) {
-                    var t = x / samples;
-                    var value;
-                    if (input.type === "audio") {
-                        var envelope = Math.sin(Math.PI * t);
-                        value = 0.5 + 0.42 * envelope * Math.sin((t * 6.0 - time * 1.7) * Math.PI * 2) * (0.7 + 0.3 * Math.sin(time * 0.7));
-                    } else {
-                        var falloff = Math.pow(1 - t, 1.7);
-                        value = falloff * (0.55 + 0.45 * Math.sin(time * 2.1 + t * 14.0)) * 0.9;
-                    }
-                    var synthByte = Math.max(0, Math.min(255, Math.round(value * 255)));
-                    data[x * 4] = synthByte;
-                    data[x * 4 + 1] = synthByte;
-                    data[x * 4 + 2] = synthByte;
-                    data[x * 4 + 3] = 255;
-                }
-            }
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, samples, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-            gl.bindTexture(gl.TEXTURE_2D, null);
-        }
-    };
-
-    ISFRuntime.prototype.updateInputTextures = function () {
-        var gl = this.gl;
-        for (var i = 0; i < this.images.length; i++) {
-            var image = this.images[i];
-            if (image.kind === "pass" || image.kind === "audio") continue;
-            var texture = this.inputTextures[image.name];
-            var source = this.inputSources[image.name];
-            if (!source && image.kind === "input") source = this.defaultImageSource(image.input);
-            if (!texture) {
-                texture = makeTexture(gl);
-                this.inputTextures[image.name] = texture;
-            }
-            if (source && !source.__isfUploaded) {
-                uploadImage(gl, texture, source);
-                source.__isfUploaded = true;
-            }
-        }
-    };
-
-    ISFRuntime.prototype.bindImage = function (image, unit) {
-        var gl = this.gl;
-        var texture = null;
-        var width = 1, height = 1;
-        if (image.kind === "pass") {
-            var buffer = this.passBuffers[image.name];
-            if (!buffer) return;
-            texture = buffer.readTexture();
-            width = buffer.width;
-            height = buffer.height;
-        } else if (image.kind === "audio") {
-            texture = this.audioTextures[image.name];
-            if (texture) { width = texture.__width; height = texture.__height; }
-        } else {
-            texture = this.inputTextures[image.name];
-            if (texture) { width = texture.__width || 1; height = texture.__height || 1; }
-        }
-        if (!texture) return;
-        gl.activeTexture(gl.TEXTURE0 + unit);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        this.setNumber(image.name, unit, "sampler2D");
-        this.setNumber("_" + image.name + "_imgSize", [width, height], "vec2");
-        this.setNumber("_" + image.name + "_imgRect", [0, 0, 1, 1], "vec4");
-        this.setNumber("_" + image.name + "_flip", false, "bool");
-        return unit + 1;
-    };
-
-    ISFRuntime.prototype.draw = function (delta) {
-        if (!this.program) return;
-        var gl = this.gl;
-        this.resize(false);
-        if (this.destWidth <= 1 || this.destHeight <= 1) return;
-
-        gl.disable(gl.BLEND);
-        gl.disable(gl.DEPTH_TEST);
-        gl.useProgram(this.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        var position = this.positionLocation;
-        if (position !== undefined && position !== -1) {
-            gl.enableVertexAttribArray(position);
-            gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-        }
-
-        this.updateInputTextures();
-        this.updateAudioTextures();
-
-        // Animate transition progress (startImage / endImage / progress) so
-        // the viewer is alive; the control follows unless the user is dragging.
-        if (this.viewer.transition && this.config.loopTransition && this.playing) {
-            var duration = Math.max(0.5, Number(this.config.transitionDuration) || 4);
-            this.transitionTime += delta || 0;
-            var cycle = this.transitionTime % (duration * 2);
-            if (cycle < 0) cycle += duration * 2;
-            var progress = cycle <= duration ? cycle / duration : 2 - cycle / duration;
-            this.values.progress = progress;
-            if (this.viewer.syncParameterControl) this.viewer.syncParameterControl("progress", progress);
-        }
-
-        // Input uniforms (per frame).
-        for (var i = 0; i < this.inputs.length; i++) {
-            var input = this.inputs[i];
-            if (input.type === "image" || input.type === "audio" || input.type === "audioFFT") continue;
-            if (input.type === "event") {
-                this.setNumber(input.name, this.events[input.name] ? 1 : 0, "bool");
-            } else {
-                this.setNumber(input.name, this.values[input.name] === undefined ? input.default : this.values[input.name], input.uniform);
-            }
-        }
-        var now = this.fixedDate || new Date();
-        this.setNumber("TIME", this.time, "float");
-        this.setNumber("TIMEDELTA", delta || 0, "float");
-        this.setNumber("DATE", [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()], "vec4");
-        this.setNumber("_isfMouse", this.mouse, "vec4");
-        this.updateGenerators(delta || 0, this.time);
-        this.setNumber("FRAMEINDEX", this.frameIndex, "int");
-
-        this.lastPassTarget = null;
-        for (var p = 0; p < this.passes.length; p++) this.renderPass(p);
-
-        // Preview a specific pass target when one is selected (the official
-        // ISF Editor's per-pass output view); otherwise paint the final target.
-        var previewBuffer = this.previewTarget && this.passBuffers[this.previewTarget];
-        if (previewBuffer) this.paintToScreen(previewBuffer.readTexture());
-        else if (this.lastPassTarget) this.paintToScreen(this.lastPassTarget.readTexture());
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.bindTexture(gl.TEXTURE_2D, null);
-        this.events = {};
-        this.frameIndex++;
-        this.frameCount++;
-        var nowMs = performance.now();
-        if (!this.statsAt) this.statsAt = nowMs;
-        if (nowMs - this.statsAt >= 500) {
-            this.fps = Math.round(this.frameCount * 1000 / (nowMs - this.statsAt));
-            this.frameCount = 0;
-            this.statsAt = nowMs;
-            this.viewer.updateBadge(this.fps + " fps · " + this.destWidth + "×" + this.destHeight + (this.passes.length > 1 ? " · " + this.passes.length + " passes" : ""));
-            if (this.viewer.syncClock) this.viewer.syncClock(this.time, this.playing);
-        }
-    };
-
-    ISFRuntime.prototype.renderPass = function (index) {
-        var gl = this.gl;
-        var pass = this.passes[index];
-        var width = this.destWidth;
-        var height = this.destHeight;
-        var buffer = null;
-        if (pass.target) {
-            buffer = this.passBuffers[pass.target];
-            if (!buffer) return;
-            width = this.evaluateSize(pass.width, this.destWidth);
-            height = this.evaluateSize(pass.height, this.destHeight);
-            buffer.setSize(width, height);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, buffer.fbo);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, buffer.writeTexture(), 0);
-        } else {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-            // A target-less pass draws straight to the screen: it is the
-            // displayed pass, so the previous target must not be painted
-            // over it afterwards.
-            this.lastPassTarget = null;
-        }
-        gl.viewport(0, 0, width, height);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        this.setNumber("PASSINDEX", index, "int");
-        this.setNumber("RENDERSIZE", [width, height], "vec2");
-
-        var unit = 0;
-        for (var i = 0; i < this.images.length; i++) {
-            var image = this.images[i];
-            var next = this.bindImage(image, unit);
-            if (next !== undefined) unit = next;
-        }
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        if (buffer) {
-            buffer.flip();
-            this.lastPassTarget = buffer;
-        }
-    };
-
-    ISFRuntime.prototype.paintToScreen = function (texture) {
-        if (!this.paint || !texture) return;
-        var gl = this.gl;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, this.destWidth, this.destHeight);
-        gl.useProgram(this.paint.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        if (this.paint.position !== -1) {
-            gl.enableVertexAttribArray(this.paint.position);
-            gl.vertexAttribPointer(this.paint.position, 2, gl.FLOAT, false, 0, 0);
-        }
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        if (this.paint.tex) gl.uniform1i(this.paint.tex, 0);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-    };
-
-    ISFRuntime.prototype.tick = function (now) {
-        if (!this.running) return;
-        var self = this;
-        this.raf = requestAnimationFrame(this._tick);
-        if (!this.visible || (typeof document !== "undefined" && document.hidden)) {
-            this.lastNow = now;
-            return;
-        }
-        if (!this.playing && !this.needsRender) return;
-        if (this.playing && this.maxFps > 0 && this._lastDrawAt && now - this._lastDrawAt < 1000 / this.maxFps) {
-            return; // capped frame rate; lastNow keeps the elapsed time for the next draw
-        }
-        this._lastDrawAt = now;
-        var delta = 0;
-        if (this.playing) {
-            delta = Math.max(0, Math.min(0.1, (now - this.lastNow) / 1000));
-            this.time += delta;
-        }
-        this.lastNow = now;
-        this.needsRender = false;
-        try {
-            this.draw(delta);
-        } catch (err) {
-            this.running = false;
-            this.viewer.runtimeError(err);
-        }
-    };
-
-    ISFRuntime.prototype.start = function () {
-        if (this.running) return;
-        this.running = true;
-        this.lastNow = performance.now();
-        this.raf = requestAnimationFrame(this._tick);
-    };
-
-    // `toDataURL` reads the drawing buffer, which is bottom-up relative to
-    // what the browser presents; flip it so exports match the screen (and the
-    // editor core's captures). Pass { flipY: false } for the raw buffer.
-    ISFRuntime.prototype.snapshot = function (options) {
-        if (!this.program || !this.gl) return null;
-        try {
-            // A frozen capture has already drawn its target frame; `render:
-            // false` reads that buffer instead of advancing FRAMEINDEX once
-            // more (the extra draw turned frame-strobo black where OBS's
-            // cover is the white frame).
-            if (!options || options.render !== false) this.draw(0);
-            var source = this.gl.canvas;
-            if (options && options.flipY === false) return source.toDataURL("image/png");
-            var canvas = document.createElement("canvas");
-            canvas.width = source.width;
-            canvas.height = source.height;
-            var context = canvas.getContext("2d");
-            context.translate(0, canvas.height);
-            context.scale(1, -1);
-            context.drawImage(source, 0, 0);
-            return canvas.toDataURL("image/png");
-        } catch (err) {
-            return null;
-        }
-    };
-
-    ISFRuntime.prototype.stop = function () {
-        this.running = false;
-        if (this.raf) cancelAnimationFrame(this.raf);
-        this.raf = null;
-    };
-
-    ISFRuntime.prototype.setPlaying = function (playing) {
-        this.playing = !!playing;
-        if (this.playing) this.lastNow = performance.now();
-        this.needsRender = true;
-    };
-
-    ISFRuntime.prototype.dispose = function () {
-        this.stop();
-        var gl = this.gl;
-        if (!gl) return;
-        try {
-            var stage = this.viewer.dom.stage;
-            if (this._onPointerMove) stage.removeEventListener("pointermove", this._onPointerMove);
-            if (this._onPointerDown) stage.removeEventListener("pointerdown", this._onPointerDown);
-            if (this._onPointerLeave) stage.removeEventListener("pointerleave", this._onPointerLeave);
-            if (this._onPointerUp) window.removeEventListener("pointerup", this._onPointerUp);
-        } catch (err) { /* ignore */ }
-        try { gl.canvas.removeEventListener("webglcontextlost", this._contextLost, false); } catch (err) { /* ignore */ }
-        this.cleanupProgram();
-        if (this.paint) { gl.deleteProgram(this.paint.program); this.paint = null; }
-        if (this.vertexBuffer) { gl.deleteBuffer(this.vertexBuffer); this.vertexBuffer = null; }
-        for (var name in this.inputTextures) if (Object.prototype.hasOwnProperty.call(this.inputTextures, name)) gl.deleteTexture(this.inputTextures[name]);
-        for (var audio in this.audioTextures) if (Object.prototype.hasOwnProperty.call(this.audioTextures, audio)) gl.deleteTexture(this.audioTextures[audio]);
-        for (var imported in this.importTextures) if (Object.prototype.hasOwnProperty.call(this.importTextures, imported)) gl.deleteTexture(this.importTextures[imported]);
-        this.inputTextures = {};
-        this.audioTextures = {};
-        this.importTextures = {};
-        try {
-            var lose = gl.getExtension("WEBGL_lose_context");
-            if (lose && gl.canvas === this.viewer.dom.canvas) lose.loseContext();
-        } catch (err) { /* ignore */ }
-        this.gl = null;
-    };
-
     /* ==================================================================
      * K2 runtime: the shared ISF core behind the plugin's UI
      *
@@ -5971,7 +4853,6 @@
      * playing, events, inputSources, previewTarget, qualityScale, snapshot,
      * stats) but delegates parsing, compiling, the pass loop, buffers, image
      * upload and the snapshot buffer to `ISFCore.render.createRenderer`.
-     * `config.runtime === "legacy"` selects the old loop while K2 settles.
      * ================================================================== */
 
     function ISFRuntimeCore(viewer, gl) {
@@ -6016,18 +4897,8 @@
         this._tick = function (now) { self.tick(now); };
         this._contextLost = function (event) { event.preventDefault(); self.handleContextLost(); };
         gl.canvas.addEventListener("webglcontextlost", this._contextLost, false);
-        this.setupGeometry();
         this.bindPointer();
         this.resize(true);
-    }
-
-    ISFRuntimeCore.prototype = Object.create(ISFRuntime.prototype);
-    ISFRuntimeCore.prototype.constructor = ISFRuntimeCore;
-
-    /** Choose the runtime: the shared core by default, legacy on request. */
-    function createRuntime(viewer, gl) {
-        if (viewer.config && viewer.config.runtime === "legacy") return new ISFRuntime(viewer, gl);
-        return new ISFRuntimeCore(viewer, gl);
     }
 
     ISFRuntimeCore.prototype.compile = function (shader) {
@@ -6089,7 +4960,7 @@
     };
 
     ISFRuntimeCore.prototype.resize = function (force) {
-        ISFRuntime.prototype.resize.call(this, force);
+        this.baseResize(force);
         var canvas = this.gl && this.gl.canvas;
         if (canvas && (canvas.width !== this.destWidth || canvas.height !== this.destHeight)) {
             canvas.width = this.destWidth;
@@ -6252,6 +5123,155 @@
             if (lose && this.gl.canvas === this.viewer.dom.canvas) lose.loseContext();
         } catch (err) { /* ignore */ }
         this.gl = null;
+    };
+
+    ISFRuntimeCore.prototype.bindPointer = function () {
+        var self = this;
+        var stage = this.viewer.dom.stage;
+        // Only feed the pointer extension from the render surface; UI events
+        // (sliders, selects, the editor) must keep their native behaviour.
+        function isRenderTarget(target) {
+            return target === self.viewer.dom.canvas;
+        }
+        function point(event) {
+            var canvas = self.viewer.dom.canvas;
+            var rect = canvas.getBoundingClientRect();
+            var width = Math.max(1, rect.width);
+            var height = Math.max(1, rect.height);
+            var x = (event.clientX - rect.left) / width * self.destWidth;
+            var y = (1 - (event.clientY - rect.top) / height) * self.destHeight;
+            return [clamp(x, 0, self.destWidth), clamp(y, 0, self.destHeight)];
+        }
+        this._onPointerMove = function (event) {
+            if (!isRenderTarget(event.target)) return;
+            var p = point(event);
+            self.mouse[0] = p[0];
+            self.mouse[1] = p[1];
+            self.mouse[2] = self.pointerDown ? self._clickX : -Math.abs(self._clickX);
+            self.mouse[3] = self._clickY;
+            self.needsRender = true;
+        };
+        this._onPointerDown = function (event) {
+            if (!isRenderTarget(event.target)) return;
+            var p = point(event);
+            self.pointerDown = true;
+            self._clickX = p[0];
+            self._clickY = p[1];
+            self.mouse = [p[0], p[1], p[0], p[1]];
+            self.needsRender = true;
+            event.preventDefault();
+        };
+        this._onPointerUp = function () {
+            self.pointerDown = false;
+            self.mouse[2] = -Math.abs(self._clickX);
+            self.needsRender = true;
+        };
+        this._onPointerLeave = function () {
+            self.pointerDown = false;
+            self.mouse[2] = -Math.abs(self._clickX);
+        };
+        stage.addEventListener("pointermove", this._onPointerMove);
+        stage.addEventListener("pointerdown", this._onPointerDown);
+        stage.addEventListener("pointerleave", this._onPointerLeave);
+        window.addEventListener("pointerup", this._onPointerUp);
+    };
+
+    ISFRuntimeCore.prototype.handleContextLost = function () {
+        this.running = false;
+        if (this.viewer) this.viewer.handleContextLost();
+    };
+
+    ISFRuntimeCore.prototype.start = function () {
+        if (this.running) return;
+        this.running = true;
+        this.lastNow = performance.now();
+        this.raf = requestAnimationFrame(this._tick);
+    };
+
+    ISFRuntimeCore.prototype.stop = function () {
+        this.running = false;
+        if (this.raf) cancelAnimationFrame(this.raf);
+        this.raf = null;
+    };
+
+    ISFRuntimeCore.prototype.tick = function (now) {
+        if (!this.running) return;
+        var self = this;
+        this.raf = requestAnimationFrame(this._tick);
+        if (!this.visible || (typeof document !== "undefined" && document.hidden)) {
+            this.lastNow = now;
+            return;
+        }
+        if (!this.playing && !this.needsRender) return;
+        if (this.playing && this.maxFps > 0 && this._lastDrawAt && now - this._lastDrawAt < 1000 / this.maxFps) {
+            return; // capped frame rate; lastNow keeps the elapsed time for the next draw
+        }
+        this._lastDrawAt = now;
+        var delta = 0;
+        if (this.playing) {
+            delta = Math.max(0, Math.min(0.1, (now - this.lastNow) / 1000));
+            this.time += delta;
+        }
+        this.lastNow = now;
+        this.needsRender = false;
+        try {
+            this.draw(delta);
+        } catch (err) {
+            this.running = false;
+            this.viewer.runtimeError(err);
+        }
+    };
+
+    ISFRuntimeCore.prototype.setPlaying = function (playing) {
+        this.playing = !!playing;
+        if (this.playing) this.lastNow = performance.now();
+        this.needsRender = true;
+    };
+
+    ISFRuntimeCore.prototype.defaultImageSource = function (input) {
+        var self = this;
+        var name = input.name;
+        if (this.inputSources[name]) return this.inputSources[name];
+        var variant = /end/i.test(name) ? "b" : "a";
+        var canvas = createTestPattern(512, 512, variant);
+        this.inputSources[name] = canvas;
+        if (this.config.imageUrl) {
+            var image = new Image();
+            image.crossOrigin = "anonymous";
+            image.onload = function () {
+                self.inputSources[name] = image;
+                self.viewer.needsRender = true;
+                self.needsRender = true;
+            };
+            image.onerror = function () { self.viewer.warn("Could not load imageUrl for " + name); };
+            image.src = this.config.imageUrl;
+        }
+        return canvas;
+    };
+
+    ISFRuntimeCore.prototype.baseResize = function (force) {
+        var canvas = this.gl.canvas;
+        var rect;
+        try { rect = canvas.getBoundingClientRect(); } catch (err) { rect = null; }
+        var cssWidth = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || 1));
+        var cssHeight = Math.max(1, Math.round((rect && rect.height) || canvas.clientHeight || 1));
+        var dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+        var resolution = this.qualityScale !== null && this.qualityScale !== undefined ? this.qualityScale : this.config.resolution;
+        var scale;
+        if (resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
+        else scale = Number(resolution) || 1;
+        if (!isFinite(scale) || scale <= 0) scale = 1;
+        var maxSize = 0;
+        try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { maxSize = 4096; }
+        var width = clamp(Math.round(cssWidth * scale), 1, Math.min(maxSize, 8192));
+        var height = clamp(Math.round(cssHeight * scale), 1, Math.min(maxSize, 8192));
+        if (force || canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+            this.needsRender = true;
+        }
+        this.destWidth = width;
+        this.destHeight = height;
     };
 
     /* ==================================================================
@@ -7362,7 +6382,7 @@
                 viewer.showOverlay("<strong>WebGL is not available</strong>This browser or GPU cannot render ISF shaders.", true);
                 return;
             }
-            viewer.runtime = createRuntime(viewer, viewer.gl);
+            viewer.runtime = new ISFRuntimeCore(viewer, viewer.gl);
             var compileError = viewer.runtime.compile(viewer.built);
             if (compileError) {
                 viewer.runtimeError(compileError, viewer.built);

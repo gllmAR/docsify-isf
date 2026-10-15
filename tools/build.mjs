@@ -50,7 +50,6 @@ const REMOVE = [
     'replaceIdentifiers', 'normalizeTypeKeywords', 'normalizeNumericSuffixes',
     'constantPreludeLines', 'renameBuiltinShadows', 'demoteAssignedUniforms',
     'buildShader',
-    'createGenerators',
 ];
 
 const CORE_MODULES = [
