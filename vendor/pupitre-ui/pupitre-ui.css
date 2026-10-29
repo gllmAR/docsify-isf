@@ -221,6 +221,7 @@
 .pui-toolbar-separator { width: 1px; height: 20px; background: var(--pui-border); margin: 0 3px; }
 .pui-toolbar-spacer { flex: 1 1 auto; }
 .pui-toolbar-label { color: var(--pui-muted); font-size: 0.72rem; font-weight: 600; padding: 0 4px; }
+.pui-menu-label { padding: 4px 8px; color: var(--pui-muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
 .pui-toolbar-icon { display: inline-block; min-width: 1em; font-size: 0.95rem; line-height: 1; }
 .pui-toolbar-badge { min-width: 1.1em; padding: 0 4px; border-radius: 999px; background: var(--pui-accent); color: var(--pui-accent-text); font-size: 0.62rem; line-height: 1.5; text-align: center; }
 .pui-toolbar .pui-button[aria-pressed="true"] { border-color: var(--pui-accent); color: var(--pui-accent); }
@@ -260,6 +261,12 @@
 .pui-table-sort-indicator { font-size: 0.6rem; }
 .pui-table-grid th[aria-sort="ascending"], .pui-table-grid th[aria-sort="descending"] { color: var(--pui-accent); }
 .pui-table-spacer td { padding: 0; border: 0; }
+.pui-table-editable { padding: 3px 5px; }
+.pui-table-cell-edit { display: block; width: 100%; min-height: 24px; padding: 1px 3px; border: 1px dashed transparent; border-radius: 3px; background: transparent; color: inherit; font: inherit; text-align: start; cursor: text; }
+.pui-table-cell-edit:hover, .pui-table-cell-edit:focus-visible { border-color: var(--pui-accent); outline: none; }
+.pui-table-edit-input { width: 100%; min-width: 6em; min-height: 26px; padding: 2px 5px; border: 1px solid var(--pui-accent); border-radius: 3px; background: var(--pui-bg); color: var(--pui-text); font: inherit; }
+.pui-table-edit-input[aria-invalid="true"] { border-color: var(--pui-danger); }
+.pui-table-edit-error { display: block; margin-top: 2px; color: var(--pui-danger); font-size: 0.68rem; }
 .pui-table-grid th { text-align: start; color: var(--pui-muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 5px 7px; border-bottom: 1px solid var(--pui-border); white-space: nowrap; }
 .pui-table-grid td { padding: 6px 7px; border-bottom: 1px solid color-mix(in srgb, var(--pui-border) 65%, transparent); vertical-align: middle; }
 .pui-table-row { cursor: default; outline: none; }

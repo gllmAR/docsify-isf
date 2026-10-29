@@ -221,6 +221,7 @@
       workflowAction: options.workflowAction || null,
       getValueFor: options.getValueFor || null,
       setValueFor: options.setValueFor || null,
+      getIcon: options.getIcon || null,
       callAction: options.callAction || function () { return false; },
       callCustom: options.callCustom || null,
       action: options.action || null,
@@ -232,6 +233,7 @@
       addCollectionItem: options.addCollectionItem || null,
       removeCollectionItem: options.removeCollectionItem || null,
       resolveCollectionPath: options.resolveCollectionPath || null,
+      validateValue: options.validateValue || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: options.announce || function () {},
@@ -5486,6 +5488,10 @@
         root.appendChild(el("span", {class: "pui-toolbar-separator", role: "separator"}));
         continue;
       }
+      if (item.kind === "label") {
+        root.appendChild(el("span", {class: "pui-toolbar-label", text: String(item.text || item.label || "")}));
+        continue;
+      }
       if (item.kind === "spacer") {
         root.appendChild(el("span", {class: "pui-toolbar-spacer"}));
         continue;
@@ -5634,6 +5640,10 @@
       if (!isObject(item)) continue;
       if (item.kind === "separator") {
         popup.appendChild(el("div", {class: "pui-menu-separator", role: "separator"}));
+        continue;
+      }
+      if (item.kind === "label") {
+        popup.appendChild(el("div", {class: "pui-menu-label", text: String(item.text || item.label || "")}));
         continue;
       }
       var button = this.addActionButton(popup, item);
@@ -6112,6 +6122,222 @@
     return row;
   };
 
+  Renderer.prototype.tableRowValue = function (row, key) {
+    var value = row;
+    var parts = String(key || "").split(".");
+    for (var i = 0; i < parts.length; i++) {
+      if (value == null || typeof value !== "object") return undefined;
+      value = value[parts[i]];
+    }
+    return value;
+  };
+
+  Renderer.prototype.tableEditSpec = function (column) {
+    if (!column.edit) return null;
+    var spec = isObject(column.edit) ? column.edit : {type: String(column.edit)};
+    var type = String(spec.type || "text").toLowerCase();
+    if (type === "true") type = "text";
+    if (["text", "number", "select"].indexOf(type) < 0) type = "text";
+    return {
+      type: type,
+      bind: String(spec.bind || column.bind || ""),
+      options: isArray(spec.options) ? spec.options : (isArray(column.options) ? column.options : []),
+      options_bind: spec.options_bind || column.options_bind,
+      required: !!(spec.required || column.required),
+      min: spec.min !== undefined ? spec.min : column.min,
+      max: spec.max !== undefined ? spec.max : column.max,
+      step: spec.step !== undefined ? spec.step : column.step,
+      placeholder: spec.placeholder !== undefined ? spec.placeholder : column.placeholder,
+      value_type: spec.value_type || column.value_type
+    };
+  };
+
+  Renderer.prototype.tableEditPath = function (rec, key, column) {
+    var spec = this.tableEditSpec(column);
+    var raw = spec && spec.bind ? spec.bind : String(column.bind || "");
+    raw = raw.replace(/\{key\}|\{row\}/g, String(key));
+    if (!raw) raw = String(column.key || "");
+    if (raw.charAt(0) === "/") return raw;
+    var base = String(rec.block.bind || "");
+    return base.replace(/\/$/, "") + "/" + String(key) + "/" + raw.replace(/^\./, "");
+  };
+
+  Renderer.prototype.tableEditOptions = function (rec, column) {
+    var spec = this.tableEditSpec(column);
+    var list = spec && spec.options ? spec.options : [];
+    if (spec && spec.options_bind) {
+      var bound = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(String(spec.options_bind), rec.block)
+        : this.adapter.getValue(String(spec.options_bind));
+      if (isArray(bound)) list = bound;
+    }
+    return list.map(function (entry) {
+      if (isObject(entry)) return {value: entry.value === undefined ? entry.label : entry.value, label: String(entry.label === undefined ? entry.value : entry.label)};
+      return {value: entry, label: String(entry)};
+    });
+  };
+
+  Renderer.prototype.tableEditValue = function (rec, key, row, column) {
+    var path = this.tableEditPath(rec, key, column);
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, rec.block)
+      : this.adapter.getValue(path);
+    if (value === undefined || value === null) value = this.tableRowValue(row, String(column.key || ""));
+    return value;
+  };
+
+  Renderer.prototype.tableEditError = function (rec, message) {
+    if (!rec.editing) return;
+    var input = rec.editing.input;
+    input.setAttribute("aria-invalid", "true");
+    if (!rec.editing.errorEl) {
+      var errorId = this.id("table-edit-error");
+      rec.editing.errorEl = el("span", {id: errorId, class: "pui-table-edit-error", role: "alert"});
+      input.setAttribute("aria-describedby", errorId);
+      rec.editing.td.appendChild(rec.editing.errorEl);
+    }
+    rec.editing.errorEl.textContent = String(message);
+    if (input.focus) input.focus();
+    this.adapter.announce("error", String(message));
+  };
+
+  Renderer.prototype.tableStartEdit = function (rec, key, column, td, trigger) {
+    var self = this;
+    var spec = this.tableEditSpec(column);
+    if (!spec) return;
+    if (rec.editing) this.tableCommitEdit(rec);
+    var entry = null;
+    for (var i = 0; i < rec.rowEls.length; i++) if (rec.rowEls[i].key === key) entry = rec.rowEls[i];
+    if (!entry) return;
+    var value = this.tableEditValue(rec, key, entry.row, column);
+    var input;
+    if (spec.type === "select") {
+      input = el("select", {class: "pui-table-edit-input", "aria-label": "Edit " + String(column.label || column.key || "") + " for " + key});
+      var options = this.tableEditOptions(rec, column);
+      var found = false;
+      options.forEach(function (option) {
+        var opt = el("option", {value: String(option.value), text: option.label});
+        if (String(option.value) === String(value)) { opt.selected = true; found = true; }
+        input.appendChild(opt);
+      });
+      if (!found && value !== undefined && value !== null) {
+        input.appendChild(el("option", {value: String(value), text: String(value)}));
+      }
+      input.value = String(value === undefined || value === null ? "" : value);
+    } else {
+      input = el("input", {
+        type: spec.type === "number" ? "number" : "text",
+        class: "pui-table-edit-input",
+        "aria-label": "Edit " + String(column.label || column.key || "") + " for " + key,
+        placeholder: String(spec.placeholder || "")
+      });
+      if (spec.min !== undefined) input.min = String(spec.min);
+      if (spec.max !== undefined) input.max = String(spec.max);
+      if (spec.step !== undefined) input.step = String(spec.step);
+      input.value = value === undefined || value === null ? "" : String(value);
+    }
+    while (td.firstChild) td.removeChild(td.firstChild);
+    td.appendChild(input);
+    rec.editing = {rec: rec, key: key, column: column, td: td, input: input, trigger: trigger, entry: entry};
+    input.addEventListener("click", function (event) { event.stopPropagation(); });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); self.tableCommitEdit(rec); }
+      else if (event.key === "Escape") { event.preventDefault(); self.tableCancelEdit(rec); }
+      else if (event.key === "Tab") { self.tableCommitEdit(rec); }
+    });
+    input.addEventListener("blur", function () {
+      if (rec.editing && rec.editing.input === input) self.tableCommitEdit(rec);
+    });
+    if (input.focus) input.focus();
+    if (input.select) input.select();
+  };
+
+  Renderer.prototype.tableParseEdit = function (rec, value) {
+    var spec = this.tableEditSpec(rec.editing.column);
+    var original = this.tableEditValue(rec, rec.editing.key, rec.editing.entry.row, rec.editing.column);
+    var text = String(value);
+    if (spec.required && text.trim() === "") return {error: "This cell is required."};
+    if (spec.type === "number" || spec.value_type === "number" || (spec.value_type !== "string" && typeof original === "number")) {
+      if (text.trim() === "") return {value: null};
+      var number = Number(text);
+      if (isNaN(number)) return {error: "Enter a number."};
+      return {value: number};
+    }
+    if (spec.value_type === "boolean") return {value: text === "true" || text === "1" || text === "on"};
+    return {value: text};
+  };
+
+  Renderer.prototype.tableValidateEdit = function (rec, path, value, column) {
+    if (typeof this.adapter.validateValue !== "function") return null;
+    var result = this.adapter.validateValue(path, value, column, rec.block);
+    if (result === false) return "This value is not valid.";
+    if (typeof result === "string" && result) return result;
+    if (isObject(result) && result.ok === false) return String(result.message || "This value is not valid.");
+    return null;
+  };
+
+  Renderer.prototype.tableCommitEdit = function (rec) {
+    var editing = rec.editing;
+    if (!editing || rec.committingEdit) return false;
+    rec.committingEdit = true;
+    var parsed = this.tableParseEdit(rec, editing.input.value);
+    if (parsed.error) {
+      rec.committingEdit = false;
+      this.tableEditError(rec, parsed.error);
+      return false;
+    }
+    var path = this.tableEditPath(rec, editing.key, editing.column);
+    var invalid = this.tableValidateEdit(rec, path, parsed.value, editing.column);
+    if (invalid) {
+      rec.committingEdit = false;
+      this.tableEditError(rec, invalid);
+      return false;
+    }
+    var ok = this.setPath(path, parsed.value, rec.block);
+    if (!ok) {
+      rec.committingEdit = false;
+      this.tableEditError(rec, "The host rejected this value.");
+      return false;
+    }
+    var key = editing.key;
+    var columnKey = String(editing.column.key || "");
+    rec.editing = null;
+    rec.committingEdit = false;
+    if (editing.trigger) {
+      while (editing.td.firstChild) editing.td.removeChild(editing.td.firstChild);
+      editing.trigger.textContent = this.tableCell(editing.entry.row, editing.column);
+      editing.td.appendChild(editing.trigger);
+    }
+    this.apply();
+    this.tableFocusCell(rec, key, columnKey);
+    return true;
+  };
+
+  Renderer.prototype.tableCancelEdit = function (rec) {
+    if (!rec.editing) return;
+    var key = rec.editing.key;
+    var columnKey = String(rec.editing.column.key || "");
+    rec.editing = null;
+    rec.committingEdit = false;
+    this.tableRenderBody(rec);
+    this.tableFocusCell(rec, key, columnKey, true);
+  };
+
+  Renderer.prototype.tableFocusCell = function (rec, key, columnKey, trigger) {
+    for (var i = 0; i < rec.rowEls.length; i++) {
+      var entry = rec.rowEls[i];
+      if (entry.key !== key) continue;
+      var cell = null;
+      for (var c = 0; c < entry.cells.length; c++) {
+        if (String(entry.cells[c].column.key || "") === String(columnKey)) cell = entry.cells[c];
+      }
+      if (trigger && cell && cell.button) { cell.button.focus(); return; }
+      if (cell && cell.button) { cell.button.focus(); return; }
+      entry.el.focus();
+      return;
+    }
+  };
+
   Renderer.prototype.tableRenderBody = function (rec) {
     var self = this;
     var block = rec.block;
@@ -6148,7 +6374,7 @@
     for (var index = start; index < end; index++) {
       (function (row, index) {
         var key = rec.keys[index];
-        var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: "0", role: "row"});
+        var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: "0", role: "row", "aria-keyshortcuts": "F2"});
         tr.setAttribute("aria-selected", rec.selected.indexOf(key) >= 0 ? "true" : "false");
         if (virtual) tr.setAttribute("aria-rowindex", String(index + 2));
         if (rec.selected.indexOf(key) >= 0) tr.classList.add("is-selected");
@@ -6166,15 +6392,36 @@
         var cells = [];
         columns.forEach(function (column) {
           var td = el("td", {class: column.cell ? "pui-table-" + String(column.cell) : ""});
-          td.textContent = self.tableCell(row, column);
+          var text = self.tableCell(row, column);
+          var editSpec = self.tableEditSpec(column);
+          if (editSpec) {
+            td.classList.add("pui-table-editable");
+            var editButton = el("button", {type: "button", class: "pui-table-cell-edit", "data-pui-column": String(column.key || ""), text: text});
+            editButton.tabIndex = -1;
+            editButton.title = "Edit " + String(column.label || column.key || "") + " for " + key;
+            editButton.setAttribute("aria-label", "Edit " + String(column.label || column.key || "") + " for " + key);
+            editButton.addEventListener("click", function (event) {
+              event.stopPropagation();
+              self.tableStartEdit(rec, key, column, td, editButton);
+            });
+            td.appendChild(editButton);
+            cells.push({node: td, column: column, button: editButton});
+          } else {
+            td.textContent = text;
+            cells.push({node: td, column: column});
+          }
           tr.appendChild(td);
-          cells.push({node: td, column: column});
         });
         tr.addEventListener("click", function (event) {
           if (event.target && event.target.tagName === "INPUT") return;
           self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
         });
         tr.addEventListener("keydown", function (event) {
+          if (event.key === "F2") {
+            var firstEdit = tr.querySelector(".pui-table-cell-edit");
+            if (firstEdit) { event.preventDefault(); firstEdit.click(); }
+            return;
+          }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
@@ -6218,7 +6465,11 @@
       entry.el.setAttribute("aria-selected", selected ? "true" : "false");
       if (entry.check && entry.check.checked !== selected) entry.check.checked = selected;
       for (var c = 0; c < entry.cells.length; c++) {
-        entry.cells[c].node.textContent = this.tableCell(entry.row, entry.cells[c].column);
+        var edit = rec.editing;
+        if (edit && edit.key === entry.key && String(edit.column.key || "") === String(entry.cells[c].column.key || "")) continue;
+        var cellText = this.tableCell(entry.row, entry.cells[c].column);
+        if (entry.cells[c].button) entry.cells[c].button.textContent = cellText;
+        else entry.cells[c].node.textContent = cellText;
       }
     }
     this.tableUpdateHead(rec);
@@ -6232,6 +6483,8 @@
 
   Renderer.prototype.tableRebuild = function (rec) {
     var self = this;
+    rec.editing = null;
+    rec.committingEdit = false;
     var block = rec.block;
     var rows = this.tableView(rec);
     var keys = rows.map(function (row, index) { return String(self.tableKey(block, row, index)); });
@@ -6357,7 +6610,9 @@
       });
     }
     viewport.addEventListener("scroll", function () {
-      if (block.virtual) self.tableRenderBody(rec);
+      if (!block.virtual) return;
+      if (rec.editing) self.tableCancelEdit(rec);
+      else self.tableRenderBody(rec);
     });
     this.tableRecords.push(rec);
     this.tableRebuild(rec);
