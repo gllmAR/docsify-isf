@@ -5401,9 +5401,9 @@
             ".isf-btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .12s ease,border-color .12s ease}",
             ".isf-btn:hover{background:var(--isf-surface-2)}",
             ".isf-pui-header{flex:1 1 auto;min-width:0;display:flex}",
-            ".isf-pui-header .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.92rem;color:var(--isf-text)}",
+            ".isf-pui-header .pui{width:100%;min-width:0;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.92rem;color:var(--isf-text)}",
             ".isf-pui-header .pui-panel,.isf-pui-header .pui-page,.isf-pui-header .pui-section,.isf-pui-header .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
-            ".isf-pui-header .pui-toolbar{border:0;background:transparent;padding:0;min-height:0;gap:.3rem;flex-wrap:nowrap;align-items:center;width:100%}",
+            ".isf-pui-header .pui-toolbar{border:0;background:transparent;padding:0;min-height:0;gap:.3rem;flex-wrap:nowrap;align-items:center;width:100%;min-width:0;max-width:100%}",
             ".isf-pui-header .pui-toolbar-link[data-pui-item=title]{display:flex;align-items:center;justify-content:flex-start;text-align:left;flex:1 1 auto;min-width:0;background:transparent;border-color:transparent;color:var(--isf-text);font-weight:650;font-size:.95rem;letter-spacing:-.01em;padding:0 .08rem;min-height:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}",
             ".isf-pui-header .pui-toolbar-link[data-pui-item=title]:hover{color:var(--isf-accent);text-decoration:underline}",
             ".isf-pui-header .pui-toolbar > .pui-button,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger{min-width:30px;min-height:30px;padding:.2rem .28rem;background:transparent;border-color:transparent;color:var(--isf-text);box-shadow:none;font-size:.75rem;border-radius:8px;transition:background .12s ease,border-color .12s ease,color .12s ease}",
@@ -5425,6 +5425,8 @@
             ".isf-pui-header .pui-toolbar-readout[data-pui-item=stats][hidden]{display:none}",
             ".isf-pui-header .pui-toolbar-readout-label{display:none}",
             ".isf-pui-header .pui-toolbar-readout-value{color:inherit;font-weight:400}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;min-width:0}",
+            "@media (max-width:600px){.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;order:0;font-size:.9rem}}",
             "@media (pointer:coarse){.isf-pui-header .pui-toolbar > .pui-button,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger{min-width:36px;min-height:36px}.isf-pui-header .pui-menu-popup .pui-button{min-height:36px}.isf-view select,.isf-view .isf-btn{min-height:36px}}",
             ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
@@ -5619,6 +5621,12 @@
             "@media (pointer:coarse){.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
             "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:wrap;row-gap:.3rem}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 100%;order:-1;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{order:2;margin-inline-start:auto}.isf-drawer{top:0;bottom:0;left:0;right:0;width:100%!important;max-width:100vw;border-radius:0;border:0}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}}",
+            // Auto-overflow headers stay on one measured row; the title may
+            // shrink, while the stats pill and the More trigger stay inline.
+            ".isf-pui-header .pui-toolbar.is-overflow-auto{flex-wrap:nowrap;row-gap:0}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 auto;order:0;min-width:0;max-width:none;font-size:.9rem}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-spacer{display:none}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{order:0;margin-inline-start:0;flex:0 0 auto}",
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
@@ -8734,60 +8742,59 @@
                 rel: "noopener",
                 label: String(viewer.title || "ISF viewer"),
                 title: "Open " + String(viewer.title || "shader") + " source",
-                badge: "ISF"
+                badge: "ISF",
+                collapse: false
             }, {kind: "spacer"}, {
                 kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
-                a11y: {name: "Render statistics"}
+                a11y: {name: "Render statistics"},
+                collapse: false
             }, {kind: "separator"}];
             if (config.editor) {
                 items.push({
                     id: "editor", label: "Source editor", icon: "editor", icon_only: true,
                     title: "Source editor", call: "isf.editor", pressed_bind: "/isf/ui/editorOpen",
-                    aria_controls: uid + "-editor"
+                    aria_controls: uid + "-editor", priority: 100
                 });
             }
             if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
                 items.push({
                     id: "params", label: "Parameters", icon: "params", icon_only: true,
                     title: "Parameters", call: "isf.params", pressed_bind: "/isf/ui/paramsOpen",
-                    badge_bind: "/isf/ui/inputCount", aria_controls: uid + "-params"
+                    badge_bind: "/isf/ui/inputCount", aria_controls: uid + "-params", priority: 100
                 });
             }
             items.push({kind: "separator"});
             items.push({
                 id: "play", label_bind: "/isf/ui/playLabel", icon_bind: "/isf/ui/playIcon",
-                title_bind: "/isf/ui/playLabel", icon_only: true, call: "isf.play"
+                title_bind: "/isf/ui/playLabel", icon_only: true, call: "isf.play", priority: 80
             });
             items.push({
                 id: "fullscreen", label: "Fullscreen", icon: "fullscreen", icon_only: true,
-                title: "Fullscreen", call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen"
+                title: "Fullscreen", call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen", priority: 70
             });
             if (config.share !== false) {
                 items.push({
                     id: "share", label: "Copy a fullscreen link for OBS (current parameters)",
                     icon: "share", icon_only: true,
-                    title: "Copy a fullscreen link for OBS (current parameters)", call: "isf.share"
-                });
-            }
-            var moreItems = [{
-                id: "reset", label: "Reset parameters and time", icon: "reset",
-                title: "Reset parameters and time", call: "isf.reset"
-            }];
-            if (config.showSource) {
-                moreItems.push({
-                    kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener",
-                    label: "Open source file", icon: "source", title: "Open source file"
+                    title: "Copy a fullscreen link for OBS (current parameters)", call: "isf.share", priority: 20
                 });
             }
             items.push({
-                kind: "menu", id: "more", label: "More actions", icon: "more", icon_only: true,
-                title: "More actions", items: moreItems
+                id: "reset", label: "Reset parameters and time", icon: "reset", icon_only: true,
+                title: "Reset parameters and time", call: "isf.reset", priority: 30
             });
+            if (config.showSource) {
+                items.push({
+                    kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener",
+                    label: "Open source file", icon: "source", icon_only: true, title: "Open source file", priority: 20
+                });
+            }
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-header", title: String(viewer.title || "ISF viewer"), embedded: true, pages: [{id: "header", title: "Header", sections: [{
                     id: "header", title: "Header", blocks: [{
-                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start", items: items
+                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start",
+                        overflow: "auto", overflow_label: "More", items: items
                     }]
                 }]}]}]
             };

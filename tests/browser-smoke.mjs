@@ -820,13 +820,18 @@ try {
             overflow: b.scrollWidth - b.clientWidth,
             minButton: heights.length ? Math.min.apply(null, heights) : 0,
             actionButtons: buttons.length,
-            stripHeight: actions.getBoundingClientRect().height
+            stripHeight: actions.getBoundingClientRect().height,
+            moreVisible: (() => { const more = actions.querySelector(".pui-menu-trigger"); return !!more && !more.hidden; })(),
+            collapsed: Array.from(actions.children).filter((node) => node.hidden).map((node) => node.getAttribute("data-pui-item")),
+            wide: Array.from(b.querySelectorAll("*")).map((el) => ({tag: el.tagName, cls: String(el.className || "").slice(0, 60), w: Math.round(el.getBoundingClientRect().width), right: Math.round(el.getBoundingClientRect().right)})).filter((el) => el.right > b.getBoundingClientRect().right + 1).slice(0, 8),
+            layout: actions.__puiToolbarLayout ? {client: actions.clientWidth, rect: Math.round(actions.getBoundingClientRect().width), collapsed: actions.__puiToolbarLayout.collapsed, main: actions.__puiToolbarLayout.main.map((entry) => ({id: entry.item.id, hidden: entry.node.hidden, w: Math.round(entry.node.getBoundingClientRect().width), p: entry.item.priority}))} : null
         };
     });
     if (phone.missing) problems.push("mobile: PUI header toolbar did not mount " + JSON.stringify(phone));
     if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
-    if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px)");
+    if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px) " + JSON.stringify({wide: phone.wide, layout: phone.layout}));
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
+    if (!phone.moreVisible) problems.push("mobile: the low-priority header actions did not collapse into More: " + JSON.stringify(phone));
 
     // Wait for the target's controls: a budget-released viewer rebuilds them
     // when it resumes, and the test must click after that settled.
@@ -920,6 +925,8 @@ try {
         ));
         const pressedItems = Array.from(document.querySelectorAll(".isf-block .isf-pui-header [aria-pressed]"))
             .map((el) => el.getAttribute("data-pui-item"));
+        const headerMore = document.querySelector(".isf-block .isf-pui-header .pui-toolbar-overflow .pui-menu-trigger");
+        const toolbar = document.querySelector(".isf-block .isf-pui-header .pui-toolbar");
         return {
             count: stats.length,
             statsNamed: statsNamed,
@@ -933,6 +940,12 @@ try {
                 (button.textContent || "").trim()
             )).length,
             pressedItems: pressedItems,
+            moreHidden: !headerMore || headerMore.hidden,
+            toolbarClient: toolbar ? toolbar.clientWidth : null,
+            layout: toolbar && toolbar.__puiToolbarLayout ? {
+                collapsed: toolbar.__puiToolbarLayout.collapsed,
+                main: toolbar.__puiToolbarLayout.main.map((entry) => ({id: entry.item.id, hidden: entry.node.hidden, w: Math.round(entry.node.getBoundingClientRect().width), p: entry.item.priority}))
+            } : null,
             unexpectedPressed: pressedItems.filter((id) => ["editor", "params", "fullscreen"].indexOf(id) < 0)
         };
     });
@@ -968,6 +981,9 @@ try {
     else if (!puiFocus.ok) problems.push("PUI render() did not restore focus to the same item");
     if (!badgeHome.headerButtons || badgeHome.nameless) {
         problems.push("PUI header icon actions need an accessible name: " + JSON.stringify(badgeHome));
+    }
+    if (!badgeHome.moreHidden) {
+        problems.push("desktop header overflowed despite available width: " + JSON.stringify(badgeHome));
     }
     if (badgeHome.unexpectedPressed.length) {
         problems.push("only the header toggles should expose aria-pressed: " + JSON.stringify(badgeHome));

@@ -251,6 +251,7 @@
     this.shellRecords = [];
     this.statusRecords = [];
     this.toolbarRecords = [];
+    this.toolbarLayouts = [];
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
@@ -324,6 +325,7 @@
     }
     this.menuRecords = [];
     this.destroySlots();
+    this.disconnectToolbarLayouts();
     this.doc = doc;
     this.lang = this.resolveLanguage(doc);
     this.dir = String(doc.dir || (global.PupitreI18n ? global.PupitreI18n.direction(this.lang) : "ltr"));
@@ -339,6 +341,7 @@
     this.shellRecords = [];
     this.statusRecords = [];
     this.toolbarRecords = [];
+    this.toolbarLayouts = [];
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
@@ -5515,6 +5518,7 @@
   Renderer.prototype.buildToolbarItem = function (parent, item, mode) {
     if (!isObject(item)) return null;
     var inMenu = mode === "menu";
+    var contentItem = inMenu && item.icon_only ? Object.assign({}, item, {icon_only: false}) : item;
     var node;
     if (item.kind === "separator") {
       node = el(inMenu ? "div" : "span", {class: inMenu ? "pui-menu-separator" : "pui-toolbar-separator", role: "separator"});
@@ -5560,13 +5564,14 @@
       if (item.target) node.target = String(item.target);
       if (item.rel) node.rel = String(item.rel);
       if (item.download) node.download = String(item.download);
-      this.toolbarContent(item, node);
+      this.toolbarContent(contentItem, node);
       if (inMenu) {
         node.setAttribute("role", "menuitem");
         node.tabIndex = -1;
+        if (item.overflow_index !== undefined) node.setAttribute("data-pui-overflow-index", String(item.overflow_index));
       }
-      if (item.icon_only) node.setAttribute("aria-label", this.toolbarText(item, "label"));
-      var linkRec = {kind: "link", root: node, item: item, button: node};
+      if (item.icon_only && !inMenu) node.setAttribute("aria-label", this.toolbarText(item, "label"));
+      var linkRec = {kind: "link", root: node, item: contentItem, button: node};
       linkRec = Object.assign(linkRec, {iconEl: node.children[0], labelEl: node.children[1], badgeEl: node.children[2]});
       parent.appendChild(node);
       this.toolbarRecords.push(linkRec);
@@ -5581,31 +5586,206 @@
     if (inMenu) {
       node.setAttribute("role", "menuitem");
       node.tabIndex = -1;
+      if (item.overflow_index !== undefined) node.setAttribute("data-pui-overflow-index", String(item.overflow_index));
     }
-    var content = this.toolbarContent(item, node);
-    var rec = Object.assign({kind: "action", root: node, button: node, item: item}, content);
+    var content = this.toolbarContent(contentItem, node);
+    var rec = Object.assign({kind: "action", root: node, button: node, item: contentItem}, content);
     this.toolbarRecords.push(rec);
     this.toolbarRefresh(rec);
     return node;
   };
 
+  Renderer.prototype.disconnectToolbarLayouts = function () {
+    for (var i = 0; i < this.toolbarLayouts.length; i++) {
+      var layout = this.toolbarLayouts[i];
+      if (layout.observer && typeof layout.observer.disconnect === "function") layout.observer.disconnect();
+      if (layout.resize && typeof window !== "undefined" && window.removeEventListener) window.removeEventListener("resize", layout.resize);
+      layout.observer = null;
+      layout.resize = null;
+    }
+    this.toolbarLayouts = [];
+  };
+
+  Renderer.prototype.toolbarMeasure = function (node) {
+    if (!node) return 0;
+    var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+    if (rect && rect.width) return rect.width;
+    return node.offsetWidth || 0;
+  };
+
+  Renderer.prototype.toolbarGap = function (root) {
+    if (typeof window !== "undefined" && window.getComputedStyle) {
+      try {
+        var style = window.getComputedStyle(root);
+        var gap = parseFloat(style.columnGap || style.gap || "0");
+        if (!isNaN(gap)) return gap;
+      } catch (error) { /* fall through */ }
+    }
+    return 6;
+  };
+
+  Renderer.prototype.toolbarIsHidden = function (node, root) {
+    for (var walk = node; walk && walk !== root; walk = walk.parentNode) {
+      if (walk.hidden) return true;
+      if (walk.style && walk.style.display === "none") return true;
+    }
+    return false;
+  };
+
+  Renderer.prototype.toolbarAutoLayout = function (layout) {
+    var root = layout.root;
+    if (!root || !root.isConnected && typeof root.isConnected !== "undefined") return;
+    var available = root.clientWidth || (root.getBoundingClientRect ? root.getBoundingClientRect().width : 0);
+    if (!available) return;
+    var main = layout.main;
+    for (var i = 0; i < main.length; i++) main[i].node.hidden = false;
+    for (var m = 0; m < layout.menuNodes.length; m++) layout.menuNodes[m].hidden = true;
+    layout.trigger.hidden = true;
+    layout.menu.hidden = true;
+    var gap = this.toolbarGap(root);
+    var widths = [];
+    var total = 0;
+    for (var w = 0; w < main.length; w++) {
+      widths[w] = this.toolbarMeasure(main[w].node);
+      total += widths[w] + (w ? gap : 0);
+    }
+    layout.menu.hidden = false;
+    layout.trigger.hidden = false;
+    layout.trigger.style.visibility = "hidden";
+    var triggerWidth = this.toolbarMeasure(layout.trigger);
+    layout.trigger.style.visibility = "";
+    layout.menu.hidden = true;
+    layout.trigger.hidden = true;
+    if (total <= available) {
+      layout.collapsed = [];
+      layout.trigger.hidden = true;
+      layout.menu.hidden = true;
+      if (typeof document !== "undefined" && document.activeElement === layout.trigger) {
+        var first = root.__puiFirstToolbarFocus();
+        if (first) first.focus();
+      }
+      root.__puiSyncToolbarFocus();
+      return;
+    }
+    var candidates = main.filter(function (entry) { return entry.collapsible; });
+    candidates.sort(function (a, b) {
+      var ap = Number(a.item.priority) || 0;
+      var bp = Number(b.item.priority) || 0;
+      if (ap !== bp) return ap - bp;
+      return b.index - a.index;
+    });
+    var collapsed = [];
+    for (var c = 0; c < candidates.length; c++) {
+      if (total + gap + triggerWidth <= available) break;
+      var entry = candidates[c];
+      entry.node.hidden = true;
+      total -= widths[entry.index] + gap;
+      collapsed.push(entry.index);
+    }
+    if (!collapsed.length) {
+      layout.collapsed = [];
+      layout.menu.hidden = true;
+      layout.trigger.hidden = true;
+      root.__puiSyncToolbarFocus();
+      return;
+    }
+    layout.collapsed = collapsed;
+    layout.menu.hidden = false;
+    layout.trigger.hidden = false;
+    for (var n = 0; n < layout.menuNodes.length; n++) {
+      layout.menuNodes[n].hidden = collapsed.indexOf(Number(layout.menuNodes[n].getAttribute("data-pui-overflow-index"))) < 0;
+    }
+    var active = typeof document !== "undefined" ? document.activeElement : null;
+    var activeInside = false;
+    for (var walk = active; walk; walk = walk.parentNode) if (walk === root) { activeInside = true; break; }
+    if (active && active !== layout.trigger && activeInside && this.toolbarIsHidden(active, root)) {
+      if (layout.trigger.focus) layout.trigger.focus();
+    }
+    root.__puiSyncToolbarFocus();
+  };
+
+  Renderer.prototype.layoutToolbars = function () {
+    for (var i = 0; i < this.toolbarLayouts.length; i++) this.toolbarAutoLayout(this.toolbarLayouts[i]);
+  };
+
+  Renderer.prototype.observeToolbar = function (layout) {
+    var self = this;
+    var schedule = function () {
+      if (layout.scheduled) return;
+      layout.scheduled = true;
+      var run = function () {
+        layout.scheduled = false;
+        self.toolbarAutoLayout(layout);
+      };
+      if (typeof window !== "undefined" && window.requestAnimationFrame) window.requestAnimationFrame(run);
+      else setTimeout(run, 0);
+    };
+    layout.schedule = schedule;
+    if (typeof ResizeObserver !== "undefined") {
+      layout.observer = new ResizeObserver(schedule);
+      layout.observer.observe(layout.root);
+    } else if (typeof window !== "undefined" && window.addEventListener) {
+      layout.resize = schedule;
+      window.addEventListener("resize", schedule);
+    }
+    this.toolbarLayouts.push(layout);
+    schedule();
+  };
+
   Renderer.prototype.buildToolbar = function (block) {
     var self = this;
     var root = el("div", {class: "pui-toolbar", "data-pui-toolbar": String(block.id || ""), role: "toolbar"});
+    root.style.minWidth = "0";
     if (block.label) root.setAttribute("aria-label", String(block.label));
     else if (block.a11y && block.a11y.name) root.setAttribute("aria-label", String(block.a11y.name));
     if (block.align) root.setAttribute("data-align", String(block.align));
     var items = isArray(block.items) ? block.items : [];
+    var auto = String(block.overflow || "") === "auto";
+    if (auto) root.classList.add("is-overflow-auto");
     var keep = items.length;
-    if (String(block.overflow || "") === "menu") {
+    if (!auto && String(block.overflow || "") === "menu") {
       keep = Number(block.overflow_after);
       if (!isFinite(keep) || keep < 0) keep = 3;
       keep = Math.min(items.length, Math.floor(keep));
     }
-    for (var i = 0; i < keep; i++) this.buildToolbarItem(root, items[i], "toolbar");
-    if (keep < items.length) {
+    var main = [];
+    for (var i = 0; i < keep; i++) {
+      var node = this.buildToolbarItem(root, items[i], "toolbar");
+      if (!node) continue;
+      node.setAttribute("data-pui-overflow-index", String(i));
+      if (auto && isObject(items[i])) {
+        var kind = String(items[i].kind || "action");
+        main.push({
+          node: node,
+          item: items[i],
+          index: i,
+          collapsible: (kind === "action" || kind === "link") && items[i].collapse !== false
+        });
+      }
+    }
+    var menu = null;
+    var trigger = null;
+    var menuNodes = [];
+    if (auto) {
+      var autoItems = main.filter(function (entry) { return entry.collapsible; }).map(function (entry) {
+        return Object.assign({}, entry.item, {icon_only: false, overflow_index: entry.index});
+      });
+      menu = this.buildMenu({
+        kind: "menu",
+        id: String(block.id || "toolbar") + "-overflow",
+        label: String(block.overflow_label || "More"),
+        items: autoItems
+      });
+      menu.classList.add("pui-toolbar-overflow");
+      menu.hidden = true;
+      root.appendChild(menu);
+      trigger = menu.querySelector(".pui-menu-trigger");
+      if (trigger) trigger.hidden = true;
+      menuNodes = Array.prototype.slice.call(menu.querySelectorAll("[data-pui-overflow-index]"));
+      menuNodes.forEach(function (entry) { entry.hidden = true; });
+    } else if (keep < items.length) {
       var overflowItems = items.slice(keep);
-      var menu = this.buildMenu({
+      menu = this.buildMenu({
         kind: "menu",
         id: String(block.id || "toolbar") + "-overflow",
         label: String(block.overflow_label || "More"),
@@ -5616,31 +5796,50 @@
     }
     var focusables = Array.prototype.slice.call(root.querySelectorAll("button, a[href]"));
     focusables = focusables.filter(function (control) {
-      for (var node = control.parentNode; node && node !== root; node = node.parentNode) {
-        if (node.classList && node.classList.contains("pui-menu-popup")) return false;
+      for (var parent = control.parentNode; parent && parent !== root; parent = parent.parentNode) {
+        if (parent.classList && parent.classList.contains("pui-menu-popup")) return false;
       }
       return true;
     });
-    focusables.forEach(function (control, index) {
-      control.tabIndex = index === 0 ? 0 : -1;
-      control.addEventListener("focus", function () {
-        focusables.forEach(function (other) { other.tabIndex = other === control ? 0 : -1; });
-      });
+    var visibleFocusables = function () {
+      return focusables.filter(function (control) { return !self.toolbarIsHidden(control, root); });
+    };
+    var syncFocus = function () {
+      var visible = visibleFocusables();
+      var active = typeof document !== "undefined" ? document.activeElement : null;
+      var target = visible.indexOf(active) >= 0 ? active : visible[0];
+      focusables.forEach(function (control) { control.tabIndex = -1; });
+      if (target) target.tabIndex = 0;
+    };
+    root.__puiSyncToolbarFocus = syncFocus;
+    root.__puiFirstToolbarFocus = function () { return visibleFocusables()[0] || null; };
+    focusables.forEach(function (control) {
+      control.addEventListener("focus", syncFocus);
     });
     root.addEventListener("keydown", function (event) {
-      var index = focusables.indexOf(document.activeElement);
+      var visible = visibleFocusables();
+      var index = visible.indexOf(document.activeElement);
       if (index < 0) return;
       if (event.key === "ArrowRight" || event.key === "ArrowDown") {
         event.preventDefault();
-        focusables[(index + 1) % focusables.length].focus();
+        visible[(index + 1) % visible.length].focus();
       } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
         event.preventDefault();
-        focusables[(index - 1 + focusables.length) % focusables.length].focus();
+        visible[(index - 1 + visible.length) % visible.length].focus();
       } else if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
-        focusables[event.key === "Home" ? 0 : focusables.length - 1].focus();
+        visible[event.key === "Home" ? 0 : visible.length - 1].focus();
       }
     });
+    syncFocus();
+    if (auto) {
+      var layout = {
+        root: root, block: block, main: main, menu: menu, trigger: trigger,
+        menuNodes: menuNodes, collapsed: [], scheduled: false
+      };
+      root.__puiToolbarLayout = layout;
+      this.observeToolbar(layout);
+    }
     this.shellCondition(block, root);
     return root;
   };
@@ -5715,6 +5914,7 @@
     var items = isArray(block.items) ? block.items : [];
     for (var i = 0; i < items.length; i++) {
       var node = this.buildToolbarItem(popup, items[i], "menu");
+      if (node) node.setAttribute("data-pui-overflow-index", String(i));
       if (node && node.getAttribute && node.getAttribute("role") === "menuitem") {
         (function (control) {
           control.addEventListener("click", function () {
@@ -6899,6 +7099,7 @@
   };
 
   Renderer.prototype.destroy = function () {
+    this.disconnectToolbarLayouts();
     this.unbindShortcuts();
     this.unbindPaletteShortcut();
     if (this._hashHandler && typeof window !== "undefined" && window.removeEventListener) window.removeEventListener("hashchange", this._hashHandler);
@@ -7371,6 +7572,7 @@
       }
     }
     this.refreshConditions();
+    this.layoutToolbars();
   };
 
   Renderer.prototype.fieldStatus = function (rec) {
