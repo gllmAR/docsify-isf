@@ -5468,6 +5468,83 @@
     return {iconEl: iconEl, labelEl: labelEl, badgeEl: badgeEl};
   };
 
+  Renderer.prototype.buildToolbarItem = function (parent, item, mode) {
+    if (!isObject(item)) return null;
+    var inMenu = mode === "menu";
+    var node;
+    if (item.kind === "separator") {
+      node = el(inMenu ? "div" : "span", {class: inMenu ? "pui-menu-separator" : "pui-toolbar-separator", role: "separator"});
+      parent.appendChild(node);
+      return node;
+    }
+    if (item.kind === "label") {
+      node = el(inMenu ? "div" : "span", {class: inMenu ? "pui-menu-label" : "pui-toolbar-label", role: "presentation", text: String(item.text || item.label || "")});
+      if (item.id) node.setAttribute("data-pui-item", String(item.id));
+      parent.appendChild(node);
+      return node;
+    }
+    if (item.kind === "spacer") {
+      if (inMenu) return null;
+      node = el("span", {class: "pui-toolbar-spacer"});
+      parent.appendChild(node);
+      return node;
+    }
+    if (item.kind === "menu") {
+      if (inMenu) return null;
+      node = this.buildMenu(item);
+      parent.appendChild(node);
+      return node;
+    }
+    if (item.kind === "readout") {
+      node = el(inMenu ? "div" : "span", {
+        class: inMenu ? "pui-menu-readout" : "pui-toolbar-readout",
+        "data-tone": "info",
+        "data-pui-item": String(item.id || "")
+      });
+      if (inMenu) node.setAttribute("role", "presentation");
+      if (item.a11y && item.a11y.name) node.setAttribute("aria-label", String(item.a11y.name));
+      var readoutLabel = el("span", {class: inMenu ? "pui-menu-readout-label" : "pui-toolbar-readout-label", text: this.toolbarText(item, "label")});
+      var readoutValue = el("output", {class: inMenu ? "pui-menu-readout-value" : "pui-toolbar-readout-value", "data-pui-bind": String(item.bind || "")});
+      node.appendChild(readoutLabel);
+      node.appendChild(readoutValue);
+      parent.appendChild(node);
+      this.toolbarRecords.push({kind: "readout", root: node, item: item, readoutLabel: readoutLabel, value: readoutValue});
+      return node;
+    }
+    if (item.kind === "link") {
+      node = el("a", {class: "pui-button pui-toolbar-link" + (inMenu ? " pui-menu-item" : ""), href: String(item.href || "#"), "data-pui-item": String(item.id || "")});
+      if (item.target) node.target = String(item.target);
+      if (item.rel) node.rel = String(item.rel);
+      if (item.download) node.download = String(item.download);
+      this.toolbarContent(item, node);
+      if (inMenu) {
+        node.setAttribute("role", "menuitem");
+        node.tabIndex = -1;
+      }
+      if (item.icon_only) node.setAttribute("aria-label", this.toolbarText(item, "label"));
+      var linkRec = {kind: "link", root: node, item: item, button: node};
+      linkRec = Object.assign(linkRec, {iconEl: node.children[0], labelEl: node.children[1], badgeEl: node.children[2]});
+      parent.appendChild(node);
+      this.toolbarRecords.push(linkRec);
+      this.toolbarRefresh(linkRec);
+      return node;
+    }
+    node = this.addActionButton(parent, item);
+    if (!node) return null;
+    node.textContent = "";
+    node.setAttribute("data-pui-item", String(item.id || ""));
+    node.__puiToolbar = true;
+    if (inMenu) {
+      node.setAttribute("role", "menuitem");
+      node.tabIndex = -1;
+    }
+    var content = this.toolbarContent(item, node);
+    var rec = Object.assign({kind: "action", root: node, button: node, item: item}, content);
+    this.toolbarRecords.push(rec);
+    this.toolbarRefresh(rec);
+    return node;
+  };
+
   Renderer.prototype.buildToolbar = function (block) {
     var self = this;
     var root = el("div", {class: "pui-toolbar", "data-pui-toolbar": String(block.id || ""), role: "toolbar"});
@@ -5481,56 +5558,7 @@
       if (!isFinite(keep) || keep < 0) keep = 3;
       keep = Math.min(items.length, Math.floor(keep));
     }
-    for (var i = 0; i < keep; i++) {
-      var item = items[i];
-      if (!isObject(item)) continue;
-      if (item.kind === "separator") {
-        root.appendChild(el("span", {class: "pui-toolbar-separator", role: "separator"}));
-        continue;
-      }
-      if (item.kind === "label") {
-        root.appendChild(el("span", {class: "pui-toolbar-label", text: String(item.text || item.label || "")}));
-        continue;
-      }
-      if (item.kind === "spacer") {
-        root.appendChild(el("span", {class: "pui-toolbar-spacer"}));
-        continue;
-      }
-      if (item.kind === "readout") {
-        var readout = el("span", {class: "pui-toolbar-readout", "data-tone": "info", "data-pui-item": String(item.id || "")});
-        var readoutLabel = el("span", {class: "pui-toolbar-readout-label", text: this.toolbarText(item, "label")});
-        var readoutValue = el("output", {class: "pui-toolbar-readout-value", "data-pui-bind": String(item.bind || "")});
-        readout.appendChild(readoutLabel);
-        readout.appendChild(readoutValue);
-        root.appendChild(readout);
-        this.toolbarRecords.push({kind: "readout", root: readout, item: item, readoutLabel: readoutLabel, value: readoutValue});
-        continue;
-      }
-      if (item.kind === "link") {
-        var link = el("a", {class: "pui-button pui-toolbar-link", href: String(item.href || "#"), "data-pui-item": String(item.id || "")});
-        if (item.target) link.target = String(item.target);
-        if (item.rel) link.rel = String(item.rel);
-        if (item.download) link.download = String(item.download);
-        this.toolbarContent(item, link);
-        if (item.icon_only) link.setAttribute("aria-label", this.toolbarText(item, "label"));
-        var linkRec = {kind: "link", root: link, item: item, button: link};
-        var linkContent = {iconEl: link.children[0], labelEl: link.children[1], badgeEl: link.children[2]};
-        linkRec = Object.assign(linkRec, linkContent);
-        this.toolbarRecords.push(linkRec);
-        root.appendChild(link);
-        this.toolbarRefresh(linkRec);
-        continue;
-      }
-      var button = this.addActionButton(root, item);
-      if (!button) continue;
-      button.textContent = "";
-      button.setAttribute("data-pui-item", String(item.id || ""));
-      button.__puiToolbar = true;
-      var content = this.toolbarContent(item, button);
-      var rec = Object.assign({kind: "action", root: button, button: button, item: item}, content);
-      this.toolbarRecords.push(rec);
-      this.toolbarRefresh(rec);
-    }
+    for (var i = 0; i < keep; i++) this.buildToolbarItem(root, items[i], "toolbar");
     if (keep < items.length) {
       var overflowItems = items.slice(keep);
       var menu = this.buildMenu({
@@ -5631,26 +5659,21 @@
     var self = this;
     var root = el("div", {class: "pui-menu"});
     var label = String(block.label || "Actions");
-    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", text: label});
-    var popup = el("div", {class: "pui-menu-popup", role: "menu", "aria-label": label});
+    var popupId = this.id("menu-popup");
+    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": popupId, text: label});
+    if (block.id) trigger.setAttribute("data-pui-item", String(block.id));
+    var popup = el("div", {class: "pui-menu-popup", role: "menu", "aria-label": label, id: popupId});
     popup.setAttribute("hidden", "");
     var items = isArray(block.items) ? block.items : [];
     for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      if (!isObject(item)) continue;
-      if (item.kind === "separator") {
-        popup.appendChild(el("div", {class: "pui-menu-separator", role: "separator"}));
-        continue;
-      }
-      if (item.kind === "label") {
-        popup.appendChild(el("div", {class: "pui-menu-label", text: String(item.text || item.label || "")}));
-        continue;
-      }
-      var button = this.addActionButton(popup, item);
-      if (button) {
-        button.setAttribute("role", "menuitem");
-        button.tabIndex = -1;
-        button.addEventListener("click", function () { close(); });
+      var node = this.buildToolbarItem(popup, items[i], "menu");
+      if (node && node.getAttribute && node.getAttribute("role") === "menuitem") {
+        (function (control) {
+          control.addEventListener("click", function () {
+            close();
+            if (typeof document !== "undefined" && document.activeElement === control) trigger.focus();
+          });
+        })(node);
       }
     }
     function menuItems() {

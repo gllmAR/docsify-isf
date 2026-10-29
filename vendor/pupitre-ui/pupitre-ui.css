@@ -222,6 +222,8 @@
 .pui-toolbar-spacer { flex: 1 1 auto; }
 .pui-toolbar-label { color: var(--pui-muted); font-size: 0.72rem; font-weight: 600; padding: 0 4px; }
 .pui-menu-label { padding: 4px 8px; color: var(--pui-muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.pui-menu-readout { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; color: var(--pui-muted); font-size: 0.72rem; }
+.pui-menu-readout-value { color: var(--pui-text); font-variant-numeric: tabular-nums; font-weight: 600; }
 .pui-toolbar-icon { display: inline-block; min-width: 1em; font-size: 0.95rem; line-height: 1; }
 .pui-toolbar-badge { min-width: 1.1em; padding: 0 4px; border-radius: 999px; background: var(--pui-accent); color: var(--pui-accent-text); font-size: 0.62rem; line-height: 1.5; text-align: center; }
 .pui-toolbar .pui-button[aria-pressed="true"] { border-color: var(--pui-accent); color: var(--pui-accent); }

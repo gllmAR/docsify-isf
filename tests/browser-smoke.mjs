@@ -887,11 +887,13 @@ try {
     // ── UI: the stats pill belongs to the top bar, never over the shader ──
     const badgeHome = await page.evaluate(() => {
         const stats = Array.from(document.querySelectorAll('[data-pui-item="stats"]'));
+        const statsNamed = stats.filter((el) => el.getAttribute("aria-label") === "Render statistics").length;
         const headerButtons = Array.from(document.querySelectorAll(".isf-block .isf-pui-header button.pui-button"));
         const pressedItems = Array.from(document.querySelectorAll(".isf-block .isf-pui-header [aria-pressed]"))
             .map((el) => el.getAttribute("data-pui-item"));
         return {
             count: stats.length,
+            statsNamed: statsNamed,
             inStage: stats.filter((el) => !!el.closest(".isf-stage")).length,
             outsideHeader: stats.filter((el) => !el.closest(".isf-header")).length,
             headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar"),
@@ -903,6 +905,9 @@ try {
     });
     if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
         problems.push("the stats readout should live in the PUI header, never over the shader: " + JSON.stringify(badgeHome));
+    }
+    if (badgeHome.count && badgeHome.statsNamed !== badgeHome.count) {
+        problems.push("the stats readout needs its accessible name: " + JSON.stringify(badgeHome));
     }
     if (!badgeHome.headerButtons || badgeHome.nameless) {
         problems.push("PUI header icon actions need an accessible name: " + JSON.stringify(badgeHome));
