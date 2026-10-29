@@ -244,6 +244,7 @@
     this.sectionRecords = [];
     this.collectionRecords = [];
     this.tableRecords = [];
+    this.formRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -295,6 +296,7 @@
     this.sectionRecords = [];
     this.collectionRecords = [];
     this.tableRecords = [];
+    this.formRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -364,6 +366,16 @@
     this.applyDocumentRoot(doc);
     var blocks = {};
     collectBlocks(doc, blocks);
+    for (var fm = 0; fm < this.formRecords.length; fm++) {
+      var formRec = this.formRecords[fm];
+      formRec.visible = this.conditionOk(formRec.block.visible_when);
+      formRec.enabled = this.conditionOk(formRec.block.enabled_when) &&
+        groupEnabled(this.pageRecords, formRec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, formRec.sectionRecordIndex);
+      formRec.root.hidden = !formRec.visible;
+      if (formRec.enabled) formRec.root.removeAttribute("aria-disabled");
+      else formRec.root.setAttribute("aria-disabled", "true");
+    }
     for (var tb = 0; tb < this.tableRecords.length; tb++) {
       var tableRec = this.tableRecords[tb];
       tableRec.visible = this.conditionOk(tableRec.block.visible_when);
@@ -1002,6 +1014,7 @@
     if (kind === "readout") return this.buildReadout(block);
     if (kind === "collection") return this.buildCollection(block);
     if (kind === "table") return this.buildTable(block);
+    if (kind === "form") return this.buildForm(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
     if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
@@ -5279,6 +5292,144 @@
     return line;
   };
 
+  /* ---------------------------------------------------------------- form */
+
+  Renderer.prototype.formFields = function (block) {
+    return isArray(block.fields) ? block.fields.filter(function (field) { return isObject(field); }) : [];
+  };
+
+  Renderer.prototype.formValue = function (field) {
+    var path = String(field.bind || "");
+    if (!path) return undefined;
+    return typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, field)
+      : this.adapter.getValue(path);
+  };
+
+  Renderer.prototype.formValues = function (block) {
+    var out = {};
+    var fields = this.formFields(block);
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      if (!field.bind) continue;
+      var value = this.formValue(field);
+      if (value !== undefined) out[String(field.bind)] = value;
+    }
+    return out;
+  };
+
+  Renderer.prototype.formValidate = function (rec) {
+    var fields = this.formFields(rec.block);
+    var first = null;
+    for (var i = 0; i < fields.length; i++) {
+      var field = fields[i];
+      if (!field.bind || !(field.required || (isObject(field.a11y) && field.a11y.required))) continue;
+      var value = this.formValue(field);
+      var empty = value === undefined || value === null || value === "" || (isArray(value) && value.length === 0);
+      if (empty) {
+        var control = null;
+        for (var r = 0; r < this.records.length; r++) {
+          if (this.records[r].path === String(field.bind)) control = this.records[r].control;
+        }
+        if (control) {
+          control.setAttribute("aria-invalid", "true");
+          if (!first) first = control;
+        }
+        if (!rec.firstInvalid) rec.firstInvalid = control;
+      } else {
+        for (var r2 = 0; r2 < this.records.length; r2++) {
+          if (this.records[r2].path === String(field.bind) && this.records[r2].control) {
+            this.records[r2].control.removeAttribute("aria-invalid");
+          }
+        }
+      }
+    }
+    if (first) {
+      if (typeof first.focus === "function") first.focus();
+      this.adapter.announce("error", "Please complete the required fields.");
+      rec.status.textContent = "Please complete the required fields.";
+      rec.status.className = "pui-form-status is-error";
+      return false;
+    }
+    rec.status.textContent = "";
+    rec.status.className = "pui-form-status";
+    return true;
+  };
+
+  Renderer.prototype.formSubmit = function (rec, item, button) {
+    if (!this.formValidate(rec)) return false;
+    var values = this.formValues(rec.block);
+    var payload = Object.assign({}, item, {
+      args: Object.assign({}, isObject(item.args) ? item.args : {}, {values: values})
+    });
+    rec.status.textContent = item.pending ? String(item.pending) : "Submitting…";
+    rec.status.className = "pui-form-status is-busy";
+    var result;
+    try {
+      result = this.performAction(payload, button, {values: values});
+    } catch (error) {
+      rec.status.textContent = String(error && error.message || error);
+      rec.status.className = "pui-form-status is-error";
+      return false;
+    }
+    var finish = function (ok, detail) {
+      rec.status.textContent = ok ? String(item.result || "Saved.") : String(detail || "Could not save.");
+      rec.status.className = "pui-form-status " + (ok ? "is-ok" : "is-error");
+    };
+    if (result && typeof result.then === "function") {
+      result.then(function (ok) { finish(ok !== false); }, function (error) { finish(false, String(error && error.message || error)); });
+    } else {
+      finish(result !== false);
+    }
+    return result;
+  };
+
+  Renderer.prototype.buildForm = function (block) {
+    var self = this;
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("form", {class: "pui-form", "data-pui-form": String(block.id || block.bind || ""), role: String(a11y.role || "form")});
+    if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
+    if (block.label) root.appendChild(el("h4", {class: "pui-form-title", text: String(block.label)}));
+    if (block.help) root.appendChild(el("p", {class: "pui-help", text: String(block.help)}));
+    var fields = el("div", {class: "pui-form-fields"});
+    var columns = Math.max(1, Math.min(4, Number(block.columns) || 1));
+    fields.style.setProperty("--pui-form-columns", String(columns));
+    var formFields = this.formFields(block);
+    for (var i = 0; i < formFields.length; i++) fields.appendChild(this.buildBlock(formFields[i], {section: {id: String(block.id || "form")}}));
+    root.appendChild(fields);
+    var status = el("p", {class: "pui-form-status", "aria-live": "polite"});
+    root.appendChild(status);
+    var bar = el("div", {class: "pui-form-actions"});
+    var submit = isObject(block.submit) ? block.submit : null;
+    var cancel = isObject(block.cancel) ? block.cancel : null;
+    var submitButton = null;
+    if (submit) {
+      submitButton = el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || "Save")});
+      submitButton.addEventListener("click", function (event) {
+        event.preventDefault();
+        self.formSubmit(rec, submit, submitButton);
+      });
+      bar.appendChild(submitButton);
+    }
+    if (cancel) {
+      var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || "Cancel")});
+      cancelButton.addEventListener("click", function () { self.performAction(cancel, cancelButton, {values: self.formValues(block)}); });
+      bar.appendChild(cancelButton);
+    }
+    if (bar.childNodes.length) root.appendChild(bar);
+    root.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (submitButton) submitButton.click();
+    });
+    var rec = {
+      root: root, block: block, fields: formFields, status: status,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true, firstInvalid: null
+    };
+    this.formRecords.push(rec);
+    return root;
+  };
+
   /* --------------------------------------------------------------- table */
 
   Renderer.prototype.tableRows = function (block) {
@@ -6741,6 +6892,8 @@
     if (Array.isArray(block.columns)) out.push(block.columns.map(function (column) {
       return [str(column.key), str(column.label), str(column.width), str(column.cell)];
     }));
+    if (Array.isArray(block.fields)) out.push(block.fields.map(blockShape));
+    out.push(str(block.submit && block.submit.call), str(block.cancel && block.cancel.call), Number(block.columns) || 1);
     out.push(str(block.row_key), str(block.selection_bind), block.multi !== false, str(block.empty_text));
     return out;
   }

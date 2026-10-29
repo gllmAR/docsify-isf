@@ -187,6 +187,16 @@
 .pui-status-busy { color: var(--pui-accent); }
 
 /* Workflow extensions: collection, dialogs, slots, status */
+.pui-form { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
+.pui-form-title { margin: 0; font-size: 0.95rem; }
+.pui-form-fields { display: grid; grid-template-columns: repeat(var(--pui-form-columns, 1), minmax(0, 1fr)); gap: 8px 12px; align-items: start; }
+.pui-form-fields > * { min-width: 0; }
+.pui-form-status { min-height: 1.2em; margin: 0; color: var(--pui-muted); font-size: 0.72rem; }
+.pui-form-status.is-busy { color: var(--pui-accent); }
+.pui-form-status.is-ok { color: var(--pui-success, #56c596); }
+.pui-form-status.is-error { color: var(--pui-danger); }
+.pui-form-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 600px) { .pui-form-fields { grid-template-columns: minmax(0, 1fr); } }
 .pui-table { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); overflow-x: auto; }
 .pui-table-title { margin: 0; font-size: 0.95rem; }
 .pui-table-grid { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
