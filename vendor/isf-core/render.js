@@ -285,9 +285,12 @@ export function createRenderer(opts) {
     const height = source.height || source.videoHeight || 1;
     const entry = textureFor(name, width, height, opts);
     gl.bindTexture(gl.TEXTURE_2D, entry.texture);
-    // Matches OBS's observable orientation: the browser capture already flips
-    // the ISF frame, so image textures upload top-down (v=0 = image top).
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    // ISF samples images with `isf_FragNormCoord`, whose origin is the
+    // bottom-left (spec); a TexImageSource is top-down. Upload flipped so
+    // v=0 is the image bottom and `IMG_NORM_PIXEL(image, uv)` is upright on
+    // the canvas, exactly like the reference ISF-JS-Renderer. `_<image>_flip`
+    // stays 0 because the texture is already in ISF orientation.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     const imageFormat = srgbImageFormat();
     if (imageFormat) gl.texImage2D(gl.TEXTURE_2D, 0, imageFormat, gl.RGBA, gl.UNSIGNED_BYTE, source);
     else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
@@ -651,13 +654,24 @@ export function createRenderer(opts) {
 
   function ensurePresent() {
     if (present || !gl) return present;
-    const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+    // ES3-aware, like ensureEncode: on a WebGL2 canvas (the editors and the
+    // cover-compare harness page) an ES2-style program needs `#version 300 es`,
+    // `in` and an `out` variable. Without this the shader fails to compile and
+    // `presentTarget()` draws nothing — the per-pass preview went black there,
+    // which is exactly the path the pass picker uses.
+    const vs = compile(gl, gl.VERTEX_SHADER, activeApi === 'es3' ? VERTEX_SHADER_ES3 : VERTEX_SHADER);
     const fs = compile(gl, gl.FRAGMENT_SHADER, [
-      'precision highp float;',
+      activeApi === 'es3' ? '#version 300 es' : 'precision highp float;',
+      activeApi === 'es3' ? 'precision highp float;' : '',
+      activeApi === 'es3' ? 'in vec2 isf_FragNormCoord;' : 'varying vec2 isf_FragNormCoord;',
       'uniform sampler2D inputImage;',
-      'varying vec2 isf_FragNormCoord;',
-      'void main() { gl_FragColor = texture2D(inputImage, isf_FragNormCoord); }',
-    ].join('\n'));
+      activeApi === 'es3' ? 'out vec4 _isfFragColor;' : '',
+      'void main() {',
+      activeApi === 'es3'
+        ? '  _isfFragColor = texture(inputImage, isf_FragNormCoord);'
+        : '  gl_FragColor = texture2D(inputImage, isf_FragNormCoord);',
+      '}',
+    ].filter(Boolean).join('\n'));
     const linked = createProgram(gl, vs.shader, fs.shader);
     present = linked.ok ? { program: linked.program } : null;
     return present;
@@ -775,10 +789,10 @@ export function createRenderer(opts) {
   }
 
   /**
-   * PNG data URL of the current frame. `flipY` matches OBS's presentation
-   * frame: the ISF shader renders bottom-up (gl_FragCoord), the browser
-   * presents WebGL bottom-up, but OBS's captured cover has the ISF top row
-   * first — the comparison needs that orientation.
+   * PNG data URL of the current frame. `flipY` is for consumers that compare
+   * against OBS's **raw** source screenshot (a source texture is bottom-up).
+   * The cover tool flips that screenshot to the upright scene frame, so the
+   * comparison harness asks for the canvas as it is displayed (`flipY: false`).
    */
   function capture(opts) {
     // A frozen capture has already rendered its target frame: `render: false`

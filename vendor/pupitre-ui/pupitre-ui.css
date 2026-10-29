@@ -187,6 +187,22 @@
 .pui-status-busy { color: var(--pui-accent); }
 
 /* Workflow extensions: collection, dialogs, slots, status */
+.pui-table { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); overflow-x: auto; }
+.pui-table-title { margin: 0; font-size: 0.95rem; }
+.pui-table-grid { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.pui-table-grid th { text-align: start; color: var(--pui-muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 5px 7px; border-bottom: 1px solid var(--pui-border); white-space: nowrap; }
+.pui-table-grid td { padding: 6px 7px; border-bottom: 1px solid color-mix(in srgb, var(--pui-border) 65%, transparent); vertical-align: middle; }
+.pui-table-row { cursor: default; outline: none; }
+.pui-table-row:hover { background: color-mix(in srgb, var(--pui-accent) 6%, transparent); }
+.pui-table-row:focus-visible { outline: 2px solid var(--pui-accent); outline-offset: -2px; }
+.pui-table-row.is-selected { background: color-mix(in srgb, var(--pui-accent) 14%, transparent); }
+.pui-table-select { width: 30px; min-width: 30px; text-align: center; }
+.pui-table-select input { width: 18px; height: 18px; }
+.pui-table-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.pui-table-empty-cell { color: var(--pui-muted); padding: 12px 7px; }
+.pui-table-empty { margin: 0; color: var(--pui-muted); }
+.pui-table-badge { font-size: 0.66rem; border: 1px solid var(--pui-border); border-radius: 999px; padding: 1px 6px; }
+@media (max-width: 600px) { .pui-table { padding: 6px; } .pui-table-grid th, .pui-table-grid td { padding: 5px 4px; } }
 .pui-collection { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
 .pui-collection-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pui-collection-head h4 { margin: 0; font-size: 0.95rem; }

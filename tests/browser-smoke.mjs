@@ -499,6 +499,56 @@ try {
     if (es3.missing) problems.push("ES3 fallback sample not found");
     else if (!/Compatibility mode/.test(es3.status)) problems.push("ES3 fallback did not activate: " + JSON.stringify(es3));
 
+    // Orientation: isf_FragNormCoord is bottom-left (ISF), image sources are
+    // top-down, and captures must match the canvas. A known 4-quadrant image
+    // catches both axes and both the upload and capture flips at once.
+    const orientation = await page.evaluate(async () => {
+        const quad = document.createElement("canvas");
+        quad.width = 64;
+        quad.height = 64;
+        const q = quad.getContext("2d");
+        q.fillStyle = "#ff0000"; q.fillRect(0, 0, 32, 32);
+        q.fillStyle = "#00ff00"; q.fillRect(32, 0, 32, 32);
+        q.fillStyle = "#0000ff"; q.fillRect(0, 32, 32, 32);
+        q.fillStyle = "#ffffff"; q.fillRect(32, 32, 32, 32);
+        const source = quad.toDataURL("image/png");
+        async function corners(frame) {
+            const image = new Image();
+            image.src = frame.dataUrl;
+            await image.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const context = canvas.getContext("2d");
+            context.drawImage(image, 0, 0);
+            const at = (x, y) => Array.from(context.getImageData(x, y, 1, 1).data).slice(0, 3);
+            return {
+                tl: at(1, 1), tr: at(image.width - 2, 1),
+                bl: at(1, image.height - 2), br: at(image.width - 2, image.height - 2)
+            };
+        }
+        const near = (c, r, g, b) => Math.abs(c[0] - r) < 8 && Math.abs(c[1] - g) < 8 && Math.abs(c[2] - b) < 8;
+        const imageFrame = await DocsifyISF.renderFrame({
+            url: "tests/fixtures/orientation.fs", width: 64, height: 64, time: 0,
+            images: { inputImage: source }
+        });
+        const uvFrame = await DocsifyISF.renderFrame({
+            url: "tests/fixtures/orientation-uv.fs", width: 64, height: 64, time: 0
+        });
+        const image = await corners(imageFrame);
+        const uv = await corners(uvFrame);
+        return {
+            image: image,
+            uv: uv,
+            imageOk: near(image.tl, 255, 0, 0) && near(image.tr, 0, 255, 0) &&
+                near(image.bl, 0, 0, 255) && near(image.br, 255, 255, 255),
+            uvOk: near(uv.tl, 0, 255, 0) && near(uv.tr, 255, 255, 0) &&
+                near(uv.bl, 0, 0, 0) && near(uv.br, 255, 0, 0)
+        };
+    });
+    if (!orientation.imageOk) problems.push("image inputs are not upright: " + JSON.stringify(orientation.image));
+    if (!orientation.uvOk) problems.push("isf_FragNormCoord/capture orientation is wrong: " + JSON.stringify(orientation.uv));
+
     // Live controls: randomize, time scrub, Ctrl+B, shortcut overlay, drop.
     const liveControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

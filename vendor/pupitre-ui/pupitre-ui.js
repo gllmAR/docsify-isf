@@ -243,6 +243,7 @@
     this.panelRecords = [];
     this.sectionRecords = [];
     this.collectionRecords = [];
+    this.tableRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -293,6 +294,7 @@
     this.panelRecords = [];
     this.sectionRecords = [];
     this.collectionRecords = [];
+    this.tableRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -362,6 +364,16 @@
     this.applyDocumentRoot(doc);
     var blocks = {};
     collectBlocks(doc, blocks);
+    for (var tb = 0; tb < this.tableRecords.length; tb++) {
+      var tableRec = this.tableRecords[tb];
+      tableRec.visible = this.conditionOk(tableRec.block.visible_when);
+      tableRec.enabled = this.conditionOk(tableRec.block.enabled_when) &&
+        groupEnabled(this.pageRecords, tableRec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, tableRec.sectionRecordIndex);
+      tableRec.root.hidden = !tableRec.visible;
+      if (tableRec.enabled) tableRec.root.removeAttribute("aria-disabled");
+      else tableRec.root.setAttribute("aria-disabled", "true");
+    }
     for (var i = 0; i < this.records.length; i++) {
       var rec = this.records[i];
       var next = blocks[rec.path];
@@ -989,6 +1001,7 @@
     if (kind === "field") return this.buildField(block, context);
     if (kind === "readout") return this.buildReadout(block);
     if (kind === "collection") return this.buildCollection(block);
+    if (kind === "table") return this.buildTable(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
     if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
@@ -5266,6 +5279,235 @@
     return line;
   };
 
+  /* --------------------------------------------------------------- table */
+
+  Renderer.prototype.tableRows = function (block) {
+    if (typeof this.adapter.getCollection === "function") {
+      var direct = this.adapter.getCollection(String(block.bind || ""), block);
+      if (isArray(direct)) return direct;
+    }
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(String(block.bind || ""), block)
+      : this.adapter.getValue(String(block.bind || ""));
+    return isArray(value) ? value : [];
+  };
+
+  Renderer.prototype.tableKey = function (block, item, index) {
+    var keyField = String(block.row_key || "id");
+    if (isObject(item) && item[keyField] !== undefined) return item[keyField];
+    return index;
+  };
+
+  Renderer.prototype.tableCell = function (row, column) {
+    var key = String(column.key || "");
+    var value = row;
+    if (key) {
+      var parts = key.split(".");
+      for (var i = 0; i < parts.length; i++) {
+        if (value == null || typeof value !== "object") { value = undefined; break; }
+        value = value[parts[i]];
+      }
+    }
+    if (typeof column.format === "function") return column.format(value, row);
+    if (value === undefined || value === null) return "";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+
+  Renderer.prototype.tableSelection = function (block) {
+    var path = String(block.selection_bind || "");
+    if (!path) return [];
+    var raw = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, block)
+      : this.adapter.getValue(path);
+    if (isArray(raw)) return raw.map(String);
+    if (isObject(raw) && isArray(raw.ids)) return raw.ids.map(String);
+    if (raw === undefined || raw === null || raw === "") return [];
+    return [String(raw)];
+  };
+
+  Renderer.prototype.tableWriteSelection = function (rec, keys) {
+    var path = String(rec.block.selection_bind || "");
+    if (!path) return;
+    var current = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, rec.block)
+      : this.adapter.getValue(path);
+    var value = keys;
+    if (isObject(current) && !isArray(current)) {
+      value = deepClone(current);
+      value.ids = keys;
+    }
+    this.setPath(path, value, rec.block);
+    rec.selected = keys;
+    this.apply();
+  };
+
+  Renderer.prototype.tableToggle = function (rec, key, additive) {
+    var selected = rec.selected.slice();
+    var index = selected.indexOf(String(key));
+    if (rec.block.multi === false) {
+      selected = index >= 0 && !additive ? [] : [String(key)];
+    } else if (index >= 0) {
+      selected.splice(index, 1);
+    } else {
+      selected.push(String(key));
+    }
+    // Keep multi-selection deterministic in visual row order.
+    selected.sort(function (a, b) { return rec.keys.indexOf(a) - rec.keys.indexOf(b); });
+    this.tableWriteSelection(rec, selected);
+  };
+
+  Renderer.prototype.tableActionItems = function (rec) {
+    return (isArray(rec.block.actions) ? rec.block.actions : []).map(function (item) {
+      var copy = Object.assign({}, item);
+      copy.args = Object.assign({}, item.args || {}, {
+        bind: String(rec.block.bind || ""),
+        selected: rec.selected.slice(),
+        item: rec.selected.length === 1 ? rec.selected[0] : undefined
+      });
+      return copy;
+    });
+  };
+
+  Renderer.prototype.tableRefresh = function (rec) {
+    var keys = rec.rows.map(function (row, index) { return String(this.tableKey(rec.block, row, index)); }, this);
+    if (keys.join("\u0001") !== rec.keys.join("\u0001")) {
+      this.tableRebuild(rec);
+      return;
+    }
+    rec.selected = this.tableSelection(rec.block);
+    for (var i = 0; i < rec.rows.length; i++) {
+      var selected = rec.selected.indexOf(rec.keys[i]) >= 0;
+      var rowEl = rec.rowEls[i];
+      if (rowEl) {
+        rowEl.classList.toggle("is-selected", selected);
+        rowEl.setAttribute("aria-selected", selected ? "true" : "false");
+      }
+      var check = rec.checks[i];
+      if (check && check.checked !== selected) check.checked = selected;
+    }
+    for (var a = 0; a < rec.actionItems.length; a++) {
+      rec.actionItems[a].args = Object.assign({}, rec.actionItems[a].args, {
+        selected: rec.selected.slice(),
+        item: rec.selected.length === 1 ? rec.selected[0] : undefined
+      });
+    }
+  };
+
+  Renderer.prototype.tableRebuild = function (rec) {
+    var self = this;
+    var block = rec.block;
+    var rows = this.tableRows(block);
+    var keys = rows.map(function (row, index) { return String(self.tableKey(block, row, index)); });
+    var selected = this.tableSelection(block);
+    rec.rows = rows;
+    rec.keys = keys;
+    rec.selected = selected;
+    rec.rowEls = [];
+    rec.checks = [];
+    rec.body.innerHTML = "";
+    var columns = isArray(block.columns) ? block.columns : [];
+    if (!columns.length) {
+      var empty = el("p", {class: "pui-table-empty", text: "Table has no columns."});
+      rec.body.appendChild(el("tr", {}, el("td", {colspan: 1}, empty)));
+      return;
+    }
+    var headRow = rec.headRow;
+    headRow.innerHTML = "";
+    if (block.multi !== false) {
+      var selectAll = el("input", {type: "checkbox", "aria-label": "Select all rows"});
+      selectAll.checked = rows.length > 0 && selected.length === rows.length;
+      selectAll.addEventListener("change", function () {
+        self.tableWriteSelection(rec, selectAll.checked ? keys.slice() : []);
+      });
+      headRow.appendChild(el("th", {class: "pui-table-select"}, selectAll));
+    }
+    columns.forEach(function (column) {
+      var th = el("th", {scope: "col", text: String(column.label || column.key || "")});
+      if (column.width) th.style.width = String(column.width);
+      headRow.appendChild(th);
+    });
+    if (rows.length === 0) {
+      var colspan = columns.length + (block.multi !== false ? 1 : 0);
+      var emptyRow = el("tr", {}, el("td", {colspan: colspan, class: "pui-table-empty-cell"}));
+      if (isObject(block.empty)) emptyRow.firstChild.appendChild(this.buildBlock(block.empty));
+      else emptyRow.firstChild.textContent = String(block.empty_text || "No rows.");
+      rec.body.appendChild(emptyRow);
+      return;
+    }
+    for (var r = 0; r < rows.length; r++) {
+      (function (row, index) {
+        var key = keys[index];
+        var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: "0", role: "row"});
+        tr.setAttribute("aria-selected", selected.indexOf(key) >= 0 ? "true" : "false");
+        if (selected.indexOf(key) >= 0) tr.classList.add("is-selected");
+        if (block.multi !== false) {
+          var check = el("input", {type: "checkbox", "aria-label": "Select " + key});
+          check.checked = selected.indexOf(key) >= 0;
+          check.addEventListener("click", function (event) {
+            event.stopPropagation();
+            self.tableToggle(rec, key, true);
+          });
+          tr.appendChild(el("td", {class: "pui-table-select"}, check));
+          rec.checks.push(check);
+        }
+        columns.forEach(function (column) {
+          var td = el("td", {class: column.cell ? "pui-table-" + String(column.cell) : ""});
+          td.textContent = self.tableCell(row, column);
+          tr.appendChild(td);
+        });
+        tr.addEventListener("click", function (event) {
+          if (event.target && event.target.tagName === "INPUT") return;
+          self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+        });
+        tr.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+          }
+        });
+        rec.rowEls.push(tr);
+        rec.body.appendChild(tr);
+      })(rows[r], r);
+    }
+    rec.actions.innerHTML = "";
+    rec.actionItems = this.tableActionItems(rec);
+    if (rec.actionItems.length) rec.actions.appendChild(this.buildActions(rec.actionItems, "table"));
+  };
+
+  Renderer.prototype.buildTable = function (block) {
+    var self = this;
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-table", "data-pui-table": String(block.bind || ""), role: String(a11y.role || "group")});
+    if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
+    if (block.label) root.appendChild(el("h4", {class: "pui-table-title", text: String(block.label)}));
+    if (block.help) root.appendChild(el("p", {class: "pui-help", text: String(block.help)}));
+    var table = el("table", {class: "pui-table-grid"});
+    var captionId = this.id("table-caption");
+    if (block.label) {
+      table.appendChild(el("caption", {id: captionId, class: "pui-sr-only", text: String(block.label)}));
+      table.setAttribute("aria-labelledby", captionId);
+    }
+    var head = el("thead");
+    var headRow = el("tr");
+    head.appendChild(headRow);
+    table.appendChild(head);
+    var body = el("tbody");
+    table.appendChild(body);
+    var actions = el("div", {class: "pui-table-actions"});
+    root.appendChild(table);
+    root.appendChild(actions);
+    var rec = {
+      root: root, block: block, table: table, headRow: headRow, body: body, actions: actions,
+      rows: [], keys: [], selected: [], rowEls: [], checks: [], actionItems: [],
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true
+    };
+    this.tableRecords.push(rec);
+    this.tableRebuild(rec);
+    return root;
+  };
+
   Renderer.prototype.collectionItems = function (block) {
     if (typeof this.adapter.getCollection === "function") {
       var direct = this.adapter.getCollection(String(block.bind || ""), block);
@@ -5904,6 +6146,9 @@
       this.applyStatus(this.records[i]);
       this.updateModified(this.records[i]);
     }
+    for (var t = 0; t < this.tableRecords.length; t++) {
+      this.tableRefresh(this.tableRecords[t]);
+    }
     for (var c = 0; c < this.commandLogRecords.length; c++) {
       if (this.commandLogRecords[c].refresh) this.commandLogRecords[c].refresh();
     }
@@ -6493,6 +6738,10 @@
     if (Array.isArray(block.template)) out.push(block.template.map(blockShape));
     if (Array.isArray(block.actions)) out.push(block.actions.map(actionShape));
     if (Array.isArray(block.items)) out.push(block.items.map(actionShape));
+    if (Array.isArray(block.columns)) out.push(block.columns.map(function (column) {
+      return [str(column.key), str(column.label), str(column.width), str(column.cell)];
+    }));
+    out.push(str(block.row_key), str(block.selection_bind), block.multi !== false, str(block.empty_text));
     return out;
   }
 

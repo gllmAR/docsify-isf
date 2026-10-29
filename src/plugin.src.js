@@ -5246,7 +5246,10 @@
         try {
             if (!options || options.render !== false) this.draw(0);
             var source = this.gl.canvas;
-            if (options && options.flipY === false) return source.toDataURL("image/png");
+            // The drawing buffer is already in display orientation (top-down),
+            // which is the ISF frame and the OBS `_cover.png` orientation.
+            // `flipY: true` is the opt-in raw bottom-up buffer.
+            if (!(options && options.flipY)) return source.toDataURL("image/png");
             var canvas = document.createElement("canvas");
             canvas.width = source.width;
             canvas.height = source.height;
@@ -7001,6 +7004,8 @@
         // the alpha channel.
         var background = options.background === undefined ? "#000" : options.background;
         if (background) {
+            // drawImage reads the canvas in display orientation, the same
+            // orientation as snapshot(); no extra flip here.
             var flat = document.createElement("canvas");
             flat.width = width;
             flat.height = height;
@@ -7008,18 +7013,7 @@
             context.fillStyle = background;
             context.fillRect(0, 0, flat.width, flat.height);
             context.drawImage(runtime.gl.canvas, 0, 0, width, height);
-            var flipped = flat.toDataURL("image/png");
-            // drawImage of the WebGL drawing buffer is bottom-up too; flip it
-            // back so the flattened frame has the same orientation as the
-            // unflattened one.
-            var oriented = document.createElement("canvas");
-            oriented.width = width;
-            oriented.height = height;
-            var flipContext = oriented.getContext("2d");
-            flipContext.translate(0, height);
-            flipContext.scale(1, -1);
-            flipContext.drawImage(flat, 0, 0);
-            dataUrl = oriented.toDataURL("image/png");
+            dataUrl = flat.toDataURL("image/png");
         }
         return {
             dataUrl: dataUrl,

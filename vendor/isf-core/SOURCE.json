@@ -4,7 +4,7 @@
     "vendor/isf-core/parse.js": "06b90e1a0533",
     "vendor/isf-core/compat.js": "6a82021ed1fd",
     "vendor/isf-core/generators.js": "4bdb3fa705f5",
-    "vendor/isf-core/render.js": "5e569501f10a",
+    "vendor/isf-core/render.js": "91c56d571b96",
     "vendor/bundle-lib.mjs": "03f08c02a760"
   }
 }
