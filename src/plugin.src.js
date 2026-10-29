@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.17.0
+ * docsify-isf v1.20.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -46,8 +46,9 @@
 })(typeof self !== "undefined" ? self : this, function () {
     "use strict";
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
+    /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.17.0";
+    var VERSION = "1.20.0";
     var VIEWER_SEQ = 0;
 
     /* ==================================================================
@@ -63,6 +64,7 @@
         height: "360px",
         aspectRatio: null,          // e.g. "16/9"
         controls: true,
+        ui: "pui",                     // "pui" (shared Pupitre UI) | "legacy"
         params: "auto",             // "auto" | "open" | "closed"
         paramsOpenLimit: 6,
         autoplay: true,
@@ -104,6 +106,7 @@
         if (config.params !== "auto" && config.params !== "open" && config.params !== "closed") config.params = DEFAULTS.params;
         if (typeof config.enabled !== "boolean") config.enabled = DEFAULTS.enabled;
         if (typeof config.controls !== "boolean") config.controls = DEFAULTS.controls;
+        if (config.ui !== "pui" && config.ui !== "legacy") config.ui = DEFAULTS.ui;
         if (typeof config.editor !== "boolean") config.editor = DEFAULTS.editor;
         if (typeof config.editorOpen !== "boolean") config.editorOpen = DEFAULTS.editorOpen;
         if (typeof config.editorLive !== "boolean") config.editorLive = DEFAULTS.editorLive;
@@ -3636,7 +3639,20 @@
             "@media (pointer:coarse){.isf-param-control input[type=number],.isf-param-control select,.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem;min-height:36px}.isf-param-control input[type=range]{height:28px}.isf-param-control input[type=number]{padding:.3rem .35rem;font-size:.82rem}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
             "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}"
-        ].join("\n");
+        ].concat(typeof PUPITRE_CSS === "string" && PUPITRE_CSS ? [
+            PUPITRE_CSS,
+            /* PUI bridge: the parameters drawer uses the ISF palette and a
+               compact type scale; the embedded panel supplies no chrome. */
+            ".isf-pui{font-size:.8rem;line-height:1.35}",
+            ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-warning:var(--isf-muted);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
+            ".isf-pui .pui-caption{color:var(--isf-muted)}",
+            ".isf-pui .pui-caption:hover{color:var(--isf-text)}",
+            ".isf-pui .pui-number-input{max-width:4.2em}",
+            "@container (min-width:301px){.isf-pui .pui-field{grid-template-columns:minmax(84px,32%) minmax(0,1fr) auto;align-items:center}.isf-pui .pui-caption,.isf-pui .pui-control-row,.isf-pui .pui-switch{grid-column:auto}.isf-pui .pui-field>.pui-button{grid-column:1/-1;justify-self:start}.isf-pui .pui-actions{grid-column:1/-1}.isf-pui .pui-field-help,.isf-pui .pui-status{margin-inline-start:0}}",
+            ".isf-pui .pui-actions{justify-content:flex-start}",
+            ".isf-pui .pui-button{font-size:.75rem;font-weight:500}",
+            "@media (pointer:coarse){.isf-pui .pui input,.isf-pui .pui select,.isf-pui .pui button{font-size:16px}}"
+        ] : []).join("\n");
         document.head.appendChild(style);
     }
 
@@ -3892,9 +3908,26 @@
         return !!(has.startImage && has.endImage && has.progress);
     }
 
+    function puiAvailable() {
+        return typeof PupitreUI !== "undefined" && !!PupitreUI &&
+            typeof PupitreISF !== "undefined" && !!PupitreISF;
+    }
+
     function buildControls(container, inputs, viewer) {
         container.innerHTML = "";
         viewer.controlsList = [];
+        if (viewer.config.ui !== "legacy" && puiAvailable()) {
+            try {
+                return buildPUIParams(container, inputs, viewer);
+            } catch (error) {
+                if (viewer.pui) {
+                    try { viewer.pui.ui.destroy(); } catch (destroyError) { /* ignore */ }
+                    viewer.pui = null;
+                }
+                container.innerHTML = "";
+                viewer.warn("PUI controls unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
+            }
+        }
         var rows = [];
         for (var i = 0; i < inputs.length; i++) {
             var row = buildControlRow(inputs[i], viewer);
@@ -4044,6 +4077,102 @@
 
         row.appendChild(control);
         return row;
+    }
+
+    /* ==================================================================
+     * Pupitre UI parameters (shared toolkit)
+     *
+     * The parameter drawer is a PUI document generated from the normalised
+     * ISF inputs by the vendored PupitreISF adapter; the renderer is the
+     * vendored PupitreUI. The host (this plugin) keeps values, clamping,
+     * media and events. The legacy rows above stay as the fallback for
+     * `ui: "legacy"` and for a renderer that failed to mount.
+     * ================================================================== */
+
+    function chooseImageFor(viewer, name) {
+        viewer.pendingImageName = name || "";
+        if (viewer.puiFileInput) viewer.puiFileInput.click();
+    }
+
+    function markPUIParams(container, viewer) {
+        var nodes = container.querySelectorAll(".pui-field[data-pui-path]");
+        var marked = [];
+        for (var i = 0; i < nodes.length; i++) {
+            var path = nodes[i].getAttribute("data-pui-path") || "";
+            if (path.indexOf("/isf/") !== 0) continue;
+            var name = path.slice(5).split("/")[0];
+            if (!name) continue;
+            // Keep the smoke test's parameter hooks without borrowing the
+            // legacy `.isf-param` grid styling.
+            nodes[i].setAttribute("data-isf-param", name);
+            (function (node, inputName) {
+                node.addEventListener("dblclick", function (event) {
+                    if (event.target && event.target.closest && event.target.closest("button, select")) return;
+                    event.preventDefault();
+                    viewer.resetParameter(inputName);
+                });
+            })(nodes[i], name);
+            marked.push(nodes[i]);
+        }
+        return marked;
+    }
+
+    function buildPUIParams(container, inputs, viewer) {
+        if (viewer.pui) {
+            try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
+            viewer.pui = null;
+        }
+        if (!viewer.puiHost) {
+            viewer.puiHost = {
+                getValue: function (name) {
+                    var input = viewer.inputByName && viewer.inputByName[name];
+                    if (input && input.type === "event") return undefined;
+                    return viewer.values ? viewer.values[name] : undefined;
+                },
+                setValue: function (name, value) { return viewer.setParameter(name, value); },
+                triggerEvent: function (name) { viewer.triggerEvent(name); },
+                chooseImage: function (name) { chooseImageFor(viewer, name); },
+                toggleMicrophone: function () {
+                    if (viewer.audioState) viewer.disableMicrophone();
+                    else viewer.enableMicrophone();
+                },
+                audioActive: function () { return !!viewer.audioState; }
+            };
+        }
+        var adapter = PupitreISF.createAdapter({
+            inputs: inputs,
+            host: viewer.puiHost,
+            rev: (viewer.puiRev = (viewer.puiRev || 0) + 1),
+            sectionTitle: "Inputs"
+        });
+        var mount = h("div", "isf-pui");
+        container.appendChild(mount);
+        var fileInput = h("input", "isf-hidden", { type: "file", accept: "image/*" });
+        fileInput.addEventListener("change", function () {
+            var name = viewer.pendingImageName;
+            if (name && fileInput.files && fileInput.files[0] && viewer.setInputImage) {
+                viewer.setInputImage(name, fileInput.files[0]);
+            }
+            fileInput.value = "";
+        });
+        container.appendChild(fileInput);
+        viewer.puiFileInput = fileInput;
+        var ui = PupitreUI.create({
+            mount: mount,
+            density: "compact",
+            getValue: function (path) { return adapter.getValue(path); },
+            setValue: function (path, value) { return adapter.setValue(path, value); },
+            callAction: function (name, args) { return adapter.callAction(name, args); },
+            getPathMeta: function (path) { return adapter.getPathMeta(path); },
+            translate: function (key, fallback) { return fallback; },
+            announce: function (level, message) {
+                if (level === "error") viewer.warn(message);
+                else viewer.setState(message, level === "success" ? "ok" : "");
+            }
+        });
+        viewer.pui = { ui: ui, adapter: adapter, mount: mount, host: viewer.puiHost };
+        ui.render(adapter.document());
+        return markPUIParams(container, viewer);
     }
 
     /* ==================================================================
@@ -6058,7 +6187,7 @@
                 }
                 viewer.setParameter(input.name, value);
             }
-            viewer.rebuildParams();
+            viewer.refreshParamControls();
             viewer.setState("Parameters randomized", "");
         };
         viewer.setParameter = function (name, value) {
@@ -6078,6 +6207,11 @@
             return applied;
         };
         viewer.syncParameterControl = function (name, value) {
+            if (viewer.pui) {
+                // The transition animates the host value; PUI reads it back.
+                viewer.pui.ui.apply();
+                return;
+            }
             var control = viewer.controls && viewer.controls[name];
             if (!control || !control.range) return;
             var active = typeof document !== "undefined" ? document.activeElement : null;
@@ -6085,17 +6219,25 @@
             control.range.value = clamp(value, Number(control.range.min), Number(control.range.max));
             if (control.number) control.number.value = formatNumber(value);
         };
+        // Repaint the parameter panel from host values: PUI patches in place
+        // (focus-safe); the legacy rows need a rebuild to re-read values.
+        viewer.refreshParamControls = function () {
+            if (viewer.pui) {
+                try { viewer.pui.ui.apply(); return; } catch (error) { /* fall through */ }
+            }
+            viewer.rebuildParams();
+        };
         viewer.getParameter = function (name) { return viewer.values[name]; };
         viewer.resetParameter = function (name) {
             var defaults = viewer.defaultValues();
             if (defaults[name] !== undefined) {
                 viewer.setParameter(name, defaults[name]);
-                viewer.rebuildParams();
+                viewer.refreshParamControls();
             }
         };
         viewer.resetParameters = function () {
             viewer.values = viewer.defaultValues();
-            viewer.rebuildParams();
+            viewer.refreshParamControls();
             if (viewer.runtime) viewer.runtime.needsRender = true;
         };
         viewer.triggerEvent = function (name) {
@@ -6236,6 +6378,8 @@
 
         viewer.rebuildParams = function () {
             var inputs = viewer.built ? viewer.built.inputs : [];
+            viewer.inputByName = {};
+            for (var ii = 0; ii < inputs.length; ii++) viewer.inputByName[inputs[ii].name] = inputs[ii];
             paramsList.innerHTML = "";
             paramsList.appendChild(viewer.buildViewControls(inputs));
             var controlsHost = h("div", "isf-params-controls");
@@ -6246,8 +6390,6 @@
                 var controlEntry = viewer.controlsList[ci];
                 viewer.controls[controlEntry.name] = controlEntry;
             }
-            viewer.inputByName = {};
-            for (var ii = 0; ii < inputs.length; ii++) viewer.inputByName[inputs[ii].name] = inputs[ii];
             viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
             var open;
             if (!config.controls) open = false;
@@ -6595,6 +6737,10 @@
 
         viewer.dispose = function () {
             viewer.disposed = true;
+            if (viewer.pui) {
+                try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.pui = null;
+            }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
             if (viewer.audioState) {
@@ -7048,6 +7194,15 @@
         plugin: plugin,
         DEFAULTS: DEFAULTS,
         getConfig: getConfig,
+        // The shared UI toolkit (vendored): exposed for hosts, tests and
+        // conformance, not required by the Docsify plugin itself.
+        PupitreUI: typeof PupitreUI !== "undefined" ? PupitreUI : null,
+        PupitreISF: typeof PupitreISF !== "undefined" ? PupitreISF : null,
+        createParamsDocument: function (inputs, options) {
+            return typeof PupitreISF !== "undefined" && PupitreISF
+                ? PupitreISF.createDocument(inputs, options)
+                : null;
+        },
         parseISF: parseISF,
         parseISFMetadata: parseISFMetadata,
         parseJSONTolerant: parseJSONTolerant,

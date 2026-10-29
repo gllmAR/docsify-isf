@@ -148,7 +148,7 @@ try {
                 const loading = status && /Loading/i.test(status.textContent);
                 const overlayVisible = overlay && overlay.style.display !== "none";
                 if (loading || (overlayVisible && /Loading/.test(overlay.textContent))) return false;
-                const hasParams = block.querySelectorAll(".isf-param").length > 0;
+                const hasParams = block.querySelectorAll("[data-isf-param]").length > 0;
                 const hasView = !!block.querySelector(".isf-view");
                 const erroring = overlayVisible && /error|could not|invalid|unexpected|redefinition|syntax/i.test(overlay.textContent);
                 const statusError = status && /error/i.test(status.className);
@@ -159,7 +159,7 @@ try {
         const stuck = await page.evaluate(() => Array.from(document.querySelectorAll(".isf-block")).map((block) => ({
             title: (block.querySelector(".isf-title") || {}).textContent,
             status: (block.querySelector(".isf-status") || {}).textContent,
-            params: block.querySelectorAll(".isf-param").length
+            params: block.querySelectorAll("[data-isf-param]").length
         })).filter((item) => !item.params && !/error/i.test(item.status || "")));
         problems.push("viewers never reached a terminal state: " + JSON.stringify(stuck));
     }
@@ -183,7 +183,7 @@ try {
                 overlayText: overlay ? overlay.textContent.trim().slice(0, 120) : "",
                 badge: badge ? badge.textContent.trim() : "",
                 hasEditor: editors.length > 0,
-                hasParams: !!block.querySelector(".isf-param"),
+                hasParams: !!block.querySelector("[data-isf-param]"),
                 hasView: !!block.querySelector(".isf-view")
             };
         });
@@ -247,7 +247,7 @@ try {
         if (!block) return { missing: true };
         block.scrollIntoView({ block: "center" });
         await new Promise((resolve) => setTimeout(resolve, 600));
-        const row = Array.from(block.querySelectorAll(".isf-param")).find((r) => /progress/i.test(r.dataset.isfParam || ""));
+        const row = Array.from(block.querySelectorAll("[data-isf-param]")).find((r) => /progress/i.test(r.dataset.isfParam || ""));
         const input = row && row.querySelector('input[type="number"]');
         if (!input) return { missing: true };
         const first = Number(input.value);
@@ -295,7 +295,7 @@ try {
             await new Promise((resolve) => setTimeout(resolve, 80));
             const sideAfter = drawer.getBoundingClientRect().width;
 
-            const scaleRow = Array.from(block.querySelectorAll(".isf-param")).find((row) => row.dataset.isfParam === "scale");
+            const scaleRow = Array.from(block.querySelectorAll("[data-isf-param]")).find((row) => row.dataset.isfParam === "scale");
             const numberInput = scaleRow && scaleRow.querySelector('input[type="number"]');
             numberInput.value = "999";
             numberInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -474,7 +474,7 @@ try {
         const titleOf = (block) => (block.querySelector(".isf-title") || {}).textContent || "";
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(titleOf(b)));
         const speedValue = () => {
-            const row = Array.from(plasma.querySelectorAll(".isf-param")).find((r) => r.dataset.isfParam === "speed");
+            const row = Array.from(plasma.querySelectorAll("[data-isf-param]")).find((r) => r.dataset.isfParam === "speed");
             return row && row.querySelector('input[type="range"]') ? Number(row.querySelector('input[type="range"]').value) : null;
         };
         const before = speedValue();
@@ -556,10 +556,10 @@ try {
 
     await page.click('.isf-block .isf-btn[title="Parameters"]');
     await new Promise((resolve) => setTimeout(resolve, 350));
-    const slider = await page.$('.isf-block .isf-param[data-isf-param="scale"] input[type="range"]');
+    const slider = await page.$('.isf-block [data-isf-param="scale"] input[type="range"]');
     if (slider) {
         const box = await slider.boundingBox();
-        const scaleBefore = await page.$eval('.isf-block .isf-param[data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
+        const scaleBefore = await page.$eval('.isf-block [data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
         await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
         await page.mouse.down();
         for (let step = 1; step <= 8; step++) {
@@ -568,7 +568,7 @@ try {
         }
         await page.mouse.up();
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const scaleAfter = await page.$eval('.isf-block .isf-param[data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
+        const scaleAfter = await page.$eval('.isf-block [data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
         if (scaleAfter === scaleBefore) problems.push("real slider drag did not change the parameter (" + scaleBefore + " -> " + scaleAfter + ")");
     } else {
         problems.push("scale slider not found for the drag test");
@@ -668,7 +668,7 @@ try {
     await page.waitForFunction(() => {
         const b = Array.from(document.querySelectorAll(".isf-block"))
             .find((block) => /Plasma generator/i.test(block.textContent));
-        return !!b && b.querySelectorAll(".isf-param").length > 0;
+        return !!b && b.querySelectorAll("[data-isf-param]").length > 0;
     }, { timeout: 20000 }).catch(() => {});
 
     // One atomic evaluate per interaction: pick the viewer, normalise its
@@ -816,7 +816,7 @@ try {
     await sleep(1800);
     const obsParameterized = await page.evaluate(() => {
         const block = document.querySelector(".isf-block.isf-bare");
-        const row = block && block.querySelector('.isf-param[data-isf-param="speed"]');
+        const row = block && block.querySelector('[data-isf-param="speed"]');
         const range = row && row.querySelector('input[type="range"]');
         return range ? Number(range.value) : null;
     });

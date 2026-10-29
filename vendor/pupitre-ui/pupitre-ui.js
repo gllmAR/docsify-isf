@@ -1,0 +1,6626 @@
+/* SPDX-FileCopyrightText: 2026 gllm
+ * SPDX-License-Identifier: MIT
+ *
+ * Pupitre UI — a build-free renderer for PUI v1 documents.
+ * Classic script: include with <script src="pupitre-ui.js"></script>.
+ * No bundler, no framework, works from file://.
+ */
+(function (global) {
+  "use strict";
+
+  var NEXT_ID = 0;
+
+  function isObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function isArray(value) {
+    return Array.isArray(value);
+  }
+
+  function equal(a, b) {
+    if (typeof a === "number" || typeof b === "number") {
+      return Number(a) === Number(b);
+    }
+    if (isArray(a) && isArray(b)) {
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (!equal(a[i], b[i])) return false;
+      return true;
+    }
+    if (isObject(a) && isObject(b)) {
+      var ka = Object.keys(a), kb = Object.keys(b);
+      if (ka.length !== kb.length) return false;
+      for (var j = 0; j < ka.length; j++) if (!equal(a[ka[j]], b[ka[j]])) return false;
+      return true;
+    }
+    return String(a) === String(b);
+  }
+
+  function getByPath(source, path) {
+    if (!source || !path) return undefined;
+    var parts = String(path).split(".");
+    var value = source;
+    for (var i = 0; i < parts.length; i++) {
+      if (value == null || typeof value !== "object") return undefined;
+      value = value[parts[i]];
+    }
+    return value;
+  }
+
+  function setByPath(target, path, value) {
+    if (!target || !path) return;
+    var parts = String(path).split(".");
+    var node = target;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!isObject(node[parts[i]])) node[parts[i]] = {};
+      node = node[parts[i]];
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+
+  function el(tag, attrs) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        var value = attrs[key];
+        if (value === null || value === undefined || value === false) return;
+        if (key === "text") node.textContent = String(value);
+        else if (key === "class") node.className = String(value);
+        else if (key === "hidden") node.hidden = !!value;
+        else if (key === "dataset") Object.keys(value).forEach(function (k) { node.dataset[k] = value[k]; });
+        else node.setAttribute(key, String(value));
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var child = arguments[i];
+      if (child === null || child === undefined) continue;
+      if (isArray(child)) {
+        child.forEach(function (c) { if (c !== null && c !== undefined) node.appendChild(c); });
+      } else {
+        node.appendChild(child);
+      }
+    }
+    return node;
+  }
+
+  function text(value) {
+    return document.createTextNode(value === null || value === undefined ? "" : String(value));
+  }
+
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        if (attrs[key] === null || attrs[key] === undefined) return;
+        node.setAttribute(key, String(attrs[key]));
+      });
+    }
+    return node;
+  }
+
+  function caption(field, labelId) {
+    var label = String(field.label || field.bind || "Parameter");
+    var unit = field.unit ? String(field.unit) : "";
+    if (unit && label.indexOf("(" + unit + ")") < 0) label += " (" + unit + ")";
+    var node = el("label", {class: "pui-caption", id: labelId + "-label", for: labelId, text: label});
+    if (field.help) node.title = label + "\n" + String(field.help);
+    return node;
+  }
+
+  function valueText(value, field) {
+    if (value === null || value === undefined) return "—";
+    var type = String(field.type || "");
+    if (type === "T" || type === "F") return value ? "on" : "off";
+    if (type === "r" && typeof value === "string") return value;
+    if (type === "r" && isArray(value)) {
+      return "#" + value.slice(0, 4).map(function (x) {
+        return Math.round(Number(x) * 255).toString(16).padStart(2, "0");
+      }).join("").toUpperCase();
+    }
+    if (isArray(value)) return "(" + value.join(", ") + ")";
+    if (isObject(value)) return JSON.stringify(value);
+    if (typeof value === "number" && field.precision !== undefined) {
+      var precision = Number(field.precision);
+      if (isFinite(precision) && precision >= 0) return value.toFixed(precision);
+    }
+    if (typeof value === "number" && !Number.isInteger(value)) return String(Number(value.toFixed(3)));
+    return String(value);
+  }
+
+  function isMixedValue(value) {
+    return isObject(value) && (value.mixed === true || value.__pui_mixed === true);
+  }
+
+  function defaultValueOf(field) {
+    if (isObject(field.reset) && Object.prototype.hasOwnProperty.call(field.reset, "value")) return field.reset.value;
+    if (Object.prototype.hasOwnProperty.call(field, "default")) return field.default;
+    return undefined;
+  }
+
+  function numericPrecision(field) {
+    var precision = Number(field.precision);
+    return isFinite(precision) && precision >= 0 ? precision : null;
+  }
+
+  function formatNumeric(value, field) {
+    var number = Number(value);
+    if (!isFinite(number)) return "—";
+    var precision = numericPrecision(field);
+    return precision === null ? String(number) : number.toFixed(precision);
+  }
+
+  function quantizeNumeric(value, field) {
+    var precision = numericPrecision(field);
+    var number = Number(value);
+    if (precision === null || !isFinite(number)) return number;
+    return Number(number.toFixed(precision));
+  }
+
+  function componentCount(field) {
+    var type = String(field.type || "");
+    if (type === "ii" || type === "ff") return 2;
+    if (type === "iii" || type === "fff") return 3;
+    if (type === "ffff") return 4;
+    return 1;
+  }
+
+  function components(value, count) {
+    var out = isArray(value) ? value.slice() : [];
+    while (out.length < count) out.push(0);
+    return out.slice(0, count);
+  }
+
+  function normalizeOptions(entries) {
+    return (entries || []).map(function (entry) {
+      return isObject(entry) ? entry : {value: entry, label: String(entry)};
+    });
+  }
+
+  function optionList(field) {
+    return normalizeOptions(field.options);
+  }
+
+  function implicitRole(control) {
+    if (control.getAttribute("role")) return control.getAttribute("role");
+    var tag = control.tagName.toLowerCase();
+    var type = (control.getAttribute("type") || "").toLowerCase();
+    if (tag === "input") {
+      if (type === "range") return "slider";
+      if (type === "number") return "spinbutton";
+      if (type === "checkbox") return "checkbox";
+      if (type === "radio") return "radio";
+      if (type === "color") return "button";
+      return "textbox";
+    }
+    if (tag === "select") return "combobox";
+    if (tag === "textarea") return "textbox";
+    if (tag === "button") return "button";
+    if (tag === "output") return "status";
+    return "group";
+  }
+
+  function Renderer(options) {
+    options = options || {};
+    this.mount = options.mount;
+    this.adapter = {
+      getValue: options.getValue || function () { return undefined; },
+      setValue: options.setValue || function () { return false; },
+      setValues: options.setValues || null,
+      graphAction: options.graphAction || null,
+      timelineAction: options.timelineAction || null,
+      stageAction: options.stageAction || null,
+      treeAction: options.treeAction || null,
+      selectionAction: options.selectionAction || null,
+      projectAction: options.projectAction || null,
+      canvasAction: options.canvasAction || null,
+      codeAction: options.codeAction || null,
+      curveAction: options.curveAction || null,
+      drawerAction: options.drawerAction || null,
+      workflowAction: options.workflowAction || null,
+      getValueFor: options.getValueFor || null,
+      setValueFor: options.setValueFor || null,
+      callAction: options.callAction || function () { return false; },
+      callCustom: options.callCustom || null,
+      action: options.action || null,
+      getPathMeta: options.getPathMeta || function () { return {}; },
+      getFieldStatus: options.getFieldStatus || function () { return null; },
+      getCollection: options.getCollection || null,
+      getCollectionValue: options.getCollectionValue || null,
+      setCollectionItem: options.setCollectionItem || null,
+      addCollectionItem: options.addCollectionItem || null,
+      removeCollectionItem: options.removeCollectionItem || null,
+      resolveCollectionPath: options.resolveCollectionPath || null,
+      subscribe: options.subscribe || function () { return function () {}; },
+      translate: options.translate || function (_key, fallback) { return fallback; },
+      announce: options.announce || function () {},
+      touchTarget: options.touchTarget || 32
+    };
+    this.uid = "pui" + (++NEXT_ID);
+    this.records = [];
+    this.actions = [];
+    this.pageRecords = [];
+    this.panelRecords = [];
+    this.sectionRecords = [];
+    this.collectionRecords = [];
+    this.graphRecords = [];
+    this.workbenches = [];
+    this.commandLogRecords = [];
+    this.selectionRecords = [];
+    this.disclosureRecords = [];
+    this.projectRecords = [];
+    this.canvasRecords = [];
+    this.drawerRecords = [];
+    this.codeRecords = [];
+    this.slots = {};
+    this.slotInstances = [];
+    this.customRecords = [];
+    this.doc = null;
+    this.root = null;
+    this.uidCounter = 0;
+    this.density = options.density || "comfortable";
+    this.langOption = options.lang || options.locale || "";
+    this.lang = "en";
+    this.dir = "ltr";
+    this.searchEnabled = !!options.search;
+    this.paletteEnabled = !!options.palette;
+    this.searchQuery = "";
+    this.searchInput = null;
+    this._palette = null;
+    this._paletteKeyHandler = null;
+    this.shortcuts = [];
+    this._shortcutHandler = null;
+    this._themeTokens = [];
+    this._pageRecordIndex = -1;
+    this._sectionRecordIndex = -1;
+    this._collectionRecordIndex = -1;
+    this._routeHistory = [];
+    this.currentRoute = null;
+  }
+
+  Renderer.prototype.render = function (doc) {
+    doc = expandTemplates(doc);
+    this.unbindPaletteShortcut();
+    if (this._palette) this._palette.close();
+    this.destroySlots();
+    this.doc = doc;
+    this.lang = this.resolveLanguage(doc);
+    this.dir = String(doc.dir || (global.PupitreI18n ? global.PupitreI18n.direction(this.lang) : "ltr"));
+    this.signature = structureKey(doc);
+    this.records = [];
+    this.actions = [];
+    this.pageRecords = [];
+    this.panelRecords = [];
+    this.sectionRecords = [];
+    this.collectionRecords = [];
+    this.graphRecords = [];
+    this.workbenches = [];
+    this.commandLogRecords = [];
+    this.selectionRecords = [];
+    this.disclosureRecords = [];
+    this.projectRecords = [];
+    this.canvasRecords = [];
+    this.drawerRecords = [];
+    this.codeRecords = [];
+    this.customRecords = [];
+    this._pageRecordIndex = -1;
+    this._sectionRecordIndex = -1;
+    this._collectionRecordIndex = -1;
+    if (!this.mount) throw new Error("PupitreUI: mount is required");
+    while (this.mount.firstChild) this.mount.removeChild(this.mount.firstChild);
+    var errors = validate(doc);
+    if (errors.length) {
+      var warning = el("div", {class: "pui-warning", role: "alert", text: "PUI warning: " + errors.join("; ")});
+      this.mount.appendChild(warning);
+      return this;
+    }
+    this.root = el("div", {class: "pui", "data-pui-root": ""});
+    this.root.setAttribute("data-density", this.density);
+    this.applyDocumentRoot(doc);
+    if (this.searchEnabled || this.paletteEnabled) {
+      var searchBar = el("div", {class: "pui-search"});
+      if (this.searchEnabled) {
+        var searchInput = el("input", {type: "search", "aria-label": this.t("search.filter", "Filter parameters"), placeholder: this.t("search.filter", "Filter parameters")});
+        searchInput.value = this.searchQuery;
+        searchInput.addEventListener("input", function () { this.search(searchInput.value); }.bind(this));
+        searchBar.appendChild(searchInput);
+        this.searchInput = searchInput;
+      }
+      if (this.paletteEnabled) {
+        var commandsButton = el("button", {type: "button", class: "pui-button", text: this.t("search.commands", "Commands"), "aria-label": this.t("search.open", "Open command palette")});
+        commandsButton.addEventListener("click", this.openPalette.bind(this));
+        searchBar.appendChild(commandsButton);
+      }
+      this.root.appendChild(searchBar);
+    }
+    var panels = doc.panels || [];
+    for (var i = 0; i < panels.length; i++) this.root.appendChild(this.buildPanel(panels[i]));
+    this.mount.appendChild(this.root);
+    this.apply();
+    this.bindShortcuts();
+    this.bindPaletteShortcut();
+    this.applyRoute();
+    if (typeof window !== "undefined" && window.addEventListener && !this._hashHandler) {
+      this._hashHandler = function () { this.applyRoute(); }.bind(this);
+      window.addEventListener("hashchange", this._hashHandler);
+    }
+    return this;
+  };
+
+  /** Patch a document whose public structure is unchanged. This preserves
+   * focused controls and custom slots; it falls back to render() when keys or
+   * collection structure change. Value-only updates should use apply(). */
+  Renderer.prototype.update = function (doc) {
+    doc = expandTemplates(doc);
+    var key = structureKey(doc);
+    if (!this.root || !this.doc || key !== this.signature || hasCollection(doc)) {
+      return this.render(doc);
+    }
+    this.doc = doc;
+    this.lang = this.resolveLanguage(doc);
+    this.dir = String(doc.dir || (global.PupitreI18n ? global.PupitreI18n.direction(this.lang) : "ltr"));
+    this.applyDocumentRoot(doc);
+    var blocks = {};
+    collectBlocks(doc, blocks);
+    for (var i = 0; i < this.records.length; i++) {
+      var rec = this.records[i];
+      var next = blocks[rec.path];
+      if (!next) continue;
+      rec.block = next;
+      this.applyFieldMeta(rec, next);
+      if (rec.labelTextEl) rec.labelTextEl.textContent = this.labelText(next);
+      if (rec.helpEl) {
+        if (next.help) rec.helpEl.textContent = String(next.help);
+        rec.helpEl.hidden = !next.help;
+      }
+      this.a11y(rec.control, next, rec.label, rec.inputs);
+    }
+    var pages = [], sections = [];
+    (doc.panels || []).forEach(function (panel) {
+      (panel.pages || []).forEach(function (page) {
+        pages.push(page);
+        (page.sections || []).forEach(function (section) { sections.push(section); });
+      });
+    });
+    for (var pr = 0; pr < this.pageRecords.length; pr++) {
+      if (pages[pr]) this.pageRecords[pr].page = pages[pr];
+    }
+    for (var sr = 0; sr < this.sectionRecords.length; sr++) {
+      var sectionRecord = this.sectionRecords[sr];
+      if (!sections[sr]) continue;
+      sectionRecord.block = sections[sr];
+      if (sectionRecord.helpEl) {
+        if (sections[sr].help) sectionRecord.helpEl.textContent = String(sections[sr].help);
+        sectionRecord.helpEl.hidden = !sections[sr].help;
+      }
+    }
+    var customBlocks = [];
+    sections.forEach(function (section) {
+      (section.blocks || []).forEach(function (block) { if (block && block.kind === "custom") customBlocks.push(block); });
+    });
+    for (var cr = 0; cr < this.customRecords.length; cr++) {
+      if (customBlocks[cr]) this.customRecords[cr].block = customBlocks[cr];
+    }
+    for (var j = 0; j < this.actions.length; j++) {
+      var action = this.actions[j];
+      var block = action.block;
+      if (block && block.id) {
+        var found = findAction(doc, str(block.id));
+        if (found) {
+          action.block = found;
+          action.control.textContent = String(found.label || found.id || "Action");
+          action.control.disabled = !!found.disabled;
+        }
+      }
+    }
+    this.signature = key;
+    this.apply();
+    this.bindShortcuts();
+    this.applyRoute();
+    return this;
+  };
+
+  Renderer.prototype.applyFieldMeta = function (rec, field) {
+    if (!rec) return;
+    if (rec.widget === "range") {
+      var rMin = String(field.min !== undefined ? field.min : 0);
+      var rMax = String(field.max !== undefined ? field.max : 1);
+      var rStep = String(field.step !== undefined ? field.step : 0.01);
+      if (rec.range) { rec.range.min = rMin; rec.range.max = rMax; rec.range.step = rStep; }
+      if (rec.number) { rec.number.min = rMin; rec.number.max = rMax; rec.number.step = rStep; }
+    } else if (rec.widget === "number") {
+      if (rec.control) {
+        rec.control.min = String(field.min !== undefined ? field.min : -1e12);
+        rec.control.max = String(field.max !== undefined ? field.max : 1e12);
+        rec.control.step = String(field.step !== undefined ? field.step : 1);
+      }
+    }
+    var options = this.optionsFor(field);
+    if (rec.widget === "select" && rec.control && rec.control.options) {
+      for (var i = 0; i < rec.control.options.length && i < options.length; i++) {
+        rec.control.options[i].textContent = String(options[i].label !== undefined ? options[i].label : options[i].value);
+      }
+    }
+    if (rec.optionLabels) {
+      for (var j = 0; j < rec.optionLabels.length && j < options.length; j++) {
+        rec.optionLabels[j].textContent = String(options[j].label !== undefined ? options[j].label : options[j].value);
+      }
+    }
+  };
+
+  Renderer.prototype.resolveLanguage = function (doc) {
+    var query = "";
+    try { query = String(window.location && window.location.search || "").replace(/^\?/, ""); } catch (error) {}
+    var params = {};
+    query.split("&").forEach(function (part) {
+      var pair = part.split("=");
+      if (pair[0]) params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || "");
+    });
+    var raw = params.lang || this.langOption || (doc && doc.lang) || (global.navigator && global.navigator.language) || "en";
+    return global.PupitreI18n ? global.PupitreI18n.normalize(raw) : String(raw).toLowerCase().split(/[-_]/)[0];
+  };
+
+  Renderer.prototype.t = function (key, fallback, params) {
+    var translated = this.adapter.translate(String(key), fallback);
+    if (translated === undefined || translated === null || translated === fallback || translated === key) {
+      translated = global.PupitreI18n ? global.PupitreI18n.translate(this.lang, key, params, fallback) : fallback;
+    }
+    return translated === undefined || translated === null ? String(fallback !== undefined ? fallback : key) : String(translated);
+  };
+
+  Renderer.prototype.applyDocumentRoot = function (doc) {
+    if (!this.root) return;
+    this.root.setAttribute("lang", String(this.lang || doc.lang || "en"));
+    this.root.setAttribute("dir", String(this.dir || doc.dir || "ltr"));
+    try {
+      if (document.documentElement) {
+        document.documentElement.setAttribute("lang", String(this.lang || doc.lang || "en"));
+        document.documentElement.setAttribute("dir", String(this.dir || doc.dir || "ltr"));
+      }
+    } catch (error) {}
+    this.root.style.setProperty("--pui-touch", String(this.adapter.touchTarget) + "px");
+    (this._themeTokens || []).forEach(function (key) {
+      this.root.style.removeProperty("--pui-" + key);
+    }, this);
+    this._themeTokens = [];
+    var embedded = isArray(doc.panels) && doc.panels.length > 0 && doc.panels.every(function (panel) {
+      return !!(panel && panel.embedded === true);
+    });
+    if (embedded) this.root.setAttribute("data-embedded", "true");
+    else this.root.removeAttribute("data-embedded");
+    var theme = isObject(doc.theme) ? doc.theme : {};
+    var htmlTheme = "";
+    try { htmlTheme = document.documentElement && document.documentElement.getAttribute("data-theme") || ""; } catch (error) {}
+    var mode = theme.mode || this.themeMode || htmlTheme;
+    if (mode) this.root.setAttribute("data-theme", String(mode));
+    else this.root.removeAttribute("data-theme");
+    if (isObject(theme.tokens)) {
+      Object.keys(theme.tokens).forEach(function (key) {
+        this.root.style.setProperty("--pui-" + key, String(theme.tokens[key]));
+        this._themeTokens.push(key);
+      }, this);
+    }
+  };
+
+  Renderer.prototype.setTheme = function (mode) {
+    this.themeMode = mode ? String(mode) : "";
+    if (this.root) {
+      if (this.themeMode) this.root.setAttribute("data-theme", this.themeMode);
+      else this.root.removeAttribute("data-theme");
+    }
+    try {
+      if (document.documentElement) {
+        if (this.themeMode) document.documentElement.setAttribute("data-theme", this.themeMode);
+        else document.documentElement.removeAttribute("data-theme");
+      }
+    } catch (error) {}
+  };
+
+  Renderer.prototype.bindShortcuts = function () {
+    this.unbindShortcuts();
+    this.shortcuts = [];
+    var self = this;
+    function add(spec, entry) {
+      if (!spec) return;
+      entry.spec = String(spec);
+      self.shortcuts.push(entry);
+      if (entry.control && entry.control.setAttribute) {
+        entry.control.setAttribute("aria-keyshortcuts", ariaShortcut(entry.spec));
+      }
+    }
+    for (var i = 0; i < this.actions.length; i++) {
+      var action = this.actions[i];
+      if (action.block && action.block.shortcut) add(action.block.shortcut, {item: action.block, control: action.control, action: true});
+    }
+    for (var j = 0; j < this.records.length; j++) {
+      var rec = this.records[j];
+      if (rec.block && rec.block.shortcut && rec.control) add(rec.block.shortcut, {focus: rec.control, control: rec.control});
+    }
+    if (!this.shortcuts.length) return;
+    this._shortcutHandler = function (event) {
+      var target = event.target;
+      var tag = target && target.tagName ? String(target.tagName).toLowerCase() : "";
+      var editing = tag === "input" || tag === "textarea" || tag === "select" ||
+        (target && target.isContentEditable);
+      for (var k = 0; k < self.shortcuts.length; k++) {
+        var entry = self.shortcuts[k];
+        if (!shortcutMatches(entry.spec, event)) continue;
+        if (editing && !event.ctrlKey && !event.metaKey && !event.altKey && String(event.key).toLowerCase() !== "escape") continue;
+        if (event.preventDefault) event.preventDefault();
+        if (event.stopPropagation) event.stopPropagation();
+        if (entry.action) self.startAction(entry.item, entry.control);
+        else if (entry.focus && entry.focus.focus) entry.focus.focus();
+        return;
+      }
+    };
+    document.addEventListener("keydown", this._shortcutHandler);
+  };
+
+  Renderer.prototype.unbindShortcuts = function () {
+    if (this._shortcutHandler && typeof document !== "undefined") {
+      document.removeEventListener("keydown", this._shortcutHandler);
+    }
+    this._shortcutHandler = null;
+    this.shortcuts = [];
+  };
+
+  Renderer.prototype.buildPanel = function (panel) {
+    this._pageRecordIndex = -1;
+    this._sectionRecordIndex = -1;
+    this._collectionRecordIndex = -1;
+    var embedded = panel.embedded === true;
+    this._pageEmbedded = embedded;
+    var panelEl = el("section", {class: "pui-panel", role: "region"});
+    var panelRecord = {element: panelEl, tablist: null, pages: [], active: 0};
+    this.panelRecords.push(panelRecord);
+    var title = String(panel.title || panel.id || "Pupitre");
+    var headingId = this.id("panel-title");
+    if (embedded) {
+      // Embedded panels are placed inside host chrome (dock, drawer, sidebar):
+      // the host owns the visible title, PUI keeps the accessible name.
+      panelEl.setAttribute("aria-label", title);
+    } else {
+      var head = el("header", {class: "pui-header"});
+      head.appendChild(el("h1", {id: headingId, text: title}));
+      if (panel.subtitle) head.appendChild(el("p", {class: "pui-subtitle", text: panel.subtitle}));
+      if (panel.version) head.appendChild(el("span", {class: "pui-version", text: panel.version}));
+      panelEl.appendChild(head);
+      panelEl.setAttribute("aria-labelledby", headingId);
+    }
+    if (isArray(panel.actions) && panel.actions.length) panelEl.appendChild(this.buildActions(panel.actions));
+    var pages = panel.pages || [];
+    if (!pages.length) return panelEl;
+    if (panel.default_page) {
+      for (var d = 0; d < pages.length; d++) if (String(pages[d].id || "") === String(panel.default_page)) panelRecord.active = d;
+    }
+    var tablist = null;
+    var panels = [];
+    if (pages.length > 1) {
+      tablist = el("div", {class: "pui-tabs", role: "tablist"});
+      panelRecord.tablist = tablist;
+      panelEl.appendChild(tablist);
+    }
+    for (var p = 0; p < pages.length; p++) {
+      var page = pages[p];
+      this._pageRecordIndex = this.pageRecords.length;
+      var pageTitleId = this.id("page-title");
+      var pageEl = el("div", {class: "pui-page", role: pages.length > 1 ? "tabpanel" : "region", id: this.id("page")});
+      pageEl.setAttribute("aria-labelledby", pageTitleId);
+      pageEl.hidden = p !== panelRecord.active;
+      var pageTitle = String(page.title || page.id || ("Page " + (p + 1)));
+      if (isObject(page.layout) && String(page.layout.mode || "") === "workbench") {
+        pageEl.appendChild(this.buildWorkbench(page, pageTitleId, pageTitle));
+        pageEl.setAttribute("aria-labelledby", pageTitleId);
+      } else {
+        if (!embedded) {
+          pageEl.appendChild(el("h2", {class: "pui-page-title", id: pageTitleId, text: pageTitle}));
+          pageEl.setAttribute("aria-labelledby", pageTitleId);
+        } else {
+          pageEl.setAttribute("aria-label", pageTitle);
+        }
+        for (var s = 0; s < (page.sections || []).length; s++) pageEl.appendChild(this.buildSection(page.sections[s], p, s));
+      }
+      panelEl.appendChild(pageEl);
+      panels.push(pageEl);
+      if (tablist) {
+        var tabId = this.id("tab");
+        var tab = el("button", {type: "button", role: "tab", class: "pui-tab", id: tabId, text: pageTitle});
+        tab.setAttribute("aria-controls", pageEl.id);
+        tab.setAttribute("aria-selected", p === panelRecord.active ? "true" : "false");
+        tab.tabIndex = p === panelRecord.active ? 0 : -1;
+        tab.addEventListener("click", this.selectPage.bind(this, p, tablist, panels, panelRecord));
+        tab.addEventListener("keydown", this.tabKey.bind(this, p, tablist, panels, panelRecord));
+        tablist.appendChild(tab);
+        pageEl.setAttribute("aria-labelledby", tabId);
+      }
+      var pageRecord = {
+        page: page, element: pageEl, tab: tablist ? tablist.querySelectorAll('[role="tab"]')[p] : null,
+        index: p, localIndex: p, panel: panelRecord, visible: true, enabled: true
+      };
+      this.pageRecords.push(pageRecord);
+      panelRecord.pages.push(pageRecord);
+    }
+    this.tablist = tablist;
+    this.pagePanels = panels;
+    return panelEl;
+  };
+
+  Renderer.prototype.selectPage = function (index, tablist, panels, panelRecord) {
+    this.activatePage(panelRecord, index);
+    var tabs = tablist.querySelectorAll('[role="tab"]');
+    if (tabs[index]) tabs[index].focus();
+    this.routePage(panelRecord.pages[index] && panelRecord.pages[index].page);
+  };
+
+  Renderer.prototype.activatePage = function (panelRecord, index) {
+    if (!panelRecord) return;
+    panelRecord.active = index;
+    for (var i = 0; i < panelRecord.pages.length; i++) {
+      var rec = panelRecord.pages[i];
+      rec.element.hidden = i !== index || !rec.visible;
+      if (rec.tab) {
+        rec.tab.setAttribute("aria-selected", i === index ? "true" : "false");
+        rec.tab.tabIndex = i === index ? 0 : -1;
+      }
+    }
+  };
+
+  Renderer.prototype.tabKey = function (index, tablist, panels, panelRecord, event) {
+    var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+    var next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    this.selectPage(next, tablist, panels, panelRecord);
+  };
+
+  Renderer.prototype.routePage = function (page) {
+    if (!page || typeof window === "undefined" || !window.location) return;
+    var id = String(page.id || "");
+    if (!id) return;
+    var next = "#page=" + encodeURIComponent(id);
+    if (window.location.hash !== next) window.location.hash = next;
+  };
+
+  Renderer.prototype.readRoute = function () {
+    if (typeof window === "undefined" || !window.location) return {};
+    var raw = String(window.location.hash || "").replace(/^#/, "");
+    var params = {};
+    raw.split("&").forEach(function (part) {
+      var pair = part.split("=");
+      if (pair[0]) params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || "");
+    });
+    return params;
+  };
+
+  Renderer.prototype.routeHash = function (route) {
+    route = route || {};
+    var parts = [];
+    ["page", "section", "field", "selection", "item", "panel"].forEach(function (key) {
+      if (route[key] !== undefined && route[key] !== null && String(route[key]) !== "") parts.push(key + "=" + encodeURIComponent(String(route[key])));
+    });
+    return "#" + (parts.join("&") || "page=");
+  };
+
+  Renderer.prototype.link = function (route) {
+    return this.routeHash(route || this.currentRoute || this.readRoute());
+  };
+
+  Renderer.prototype.navigate = function (pageId, fieldBind, extra) {
+    var route = isObject(pageId) ? Object.assign({}, pageId) : Object.assign({page: String(pageId || "")}, extra || {});
+    if (!isObject(pageId) && fieldBind) route.field = String(fieldBind);
+    if (!route.page) return false;
+    var target = null;
+    for (var i = 0; i < this.pageRecords.length; i++) {
+      if (String(this.pageRecords[i].page.id || "") === String(route.page)) { target = this.pageRecords[i]; break; }
+    }
+    if (target === null) return false;
+    var current = this.currentRoute || this.readRoute();
+    if (current && current.page && String(current.page) !== String(route.page)) this._routeHistory.push(current);
+    this.activatePage(target.panel, target.localIndex);
+    if (typeof window !== "undefined" && window.location) window.location.hash = this.routeHash(route);
+    this.applyRoute();
+    if (!route.section && !route.field && typeof window !== "undefined" && window.scrollTo) window.scrollTo(0, 0);
+    if (route.field) this.focusPath(String(route.field));
+    return true;
+  };
+
+  Renderer.prototype.back = function () {
+    var previous = this._routeHistory && this._routeHistory.pop();
+    if (!previous) return false;
+    if (typeof window !== "undefined" && window.location) window.location.hash = this.routeHash(previous);
+    this.applyRoute();
+    return true;
+  };
+
+  Renderer.prototype.focusSection = function (sectionId) {
+    if (!this.root || !sectionId) return false;
+    var escaped = String(sectionId).replace(/"/g, '\"');
+    var section = this.root.querySelector('[data-pui-section="' + escaped + '"]');
+    if (!section) return false;
+    if (section.scrollIntoView) section.scrollIntoView({block: "nearest"});
+    if (section.focus) section.focus();
+    return true;
+  };
+
+  Renderer.prototype.focusPath = function (path) {
+    if (!this.root) return false;
+    var escaped = String(path).replace(/"/g, '\\"');
+    var control = this.root.querySelector('[data-pui-bind="' + escaped + '"]');
+    if (control && control.focus) { control.focus(); return true; }
+    return false;
+  };
+
+  Renderer.prototype.applyRoute = function () {
+    var route = this.readRoute();
+    this.currentRoute = route;
+    if (!route.page) return;
+    var target = null;
+    for (var i = 0; i < this.pageRecords.length; i++) {
+      if (String(this.pageRecords[i].page.id || "") === String(route.page)) { target = this.pageRecords[i]; break; }
+    }
+    if (target) this.activatePage(target.panel, target.localIndex);
+    if (route.section) this.focusSection(route.section);
+    if (route.field) this.focusPath(route.field);
+  };
+
+
+  Renderer.prototype.buildWorkbench = function (page, titleId, title) {
+    var self = this;
+    var layout = isObject(page.layout) ? page.layout : {};
+    var pageId = String(page.id || "");
+    var wb = el("div", {class: "pui-workbench", "data-pui-workbench": pageId, role: "region"});
+    var rec = {pageId: pageId, layout: layout, element: wb, panes: {}, buttons: {}, collapsed: {},
+      widths: {left: Number(layout.left && layout.left.width) || 250, right: Number(layout.right && layout.right.width) || 300},
+      narrow: false, resize: null};
+    this.workbenches.push(rec);
+    var groups = {toolbar: [], left: [], stage: [], right: [], bottom: []};
+    (page.sections || []).forEach(function (section) {
+      var region = String(section && section.region || "stage");
+      if (!groups[region]) region = "stage";
+      groups[region].push(section);
+    });
+    var toolbar = el("header", {class: "pui-workbench-toolbar"});
+    toolbar.appendChild(el("h2", {class: "pui-page-title", id: titleId, text: title}));
+    var tools = el("div", {class: "pui-workbench-tools"});
+    toolbar.appendChild(tools);
+    var toolbarBlocks = el("div", {class: "pui-workbench-toolbar-blocks"});
+    groups.toolbar.forEach(function (section, index) { toolbarBlocks.appendChild(self.buildSection(section, self._pageRecordIndex, index)); });
+    if (toolbarBlocks.childNodes.length) toolbar.appendChild(toolbarBlocks);
+    wb.appendChild(toolbar);
+
+    var body = el("div", {class: "pui-workbench-body"});
+    var pane = function (region, elementTag) {
+      var paneTitle = String((layout[region] && layout[region].title) || region);
+      var paneId = self.id("workbench-pane");
+      var node = el(elementTag, {class: "pui-workbench-pane is-" + region, id: paneId, "data-region": region});
+      node.setAttribute("aria-labelledby", paneId + "-title");
+      node.appendChild(el("div", {class: "pui-workbench-pane-title", id: paneId + "-title", text: paneTitle}));
+      var content = el("div", {class: "pui-workbench-pane-content"});
+      groups[region].forEach(function (section, index) { content.appendChild(self.buildSection(section, self._pageRecordIndex, index)); });
+      node.appendChild(content);
+      rec.panes[region] = node;
+      return {node: node, id: paneId, title: paneTitle};
+    };
+    var leftInfo = pane("left", "aside");
+    var stageInfo = pane("stage", "main");
+    var rightInfo = pane("right", "aside");
+    body.appendChild(leftInfo.node);
+    var leftResize = el("div", {class: "pui-workbench-resizer is-left", role: "separator", "aria-label": "Resize left pane", tabindex: "0"});
+    body.appendChild(leftResize);
+    body.appendChild(stageInfo.node);
+    var rightResize = el("div", {class: "pui-workbench-resizer is-right", role: "separator", "aria-label": "Resize right pane", tabindex: "0"});
+    body.appendChild(rightResize);
+    body.appendChild(rightInfo.node);
+    rec.resizers = {left: leftResize, right: rightResize};
+    wb.appendChild(body);
+    var bottomInfo = null;
+    if (groups.bottom.length || isObject(layout.bottom)) {
+      bottomInfo = pane("bottom", "footer");
+      wb.appendChild(bottomInfo.node);
+    }
+
+    var toggle = function (region, info, shortcut) {
+      if (!groups[region].length && !(layout[region] && layout[region].collapsible)) return;
+      var button = el("button", {type: "button", class: "pui-workbench-toggle", text: info.title});
+      button.setAttribute("aria-controls", info.id);
+      button.setAttribute("aria-expanded", "true");
+      button.setAttribute("aria-keyshortcuts", shortcut);
+      button.addEventListener("click", function () { self.workbenchToggle(rec, region); });
+      rec.buttons[region] = button;
+      tools.appendChild(button);
+    };
+    toggle("left", leftInfo, "Control+Alt+L");
+    toggle("right", rightInfo, "Control+Alt+R");
+    if (bottomInfo) toggle("bottom", bottomInfo, "Control+Alt+B");
+    rec.buttons.left && (rec.buttons.left.title = "Toggle left pane");
+    rec.buttons.right && (rec.buttons.right.title = "Toggle right pane");
+    rec.buttons.bottom && (rec.buttons.bottom.title = "Toggle bottom pane");
+
+    var stored = function (region, key, fallback) {
+      try {
+        var raw = window.localStorage && window.localStorage.getItem("pui.workbench." + pageId + "." + region + "." + key);
+        return raw === null || raw === undefined ? fallback : (key === "collapsed" ? raw === "1" : Number(raw));
+      } catch (error) { return fallback; }
+    };
+    var save = function (region, key, value) {
+      try { if (window.localStorage) window.localStorage.setItem("pui.workbench." + pageId + "." + region + "." + key, key === "collapsed" ? (value ? "1" : "0") : String(value)); } catch (error) {}
+    };
+    ["left", "right"].forEach(function (region) {
+      var storedWidth = stored(region, "width", rec.widths[region]);
+      if (isFinite(storedWidth) && storedWidth >= 140 && storedWidth <= 620) rec.widths[region] = storedWidth;
+    });
+    ["left", "right", "bottom"].forEach(function (region) {
+      var collapsed = stored(region, "collapsed", false);
+      if (collapsed && rec.panes[region]) { rec.collapsed[region] = true; rec.panes[region].classList.add("is-collapsed"); if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", "false"); if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = "none"; }
+    });
+    this.workbenchApplyWidths(rec);
+    var resizeStart = function (region) {
+      return function (event) {
+        if (rec.collapsed[region]) return;
+        rec.resize = {region: region, x: event.clientX || 0, width: rec.widths[region]};
+        if (event.preventDefault) event.preventDefault();
+        if (event.stopPropagation) event.stopPropagation();
+      };
+    };
+    leftResize.addEventListener("pointerdown", resizeStart("left"));
+    rightResize.addEventListener("pointerdown", resizeStart("right"));
+    wb.addEventListener("pointermove", function (event) {
+      if (!rec.resize) return;
+      var dx = (event.clientX || 0) - rec.resize.x;
+      var sign = rec.resize.region === "left" ? 1 : -1;
+      rec.widths[rec.resize.region] = Math.max(140, Math.min(620, rec.resize.width + sign * dx));
+      self.workbenchApplyWidths(rec);
+    });
+    wb.addEventListener("pointerup", function () {
+      if (!rec.resize) return;
+      save(rec.resize.region, "width", rec.widths[rec.resize.region]);
+      rec.resize = null;
+    });
+    wb.addEventListener("keydown", function (event) {
+      if (!event.altKey || !event.ctrlKey) return;
+      var key = String(event.key || "").toLowerCase();
+      var region = key === "l" ? "left" : key === "r" ? "right" : key === "b" ? "bottom" : "";
+      if (!region || !rec.panes[region]) return;
+      if (event.preventDefault) event.preventDefault();
+      self.workbenchToggle(rec, region);
+    });
+    var updateNarrow = function () {
+      var narrow = typeof window !== "undefined" && (window.innerWidth || 1200) < 900;
+      if (narrow === rec.narrow) return;
+      var enteringNarrow = narrow && !rec.narrow;
+      rec.narrow = narrow;
+      wb.classList.toggle("is-narrow", narrow);
+      if (enteringNarrow) {
+        ["left", "right"].forEach(function (region) {
+          if (!rec.panes[region] || rec.collapsed[region]) return;
+          rec.collapsed[region] = true;
+          rec.panes[region].classList.add("is-collapsed");
+          if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", "false");
+          if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = "none";
+        });
+      }
+    };
+    rec.updateNarrow = updateNarrow;
+    updateNarrow();
+    if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("resize", updateNarrow);
+    return wb;
+  };
+
+  Renderer.prototype.workbenchApplyWidths = function (rec) {
+    if (!rec || !rec.element) return;
+    rec.element.style.setProperty("--pui-workbench-left", rec.widths.left + "px");
+    rec.element.style.setProperty("--pui-workbench-right", rec.widths.right + "px");
+  };
+
+  Renderer.prototype.workbenchToggle = function (rec, region) {
+    if (!rec || !rec.panes[region]) return false;
+    var pane = rec.panes[region];
+    var collapsed = !rec.collapsed[region];
+    if (rec.narrow && !collapsed && (region === "left" || region === "right")) {
+      var other = region === "left" ? "right" : "left";
+      if (rec.collapsed[other] === false) {
+        rec.collapsed[other] = true;
+        rec.panes[other].classList.add("is-collapsed");
+        if (rec.buttons[other]) rec.buttons[other].setAttribute("aria-expanded", "false");
+      }
+    }
+    rec.collapsed[region] = collapsed;
+    pane.classList.toggle("is-collapsed", collapsed);
+    if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = collapsed ? "none" : "";
+    try { if (window.localStorage) window.localStorage.setItem("pui.workbench." + rec.pageId + "." + region + ".collapsed", collapsed ? "1" : "0"); } catch (error) {}
+    return true;
+  };
+
+  Renderer.prototype.buildSection = function (section, pageIndex, sectionIndex) {
+    this._sectionRecordIndex = this.sectionRecords.length;
+    var embedded = !!this._pageEmbedded;
+    var id = this.id("section-title");
+    var sectionEl = el("section", {class: "pui-section", "data-pui-section": String(section.id || ""), tabindex: "-1"});
+    var sectionTitle = String(section.title || section.id || "Section");
+    if (!embedded) {
+      sectionEl.appendChild(el("h3", {id: id, text: sectionTitle}));
+      sectionEl.setAttribute("aria-labelledby", id);
+    } else {
+      sectionEl.setAttribute("aria-label", sectionTitle);
+    }
+    var sectionHelp = null;
+    if (section.help) {
+      sectionHelp = el("p", {class: "pui-help", text: String(section.help)});
+      sectionEl.appendChild(sectionHelp);
+    }
+    var body = el("div", {class: "pui-fields"});
+    var columns = section.layout && section.layout.columns || 1;
+    body.style.setProperty("--pui-columns", String(columns));
+    for (var i = 0; i < (section.blocks || []).length; i++) {
+      var block = section.blocks[i];
+      var blockEl = this.buildBlock(block);
+      if (blockEl && blockEl.setAttribute && block && typeof block.kind === "string") blockEl.setAttribute("data-pui-kind", block.kind);
+      body.appendChild(blockEl);
+    }
+    sectionEl.appendChild(body);
+    if (isArray(section.actions) && section.actions.length) sectionEl.appendChild(this.buildActions(section.actions));
+    if (isArray(section.presets) && section.presets.length) sectionEl.appendChild(this.buildActions(section.presets, "preset"));
+    this.sectionRecords.push({element: sectionEl, block: section, helpEl: sectionHelp, pageRecordIndex: this._pageRecordIndex, visible: true, enabled: true});
+    return sectionEl;
+  };
+
+  Renderer.prototype.buildBlock = function (block, context) {
+    if (!isObject(block)) return el("p", {class: "pui-missing", text: "(invalid PUI block)"});
+    var kind = String(block.kind || "field");
+    if (kind === "field") return this.buildField(block, context);
+    if (kind === "readout") return this.buildReadout(block);
+    if (kind === "collection") return this.buildCollection(block);
+    if (kind === "action") return this.buildActions([block]);
+    if (kind === "actions") return this.buildActions(block.items || [], kind);
+    if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
+    if (kind === "note") {
+      return el("p", {class: "pui-note " + (block.level === "warning" ? "pui-warn" : ""), text: String(block.text || "")});
+    }
+    if (kind === "separator") return el("hr", {class: "pui-separator"});
+    if (kind === "custom") return this.buildCustom(block);
+    if (kind === "graph") return this.buildGraph(block);
+    if (kind === "timeline") return this.buildTimeline(block);
+    if (kind === "stage") return this.buildStage(block);
+    if (kind === "tree") return this.buildTree(block);
+    if (kind === "commandlog") return this.buildCommandLog(block);
+    if (kind === "selection") return this.buildSelection(block);
+    if (kind === "disclosure") return this.buildDisclosure(block);
+    if (kind === "project") return this.buildProject(block);
+    if (kind === "canvas") return this.buildCanvas(block);
+    if (kind === "workflow") return this.buildWorkflow(block);
+    if (kind === "code") return this.buildCode(block);
+    if (kind === "curve") return this.buildCurve(block);
+    if (kind === "drawer") return this.buildDrawer(block);
+    if (kind === "macros") return this.buildMacros(block);
+    if (kind === "slider") return this.buildSlider(block);
+    return el("p", {class: "pui-missing", text: "(unknown PUI block '" + kind + "')"});
+  };
+
+  Renderer.prototype.graphValue = function (block) {
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(String(block.bind || ""), block)
+      : this.adapter.getValue(String(block.bind || ""));
+    return isObject(value) ? value : null;
+  };
+
+  Renderer.prototype.graphTypes = function (block) {
+    if (isArray(block.types)) return block.types;
+    if (block.types_bind) {
+      var types = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(String(block.types_bind), block)
+        : this.adapter.getValue(String(block.types_bind));
+      if (isArray(types)) return types;
+    }
+    return [];
+  };
+
+  /** Read-only G-2 graph renderer: DOM nodes + SVG cables + frames + outline.
+   * The host owns the graph value and edits; this renderer owns geometry,
+   * pan/zoom, focus and the accessible outline. */
+  Renderer.prototype.buildGraph = function (block, navStack) {
+    var self = this;
+    var Graph = global.PupitreGraph;
+    var rootGraph = this.graphValue(block);
+    var types = this.graphTypes(block);
+    var label = String(block.label || block.id || "Graph");
+    var rootPath = String(block.bind || "");
+    var nav = isArray(navStack) && navStack.length ? navStack : [{path: rootPath, label: label}];
+    var graphPath = String(nav[nav.length - 1] && nav[nav.length - 1].path || rootPath);
+    var graph = graphPath === rootPath ? rootGraph : this.adapter.getValue(graphPath);
+    if (!Graph) return el("p", {class: "pui-missing", text: "(graph model PupitreGraph is not loaded)"});
+    if (!isObject(graph)) return el("p", {class: "pui-missing", text: "(graph value is missing at " + graphPath + ")"});
+    var issues = Graph.validateGraph(graph, types);
+    var typeMap = {};
+    types.forEach(function (type) { if (isObject(type) && type.id !== undefined) typeMap[String(type.id)] = type; });
+    var nodes = isArray(graph.nodes) ? graph.nodes : [];
+    var cables = isArray(graph.cables) ? graph.cables : [];
+    var frames = isArray(graph.frames) ? graph.frames : [];
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-graph", "data-pui-graph": String(block.bind || ""), role: "group"});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var head = el("div", {class: "pui-graph-head"});
+    head.appendChild(el("h4", {text: label}));
+    if (nav.length > 1) {
+      var crumbs = el("nav", {class: "pui-graph-breadcrumbs", "aria-label": "Graph breadcrumbs"});
+      nav.forEach(function (entry, index) {
+        var crumb = el("button", {type: "button", class: "pui-graph-crumb", text: String(entry.label || entry.path || "Subgraph")});
+        if (index === nav.length - 1) crumb.setAttribute("aria-current", "page");
+        crumb.addEventListener("click", function () { self.graphNavigate(rec, index); });
+        crumbs.appendChild(crumb);
+        if (index < nav.length - 1) crumbs.appendChild(el("span", {class: "pui-graph-crumb-sep", "aria-hidden": "true", text: "/"}));
+      });
+      head.appendChild(crumbs);
+    }
+    if (isObject(graph.interface)) {
+      var inLabels = isArray(graph.interface.inputs) ? graph.interface.inputs.map(function (port) { return String(port.label || port.id || ""); }).filter(Boolean) : [];
+      var outLabels = isArray(graph.interface.outputs) ? graph.interface.outputs.map(function (port) { return String(port.label || port.id || ""); }).filter(Boolean) : [];
+      head.appendChild(el("span", {class: "pui-graph-interface", text: "Boundary: " + (inLabels.length ? "in " + inLabels.join(", ") : "no inputs") + " · " + (outLabels.length ? "out " + outLabels.join(", ") : "no outputs")}));
+    }
+    if (!block.readonly) {
+      var addButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Add node"});
+      addButton.addEventListener("click", function () { self.openGraphAdd(rec); });
+      head.appendChild(addButton);
+      var addFrame = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Add frame"});
+      addFrame.addEventListener("click", function () { self.graphAddFrame(rec); });
+      head.appendChild(addFrame);
+      var groupButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Group selection"});
+      groupButton.addEventListener("click", function () { self.graphGroupSelection(rec); });
+      head.appendChild(groupButton);
+      var bookmarkButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Bookmark view"});
+      bookmarkButton.addEventListener("click", function () { self.graphSaveBookmark(rec); });
+      head.appendChild(bookmarkButton);
+      var duplicateButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Duplicate"});
+      duplicateButton.addEventListener("click", function () { self.graphDuplicate(rec); });
+      head.appendChild(duplicateButton);
+    }
+    var fitButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Fit"});
+    fitButton.addEventListener("click", function () { self.graphFit(rec); });
+    head.appendChild(fitButton);
+    head.appendChild(el("span", {class: "pui-graph-count", text: nodes.length + " nodes · " + cables.length + " links"}));
+    if (issues.length) {
+      head.appendChild(el("span", {
+        class: "pui-graph-issues" + (issues.some(function (i) { return i.level === "error"; }) ? " is-error" : ""),
+        text: issues.length + " issue" + (issues.length === 1 ? "" : "s")
+      }));
+    }
+    root.appendChild(head);
+    var viewport = el("div", {class: "pui-graph-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas"});
+    var content = el("div", {class: "pui-graph-content"});
+    var svg = svgEl("svg", {class: "pui-graph-cables", "aria-hidden": "true"});
+    var cableGroup = svgEl("g");
+    svg.appendChild(cableGroup);
+    content.appendChild(svg);
+    var selected = {};
+    var graphOptions = isObject(block.graph_options) ? block.graph_options : {};
+    var rec = {block: block, root: root, graph: graph, rootGraph: rootGraph, graphPath: graphPath,
+      rootPath: rootPath, navStack: nav, types: types, typeMap: typeMap,
+      nodeEls: {}, cableRefs: [], selected: selected, undo: [], redo: [], dragging: null,
+      wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
+      recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
+      viewport: viewport, content: content, cableGroup: cableGroup};
+    this.graphRecords.push(rec);
+    rec.head = head;
+    rec.bookmarkBar = el("div", {class: "pui-graph-bookmarks", "aria-label": "Camera bookmarks"});
+    head.appendChild(rec.bookmarkBar);
+    rec.presetsBar = el("div", {class: "pui-graph-presets", "aria-label": "Graph presets"});
+    root.appendChild(rec.presetsBar);
+    rec.issues = issues;
+    rec.issueEl = head.querySelector(".pui-graph-issues");
+    var nodeEls = rec.nodeEls;
+    if (block.selection_bind) {
+      var selection = this.readSelection(String(block.selection_bind), block);
+      selection.ids.forEach(function (id) { selected[String(id)] = true; });
+    }
+    frames.forEach(function (frame) {
+      if (!isObject(frame)) return;
+      var frameEl = el("div", {
+        class: "pui-graph-frame" + (isArray(frame.members) ? " is-group" : ""),
+        "data-frame-id": String(frame.id || ""),
+        style: "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;"
+      });
+      frameEl.appendChild(el("span", {class: "pui-graph-frame-title", text: String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "")}));
+      frameEl.addEventListener("pointerdown", function (event) {
+        if (event.target && event.target.closest && event.target.closest(".pui-graph-frame-resize")) return;
+        if (event.button !== undefined && event.button !== 0) return;
+        event.stopPropagation();
+        self.graphSelectFrame(rec, frame);
+        var contained = self.graphFrameNodes(rec, frame).map(function (node) { return String(node.id); });
+        rec.frameDrag = {start: deepClone(rec.graph), frame: frame, x: event.clientX || 0, y: event.clientY || 0, ids: contained, moved: false};
+      });
+      if (!block.readonly) {
+        var resize = el("span", {class: "pui-graph-frame-resize", "aria-hidden": "true"});
+        resize.addEventListener("pointerdown", function (event) {
+          if (event.button !== undefined && event.button !== 0) return;
+          event.stopPropagation();
+          self.graphSelectFrame(rec, frame);
+          rec.frameResize = {start: deepClone(rec.graph), frame: frame, x: event.clientX || 0, y: event.clientY || 0, w: Number(frame.w) || 100, h: Number(frame.h) || 80};
+        });
+        frameEl.appendChild(resize);
+      }
+      rec.frameEls[String(frame.id || "")] = frameEl;
+      content.appendChild(frameEl);
+    });
+    nodes.forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      var type = typeMap[String(node.type)] || null;
+      var rect = Graph.nodeRect(node, type);
+      var nodeEl = el("div", {
+        class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : ""),
+        "data-node-id": id,
+        role: "group",
+        tabindex: "0",
+        style: "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;"
+      });
+      var nodeLabel = String(node.label || (type && type.label) || node.type || id);
+      nodeEl.setAttribute("aria-label", nodeLabel + (type && type.label ? ", " + type.label : "") + (node.enabled === false ? ", disabled" : ""));
+      nodeEl.appendChild(el("div", {class: "pui-graph-node-head"},
+        el("span", {class: "pui-graph-node-title", text: nodeLabel}),
+        el("span", {class: "pui-graph-node-type", text: String((type && type.label) || node.type || "")})
+      ));
+      var hiddenInputs = isArray(node.hidden_inputs) ? node.hidden_inputs.map(String) : [];
+      var hiddenOutputs = isArray(node.hidden_outputs) ? node.hidden_outputs.map(String) : [];
+      var hiddenParams = isArray(node.hidden_params) ? node.hidden_params.map(String) : [];
+      var inputs = Graph.activeInputs(node, type).filter(function (port) { return hiddenInputs.indexOf(String(port.id)) < 0; });
+      var outputs = (type && isArray(type.outputs) ? type.outputs : []).filter(function (port) { return hiddenOutputs.indexOf(String(port.id)) < 0; });
+      var portRows = Math.max(inputs.length, outputs.length);
+      var ports = el("div", {class: "pui-graph-ports"});
+      inputs.forEach(function (port, index) {
+        var portType = String(port.type || "tex");
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + (26 + index * 18 + 4) + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, tabindex: "0", role: "button"});
+        dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
+        dot.title = "Input · " + portType;
+        rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
+        dot.addEventListener("pointerdown", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphStartWire(rec, id, port.id, true, event);
+        });
+        dot.addEventListener("pointerup", function (event) {
+          if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, port.id, event); }
+        });
+        ports.appendChild(dot);
+      });
+      outputs.forEach(function (port, index) {
+        var portType = String(port.type || "tex");
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + (26 + index * 18 + 4) + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, tabindex: "0", role: "button"});
+        dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
+        dot.title = "Output · " + portType;
+        rec.portEls[id + ":output:" + String(port.id)] = {el: dot, type: portType, isInput: false};
+        dot.addEventListener("pointerdown", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphStartWire(rec, id, port.id, false, event);
+        });
+        ports.appendChild(dot);
+      });
+      for (var row = 0; row < portRows; row++) {
+        var line = el("div", {class: "pui-graph-port-row"});
+        var inLabel = inputs[row] ? el("span", {class: "pui-graph-port-in", text: String(inputs[row].label || inputs[row].id)}) : el("span");
+        if (inputs[row]) inLabel.title = "in · " + String(inputs[row].type || "tex");
+        var outLabel = outputs[row] ? el("span", {class: "pui-graph-port-out", text: String(outputs[row].label || outputs[row].id)}) : el("span");
+        if (outputs[row]) outLabel.title = "out · " + String(outputs[row].type || "tex");
+        line.appendChild(inLabel);
+        line.appendChild(outLabel);
+        ports.appendChild(line);
+      }
+      nodeEl.appendChild(ports);
+      var paramDefs = type && isArray(type.params) ? type.params.filter(function (param) { return hiddenParams.indexOf(String(param.id)) < 0; }) : [];
+      if (paramDefs.length) {
+        var paramsEl = el("div", {class: "pui-graph-params"});
+        var paramEls = [];
+        paramDefs.forEach(function (param) {
+          var raw = isObject(node.params) ? node.params[param.id] : undefined;
+          var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
+          var line = el("div", {class: "pui-graph-param-line"});
+          line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
+          var valueButton = el("button", {type: "button", class: "pui-graph-param-value", text: String(shown), "data-param-id": String(param.id)});
+          var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
+          valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+          if (numeric) {
+            valueButton.setAttribute("role", "slider");
+            valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
+            valueButton.title = "Drag to adjust · Alt fine · Shift coarse · double-click reset";
+            valueButton.addEventListener("pointerdown", function (event) { self.graphParamScrub(rec, node, param, event); });
+            valueButton.addEventListener("keydown", function (event) { self.graphParamKey(rec, node, param, event); });
+            valueButton.addEventListener("pointermove", function (event) { self.graphParamScrubMove(rec, event); });
+            valueButton.addEventListener("pointerup", function (event) { self.graphParamScrubEnd(rec, event); });
+            valueButton.addEventListener("pointercancel", function () { self.graphParamScrubEnd(rec, null); });
+            valueButton.addEventListener("dblclick", function (event) {
+              if (event.preventDefault) event.preventDefault();
+              self.graphSetNodeParam(rec, node.id, param.id, param.default === undefined ? 0 : param.default);
+            });
+          }
+          line.appendChild(valueButton);
+          paramsEl.appendChild(line);
+          paramEls.push(valueButton);
+        });
+        nodeEl.appendChild(paramsEl);
+        rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
+      }
+      var subgraphPath = typeof node.subgraph === "string" ? node.subgraph : "";
+      if (subgraphPath) {
+        nodeEl.classList.add("is-subgraph");
+        nodeEl.setAttribute("data-subgraph", subgraphPath);
+        var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "Open subgraph"});
+        openSubgraph.setAttribute("aria-label", "Open subgraph " + nodeLabel);
+        openSubgraph.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+        openSubgraph.addEventListener("click", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphOpenSubgraph(rec, node);
+        });
+        nodeEl.appendChild(openSubgraph);
+      }
+      content.appendChild(nodeEl);
+      nodeEls[id] = nodeEl;
+      (function (nodeId, nodeElement) {
+        nodeElement.addEventListener("pointerdown", function (event) {
+          if (event.button !== undefined && event.button !== 0) return;
+          if (event.preventDefault) event.preventDefault();
+          self.graphSelect(rec, nodeId, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+          rec.dragging = {start: deepClone(rec.graph), x: event.clientX || 0, y: event.clientY || 0, moved: false, ids: Object.keys(rec.selected), dx: 0, dy: 0};
+          if (event.stopPropagation) event.stopPropagation();
+        });
+        nodeElement.addEventListener("click", function (event) {
+          self.graphSelect(rec, nodeId, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+          if (event.stopPropagation) event.stopPropagation();
+        });
+      })(id, nodeEl);
+    });
+    cables.forEach(function (cable) {
+      if (!isObject(cable)) return;
+      var from = Graph.parseRef(cable.from);
+      var to = Graph.parseRef(cable.to);
+      if (!from || !to || !nodeEls[from.node] || !nodeEls[to.node]) return;
+      var fromNode = nodes.find(function (node) { return String(node.id) === from.node; });
+      var toNode = nodes.find(function (node) { return String(node.id) === to.node; });
+      var a = Graph.portPosition(fromNode, typeMap[String(fromNode.type)], from.port, false);
+      var b = Graph.portPosition(toNode, typeMap[String(toNode.type)], to.port, true);
+      if (!a || !b) return;
+      var p = Graph.cablePath(a, b);
+      var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
+      var path = svgEl("path", {
+        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-"),
+        "data-cable-id": String(cable.id || ""),
+        "data-cable-type": String(cableType),
+        d: "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2
+      });
+      path.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphSelectCable(rec, cable);
+      });
+      cableGroup.appendChild(path);
+      rec.cableRefs.push({el: path, cable: cable});
+    });
+    rec.guideLayer = el("div", {class: "pui-graph-guides"});
+    content.appendChild(rec.guideLayer);
+    viewport.appendChild(content);
+    var bodyEl = el("div", {class: "pui-graph-body"});
+    bodyEl.appendChild(viewport);
+    var inspector = el("aside", {class: "pui-graph-inspector", "aria-label": "Node inspector"});
+    bodyEl.appendChild(inspector);
+    root.appendChild(bodyEl);
+    rec.inspector = inspector;
+    var minimap = el("div", {class: "pui-graph-minimap", "aria-label": "Graph minimap"});
+    var minimapSvg = svgEl("svg", {viewBox: "0 0 180 120", role: "img", "aria-label": "Graph minimap"});
+    minimap.appendChild(minimapSvg);
+    viewport.appendChild(minimap);
+    rec.minimap = {element: minimap, svg: minimapSvg};
+    var view = isObject(graph.view) ? {
+      zoom: Number(graph.view.zoom) > 0 ? Number(graph.view.zoom) : 1,
+      panX: finiteNumber(graph.view.panX), panY: finiteNumber(graph.view.panY)
+    } : {zoom: 1, panX: 0, panY: 0};
+    rec.view = view;
+    rec.renderMinimap = renderMinimap;
+    rec.applyView = applyView;
+    rec.__puiApplyBookmark = function (bookmark) {
+      if (!isObject(bookmark)) return;
+      view.zoom = Number(bookmark.zoom) > 0 ? Number(bookmark.zoom) : view.zoom;
+      view.panX = finiteNumber(bookmark.panX);
+      view.panY = finiteNumber(bookmark.panY);
+      applyView();
+    };
+    function finiteNumber(value) { return typeof value === "number" && isFinite(value) ? value : 0; }
+    function clientToGraph(event) {
+      var box = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : {left: 0, top: 0};
+      return {
+        x: ((event.clientX || 0) - box.left - view.panX) / view.zoom,
+        y: ((event.clientY || 0) - box.top - view.panY) / view.zoom
+      };
+    }
+    function renderMinimap() {
+      if (!rec.minimap || !Graph) return;
+      var bounds = Graph.graphBounds(rec.graph, rec.types);
+      var pad = 32;
+      var width = Math.max(180, bounds.w + pad * 2), height = Math.max(120, bounds.h + pad * 2);
+      var aspect = 180 / 120;
+      if (width / height > aspect) height = width / aspect;
+      else width = height * aspect;
+      var x1 = bounds.x1 + bounds.w / 2 - width / 2;
+      var y1 = bounds.y1 + bounds.h / 2 - height / 2;
+      rec.minimap.bounds = {x1: x1, y1: y1, w: width, h: height};
+      rec.minimap.svg.setAttribute("viewBox", x1 + " " + y1 + " " + width + " " + height);
+      rec.minimap.svg.textContent = "";
+      (rec.graph.frames || []).forEach(function (frame) {
+        if (!isObject(frame)) return;
+        rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-frame", x: Number(frame.x) || 0, y: Number(frame.y) || 0, width: Number(frame.w) || 0, height: Number(frame.h) || 0}));
+      });
+      (rec.graph.nodes || []).forEach(function (node) {
+        var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+        rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-node", x: rect.x, y: rect.y, width: rect.w, height: rect.h}));
+      });
+      var vw = viewport.clientWidth || 800, vh = viewport.clientHeight || 500;
+      rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-view", x: -view.panX / view.zoom, y: -view.panY / view.zoom, width: vw / view.zoom, height: vh / view.zoom}));
+      rec.minimap.svg.setAttribute("aria-label", "Graph minimap: " + (rec.graph.nodes || []).length + " nodes");
+    }
+    function applyView() {
+      // The content layer owns the graph transform. Cables live inside it, so
+      // applying the same transform to the SVG group would pan/scale them twice.
+      content.style.transform = "translate(" + view.panX + "px," + view.panY + "px) scale(" + view.zoom + ")";
+      if (cableGroup.getAttribute("transform")) cableGroup.removeAttribute("transform");
+      if (rec.renderMinimap) rec.renderMinimap();
+    }
+    applyView();
+    minimap.addEventListener("pointerdown", function (event) {
+      if (!rec.minimap || !rec.minimap.bounds) return;
+      if (event.stopPropagation) event.stopPropagation();
+      var box = minimap.getBoundingClientRect ? minimap.getBoundingClientRect() : {left: 0, top: 0, width: 180, height: 120};
+      var b = rec.minimap.bounds;
+      var gx = b.x1 + ((event.clientX || 0) - box.left) / Math.max(1, box.width) * b.w;
+      var gy = b.y1 + ((event.clientY || 0) - box.top) / Math.max(1, box.height) * b.h;
+      var vw = viewport.clientWidth || 800, vh = viewport.clientHeight || 500;
+      view.panX = vw / 2 - gx * view.zoom;
+      view.panY = vh / 2 - gy * view.zoom;
+      applyView();
+    });
+    var drag = null;
+    viewport.addEventListener("wheel", function (event) {
+      if (event.preventDefault) event.preventDefault();
+      var factor = event.deltaY < 0 ? 1.1 : 0.9;
+      var next = Math.max(0.2, Math.min(3, view.zoom * factor));
+      var rect = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : {left: 0, top: 0};
+      var sx = (event.clientX || 0) - rect.left;
+      var sy = (event.clientY || 0) - rect.top;
+      var gx = (sx - view.panX) / view.zoom;
+      var gy = (sy - view.panY) / view.zoom;
+      view.zoom = next;
+      view.panX = sx - gx * next;
+      view.panY = sy - gy * next;
+      applyView();
+    }, {passive: false});
+    viewport.addEventListener("pointerdown", function (event) {
+      if (event.target && event.target.closest && (event.target.closest(".pui-graph-node") || event.target.closest(".pui-graph-port-dot") || event.target.closest(".pui-graph-cable"))) return;
+      if (event.shiftKey) {
+        var start = clientToGraph(event);
+        var box = el("div", {class: "pui-graph-marquee"});
+        content.appendChild(box);
+        rec.marquee = {start: start, element: box};
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      self.graphClearSelection(rec);
+      drag = {x: event.clientX || 0, y: event.clientY || 0, panX: view.panX, panY: view.panY};
+      if (viewport.setPointerCapture && event.pointerId !== undefined) viewport.setPointerCapture(event.pointerId);
+    });
+    viewport.addEventListener("pointermove", function (event) {
+      if (rec.marquee) {
+        var point = clientToGraph(event);
+        var x1 = Math.min(rec.marquee.start.x, point.x);
+        var y1 = Math.min(rec.marquee.start.y, point.y);
+        var x2 = Math.max(rec.marquee.start.x, point.x);
+        var y2 = Math.max(rec.marquee.start.y, point.y);
+        rec.marquee.element.setAttribute("style", "left:" + x1 + "px;top:" + y1 + "px;width:" + (x2 - x1) + "px;height:" + (y2 - y1) + "px;");
+        rec.marquee.box = {x1: x1, y1: y1, x2: x2, y2: y2};
+        return;
+      }
+      if (rec.wiring) {
+        var wirePoint = clientToGraph(event);
+        self.graphUpdateWire(rec, wirePoint);
+        return;
+      }
+      if (rec.frameResize) {
+        var rdx = (event.clientX || 0) - rec.frameResize.x;
+        var rdy = (event.clientY || 0) - rec.frameResize.y;
+        var rw = Math.max(80, rec.frameResize.w + rdx);
+        var rh = Math.max(60, rec.frameResize.h + rdy);
+        rec.frameResize.frame.w = rw;
+        rec.frameResize.frame.h = rh;
+        self.updateGraphDom(rec);
+        return;
+      }
+      if (rec.frameDrag) {
+        var fdx = (event.clientX || 0) - rec.frameDrag.x;
+        var fdy = (event.clientY || 0) - rec.frameDrag.y;
+        if (!rec.frameDrag.moved && Math.abs(fdx) + Math.abs(fdy) < 2) return;
+        rec.frameDrag.moved = true;
+        var frameSnap = Number(rec.graphOptions.snap || 0);
+        if (event.ctrlKey || event.metaKey) frameSnap = 0;
+        var frameDx = 0, frameDy = 0;
+        var startFrame = rec.frameDrag.start.frames.find(function (f) { return String(f.id) === String(rec.frameDrag.frame.id); });
+        if (startFrame) {
+          var frameX = (Number(startFrame.x) || 0) + fdx;
+          var frameY = (Number(startFrame.y) || 0) + fdy;
+          if (frameSnap > 0) {
+            frameX = Math.round(frameX / frameSnap) * frameSnap;
+            frameY = Math.round(frameY / frameSnap) * frameSnap;
+          }
+          rec.frameDrag.frame.x = frameX;
+          rec.frameDrag.frame.y = frameY;
+          frameDx = frameX - (Number(startFrame.x) || 0);
+          frameDy = frameY - (Number(startFrame.y) || 0);
+          var startNodes = rec.frameDrag.start.nodes || [];
+          rec.frameDrag.ids.forEach(function (id) {
+            var node = rec.graph.nodes.find(function (n) { return String(n.id) === String(id); });
+            var startNode = startNodes.find(function (n) { return String(n.id) === String(id); });
+            if (node && startNode) { node.x = (Number(startNode.x) || 0) + frameDx; node.y = (Number(startNode.y) || 0) + frameDy; }
+          });
+        }
+        self.updateGraphDom(rec);
+        return;
+      }
+      if (rec.dragging) {
+        var dx = (event.clientX || 0) - rec.dragging.x;
+        var dy = (event.clientY || 0) - rec.dragging.y;
+        if (!rec.dragging.moved && Math.abs(dx) + Math.abs(dy) < 2) return;
+        rec.dragging.moved = true;
+        rec.dragging.dx = dx;
+        rec.dragging.dy = dy;
+        var startNodes = rec.dragging.start.nodes || [];
+        var snap = Number(rec.graphOptions.snap || 0);
+        if (event.ctrlKey || event.metaKey) snap = 0;
+        var aligned = self.graphAlign(rec, rec.dragging.start, rec.dragging.ids, dx, dy, 6 / Math.max(0.2, view.zoom));
+        var alignedX = !!(aligned && aligned.x !== null && aligned.x !== undefined);
+        var alignedY = !!(aligned && aligned.y !== null && aligned.y !== undefined);
+        if (aligned) {
+          dx = aligned.dx;
+          dy = aligned.dy;
+          rec.dragging.dx = dx;
+          rec.dragging.dy = dy;
+          self.graphDrawGuides(rec, aligned.x, aligned.y);
+        } else {
+          self.graphClearGuides(rec);
+        }
+        rec.dragging.ids.forEach(function (id) {
+          var node = rec.graph.nodes.find(function (n) { return String(n.id) === String(id); });
+          var start = startNodes.find(function (n) { return String(n.id) === String(id); });
+          if (!node || !start) return;
+          var x = (Number(start.x) || 0) + dx;
+          var y = (Number(start.y) || 0) + dy;
+          if (!alignedX && snap > 0) x = Math.round(x / snap) * snap;
+          if (!alignedY && snap > 0) y = Math.round(y / snap) * snap;
+          node.x = x;
+          node.y = y;
+        });
+        self.updateGraphDom(rec);
+        return;
+      }
+      if (!drag) return;
+      view.panX = drag.panX + (event.clientX || 0) - drag.x;
+      view.panY = drag.panY + (event.clientY || 0) - drag.y;
+      applyView();
+    });
+    viewport.addEventListener("pointerup", function (event) {
+      if (rec.frameResize) {
+        var resized = rec.frameResize;
+        rec.frameResize = null;
+        self.graphPushUndo(rec, resized.start);
+        self.writeGraph(rec, {op: "frame.resize", id: resized.frame.id, w: resized.frame.w, h: resized.frame.h});
+        return;
+      }
+      if (rec.frameDrag) {
+        var movedFrame = rec.frameDrag;
+        rec.frameDrag = null;
+        if (movedFrame.moved) {
+          self.graphPushUndo(rec, movedFrame.start);
+          self.writeGraph(rec, {op: "frame.move", id: movedFrame.frame.id, ids: movedFrame.ids});
+        }
+        return;
+      }
+      if (rec.marquee) {
+        var box = rec.marquee.box;
+        if (rec.marquee.element && rec.marquee.element.parentNode) rec.marquee.element.parentNode.removeChild(rec.marquee.element);
+        rec.marquee = null;
+        if (box) {
+          var ids = [];
+          rec.graph.nodes.forEach(function (node) {
+            var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+            if (rect.x + rect.w >= box.x1 && rect.x <= box.x2 && rect.y + rect.h >= box.y1 && rect.y <= box.y2) ids.push(String(node.id));
+          });
+          self.graphSetSelection(rec, ids);
+        }
+        return;
+      }
+      if (rec.wiring) {
+        self.graphCancelWire(rec);
+        return;
+      }
+      if (rec.dragging) {
+        var finished = rec.dragging;
+        rec.dragging = null;
+        self.graphClearGuides(rec);
+        if (finished.moved) {
+          self.graphPushUndo(rec, finished.start);
+          self.writeGraph(rec, {op: "node.move", ids: finished.ids, dx: finished.dx, dy: finished.dy});
+        }
+        return;
+      }
+      drag = null;
+    });
+    viewport.addEventListener("pointercancel", function () {
+      if (rec.frameResize || rec.frameDrag) {
+        rec.frameResize = null;
+        rec.frameDrag = null;
+        self.updateGraphDom(rec);
+      }
+      if (rec.dragging) {
+        rec.graph = rec.dragging.start;
+        rec.dragging = null;
+        self.graphClearGuides(rec);
+        self.updateGraphDom(rec);
+      }
+      drag = null;
+    });
+    viewport.addEventListener("keydown", function (event) {
+      var key = String(event.key || "");
+      if (key === "Delete" || key === "Backspace") {
+        event.preventDefault();
+        self.graphDelete(rec);
+      } else if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
+        event.preventDefault();
+        var step = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
+        var dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
+        var dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
+        self.graphMove(rec, dx, dy);
+      } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) self.graphRedo(rec); else self.graphUndo(rec);
+      } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "y") {
+        event.preventDefault();
+        self.graphRedo(rec);
+      } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "p") {
+        event.preventDefault();
+        self.openGraphAdd(rec);
+      } else if (key === "Escape") {
+        self.graphCancelWire(rec);
+        self.graphClearSelection(rec);
+      } else if (!event.ctrlKey && !event.metaKey && !event.altKey && key.toLowerCase() === "f") {
+        event.preventDefault();
+        self.graphFit(rec);
+      } else if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "d") {
+        event.preventDefault();
+        self.graphDuplicate(rec);
+      }
+    });
+    // Accessible graph outline is a first-class view, not a hidden fallback.
+    var outline = el("details", {class: "pui-graph-outline"});
+    outline.appendChild(el("summary", {text: "Graph outline"}));
+    var list = el("ul");
+    nodes.forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      var type = typeMap[String(node.type)];
+      var item = el("li");
+      var button = el("button", {type: "button", class: "pui-graph-outline-node", text: String(node.label || (type && type.label) || id)});
+      button.addEventListener("click", function () {
+        if (nodeEls[id] && nodeEls[id].focus) nodeEls[id].focus();
+      });
+      item.appendChild(button);
+      if (type) item.appendChild(el("span", {class: "pui-graph-outline-type", text: String(type.label || type.id)}));
+      list.appendChild(item);
+    });
+    cables.forEach(function (cable) {
+      if (!isObject(cable)) return;
+      list.appendChild(el("li", {class: "pui-graph-outline-cable", text: String(cable.from) + " → " + String(cable.to)}));
+    });
+    if (!nodes.length) list.appendChild(el("li", {text: "No nodes."}));
+    outline.appendChild(list);
+    root.appendChild(outline);
+    this.graphRenderBookmarks(rec);
+    this.graphRenderPresets(rec);
+    if (block.selection_bind) this.selectionRecords.push({owner: rec, refresh: function () { self.graphSelectionRefresh(rec); }});
+    this.renderGraphInspector(rec);
+    return root;
+  };
+
+  Renderer.prototype.graphClearGuides = function (rec) {
+    if (!rec.guideLayer) return;
+    rec.guideLayer.textContent = "";
+  };
+
+  Renderer.prototype.graphDrawGuides = function (rec, x, y) {
+    if (!rec.guideLayer) return;
+    var Graph = global.PupitreGraph;
+    var bounds = Graph ? Graph.graphBounds(rec.graph, rec.types) : {x1: 0, y1: 0, h: 1000, w: 1000};
+    rec.guideLayer.textContent = "";
+    if (x !== null && x !== undefined) {
+      rec.guideLayer.appendChild(el("span", {class: "pui-graph-guide-v", style: "left:" + x + "px;top:" + (bounds.y1 - 40) + "px;height:" + (bounds.h + 80) + "px;"}));
+    }
+    if (y !== null && y !== undefined) {
+      rec.guideLayer.appendChild(el("span", {class: "pui-graph-guide-h", style: "top:" + y + "px;left:" + (bounds.x1 - 40) + "px;width:" + (bounds.w + 80) + "px;"}));
+    }
+  };
+
+  Renderer.prototype.graphAlign = function (rec, snapshot, ids, dx, dy, threshold) {
+    var Graph = global.PupitreGraph;
+    if (!Graph || !snapshot) return null;
+    var selected = {};
+    (ids || []).forEach(function (id) { selected[String(id)] = true; });
+    var moving = (snapshot.nodes || []).filter(function (node) { return selected[String(node.id)]; }).map(function (node) {
+      return {node: node, rect: Graph.nodeRect(node, rec.typeMap[String(node.type)])};
+    });
+    if (!moving.length) return null;
+    var staticX = [], staticY = [];
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (selected[String(node.id)]) return;
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      staticX.push(rect.x, rect.x + rect.w / 2, rect.x + rect.w);
+      staticY.push(rect.y, rect.y + rect.h / 2, rect.y + rect.h);
+    });
+    (rec.graph.frames || []).forEach(function (frame) {
+      staticX.push(Number(frame.x) || 0, (Number(frame.x) || 0) + (Number(frame.w) || 0) / 2, (Number(frame.x) || 0) + (Number(frame.w) || 0));
+      staticY.push(Number(frame.y) || 0, (Number(frame.y) || 0) + (Number(frame.h) || 0) / 2, (Number(frame.y) || 0) + (Number(frame.h) || 0));
+    });
+    var bestX = null, bestY = null;
+    moving.forEach(function (entry) {
+      var rect = entry.rect;
+      var edgesX = [rect.x, rect.x + rect.w / 2, rect.x + rect.w];
+      var edgesY = [rect.y, rect.y + rect.h / 2, rect.y + rect.h];
+      staticX.forEach(function (target) {
+        edgesX.forEach(function (edge) {
+          var delta = target - (edge + dx);
+          if (Math.abs(delta) <= threshold && (!bestX || Math.abs(delta) < Math.abs(bestX.delta))) bestX = {delta: delta, guide: target};
+        });
+      });
+      staticY.forEach(function (target) {
+        edgesY.forEach(function (edge) {
+          var delta = target - (edge + dy);
+          if (Math.abs(delta) <= threshold && (!bestY || Math.abs(delta) < Math.abs(bestY.delta))) bestY = {delta: delta, guide: target};
+        });
+      });
+    });
+    if (!bestX && !bestY) return null;
+    return {dx: dx + (bestX ? bestX.delta : 0), dy: dy + (bestY ? bestY.delta : 0), x: bestX ? bestX.guide : null, y: bestY ? bestY.guide : null};
+  };
+
+  Renderer.prototype.graphSelectionRefresh = function (rec) {
+    if (!rec || !rec.block.selection_bind || rec.dragging) return;
+    var state = this.readSelection(String(rec.block.selection_bind), rec.block);
+    rec.selected = {};
+    state.ids.forEach(function (id) { rec.selected[id] = true; });
+    rec.selectedCable = null;
+    rec.selectedFrame = null;
+    Object.keys(rec.frameEls || {}).forEach(function (id) { if (rec.frameEls[id].classList) rec.frameEls[id].classList.remove("is-selected"); });
+    Object.keys(rec.nodeEls || {}).forEach(function (id) { if (rec.nodeEls[id].classList) rec.nodeEls[id].classList.toggle("is-selected", !!rec.selected[id]); });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphSelectFrame = function (rec, frame) {
+    rec.selected = {};
+    rec.selectedCable = null;
+    rec.selectedFrame = frame;
+    rec.nodeEls && Object.keys(rec.nodeEls).forEach(function (id) {
+      if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.remove("is-selected");
+    });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    (Object.keys(rec.frameEls || {})).forEach(function (frameId) {
+      if (rec.frameEls[frameId].classList) rec.frameEls[frameId].classList.toggle("is-selected", rec.frameEls[frameId] && String(frameId) === String(frame.id));
+    });
+    if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "frame", String(frame.title || frame.id || ""));
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphSetFrameField = function (rec, field, value) {
+    if (!rec.selectedFrame) return false;
+    var start = deepClone(rec.graph);
+    rec.selectedFrame[field] = value;
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.writeGraph(rec, {op: "frame." + field, id: rec.selectedFrame.id, value: value});
+    return true;
+  };
+
+  Renderer.prototype.graphFitFrame = function (rec) {
+    var frame = rec.selectedFrame;
+    if (!frame) return false;
+    var Graph = global.PupitreGraph;
+    var nodes = this.graphFrameNodes(rec, frame);
+    if (!nodes.length) return false;
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    nodes.forEach(function (node) {
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
+      x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
+    });
+    var start = deepClone(rec.graph);
+    frame.x = Math.round(x1 - 16);
+    frame.y = Math.round(y1 - 32);
+    frame.w = Math.round(x2 - x1 + 32);
+    frame.h = Math.round(y2 - y1 + 48);
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.writeGraph(rec, {op: "frame.fit", id: frame.id});
+    if (rec.inspector) this.renderGraphInspector(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphNavigate = function (rec, index) {
+    var stack = (rec.navStack || []).slice(0, Math.max(0, index + 1));
+    if (!stack.length || index >= (rec.navStack || []).length - 1) return false;
+    this.rebuildGraph(rec, null, stack);
+    return true;
+  };
+
+  Renderer.prototype.graphOpenSubgraph = function (rec, node) {
+    if (!node || typeof node.subgraph !== "string" || !node.subgraph) return false;
+    var nested = this.adapter.getValue(node.subgraph);
+    if (!isObject(nested)) {
+      this.adapter.announce("error", "Subgraph is missing: " + node.subgraph);
+      return false;
+    }
+    var stack = (rec.navStack || []).slice();
+    if (stack.some(function (entry) { return entry.path === node.subgraph; })) return false;
+    stack.push({path: node.subgraph, label: String(node.label || node.id || "Subgraph")});
+    this.rebuildGraph(rec, null, stack);
+    return true;
+  };
+
+  Renderer.prototype.graphFrameNodes = function (rec, frame) {
+    var Graph = global.PupitreGraph;
+    if (!Graph || !frame) return [];
+    if (isArray(frame.members)) {
+      var wanted = {};
+      frame.members.forEach(function (id) { wanted[String(id)] = true; });
+      return (rec.graph.nodes || []).filter(function (node) { return wanted[String(node.id)]; });
+    }
+    return (rec.graph.nodes || []).filter(function (node) {
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+      return cx >= Number(frame.x) && cx <= Number(frame.x) + Number(frame.w) && cy >= Number(frame.y) && cy <= Number(frame.y) + Number(frame.h);
+    });
+  };
+
+  Renderer.prototype.graphGroupSelection = function (rec) {
+    if (rec.block.readonly) return null;
+    var Graph = global.PupitreGraph;
+    var nodes = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
+    var ids = nodes.map(function (node) { return String(node.id); });
+    if (!Graph || !ids.length) return null;
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    nodes.forEach(function (node) {
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
+      x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
+    });
+    var index = 1;
+    while ((rec.graph.frames || []).some(function (frame) { return String(frame.id) === "f" + index; })) index++;
+    var frame = {
+      id: "f" + index,
+      x: Math.round(x1 - 20), y: Math.round(y1 - 42),
+      w: Math.max(120, Math.round(x2 - x1 + 40)), h: Math.max(100, Math.round(y2 - y1 + 60)),
+      title: "Group " + index, members: ids
+    };
+    var start = deepClone(rec.graph);
+    rec.graph.frames = (rec.graph.frames || []).concat([frame]);
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "frame.add", id: frame.id, members: ids});
+    this.rebuildGraph(rec);
+    var newRec = this.graphRecords[this.graphRecords.length - 1];
+    if (newRec) {
+      var created = (newRec.graph.frames || []).filter(function (item) { return String(item.id) === String(frame.id); })[0];
+      if (created) this.graphSelectFrame(newRec, created);
+    }
+    return frame.id;
+  };
+
+  Renderer.prototype.graphSelectFrameMembers = function (rec) {
+    if (!rec.selectedFrame) return false;
+    var ids = this.graphFrameNodes(rec, rec.selectedFrame).map(function (node) { return String(node.id); });
+    rec.selected = {};
+    ids.forEach(function (id) { rec.selected[id] = true; });
+    rec.selectedFrame = null;
+    rec.selectedCable = null;
+    Object.keys(rec.frameEls || {}).forEach(function (id) { if (rec.frameEls[id].classList) rec.frameEls[id].classList.remove("is-selected"); });
+    Object.keys(rec.nodeEls || {}).forEach(function (id) { if (rec.nodeEls[id].classList) rec.nodeEls[id].classList.toggle("is-selected", !!rec.selected[id]); });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    if (rec.block.selection_bind && rec.graphPath === String(rec.block.bind || "")) this.writeSelection(rec, {ids: ids, active: ids[0] || ""}, "node", "");
+    this.renderGraphInspector(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphSnapshot = function (rec) {
+    return {
+      nodes: deepClone(rec.graph.nodes || []),
+      cables: deepClone(rec.graph.cables || []),
+      frames: deepClone(rec.graph.frames || []),
+      output: rec.graph.output
+    };
+  };
+
+  Renderer.prototype.graphRenderPresets = function (rec) {
+    if (!rec.presetsBar) return;
+    var self = this;
+    rec.presetsBar.textContent = "";
+    var presets = isArray(rec.graph.presets) ? rec.graph.presets : [];
+    if (!rec.block.readonly) {
+      var name = el("input", {type: "text", class: "pui-graph-preset-name", placeholder: "Preset name", "aria-label": "Preset name"});
+      rec.presetName = name;
+      rec.presetsBar.appendChild(name);
+      var save = el("button", {type: "button", class: "pui-button", text: "Save preset"});
+      save.addEventListener("click", function () { self.graphSavePreset(rec); });
+      rec.presetsBar.appendChild(save);
+    }
+    presets.forEach(function (preset) {
+      if (!isObject(preset)) return;
+      var chip = el("span", {class: "pui-graph-preset"});
+      var recall = el("button", {type: "button", class: "pui-graph-preset-recall", text: String(preset.label || preset.id || "Preset")});
+      recall.addEventListener("click", function () { self.graphRecallPreset(rec, preset.id); });
+      chip.appendChild(recall);
+      if (!rec.block.readonly) {
+        var remove = el("button", {type: "button", class: "pui-graph-preset-delete", text: "×", "aria-label": "Delete preset " + String(preset.label || preset.id || "")});
+        remove.addEventListener("click", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphDeletePreset(rec, preset.id);
+        });
+        chip.appendChild(remove);
+      }
+      rec.presetsBar.appendChild(chip);
+    });
+    if (!rec.block.readonly && presets.length) {
+      var morph = el("span", {class: "pui-graph-morph"});
+      var from = el("select", {"aria-label": "Morph from preset"});
+      var to = el("select", {"aria-label": "Morph to preset"});
+      presets.forEach(function (preset) {
+        from.appendChild(el("option", {value: String(preset.id), text: String(preset.label || preset.id)}));
+        to.appendChild(el("option", {value: String(preset.id), text: String(preset.label || preset.id)}));
+      });
+      if (presets.some(function (preset) { return String(preset.id) === String(rec.morphA); })) from.value = String(rec.morphA);
+      else from.value = String(presets[0].id);
+      if (presets.some(function (preset) { return String(preset.id) === String(rec.morphB); })) to.value = String(rec.morphB);
+      else to.value = String(presets[presets.length - 1].id);
+      if (presets.length > 1 && from.value === to.value) to.value = String(presets[presets.length - 1].id);
+      rec.morphA = from.value;
+      rec.morphB = to.value;
+      from.addEventListener("change", function () { rec.morphA = from.value; });
+      to.addEventListener("change", function () { rec.morphB = to.value; });
+      morph.appendChild(el("span", {class: "pui-graph-morph-label", text: "Morph"}));
+      morph.appendChild(from);
+      morph.appendChild(to);
+      var morphButton = el("button", {type: "button", class: "pui-button", text: "Morph"});
+      morphButton.addEventListener("click", function () { self.graphMorphPresets(rec, from.value, to.value); });
+      morph.appendChild(morphButton);
+      rec.presetsBar.appendChild(morph);
+    }
+  };
+
+  Renderer.prototype.graphSavePreset = function (rec) {
+    if (rec.block.readonly) return null;
+    var presets = isArray(rec.graph.presets) ? rec.graph.presets : [];
+    var index = 1;
+    while (presets.some(function (preset) { return String(preset.id) === "p" + index; })) index++;
+    var label = rec.presetName && String(rec.presetName.value || "").trim();
+    if (!label) label = "Preset " + index;
+    var start = deepClone(rec.graph);
+    presets.push({id: "p" + index, label: label, graph: this.graphSnapshot(rec)});
+    rec.graph.presets = presets;
+    rec.presetName && (rec.presetName.value = "");
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "preset.save", id: "p" + index, label: label});
+    this.graphRenderPresets(rec);
+    return "p" + index;
+  };
+
+  Renderer.prototype.graphRecallPreset = function (rec, id) {
+    if (rec.block.readonly) return false;
+    var preset = (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (item) { return String(item.id) === String(id); });
+    if (!preset || !isObject(preset.graph) || !isArray(preset.graph.nodes) || !isArray(preset.graph.cables)) return false;
+    var Graph = global.PupitreGraph;
+    if (Graph && Graph.validateGraph({nodes: preset.graph.nodes, cables: preset.graph.cables, frames: preset.graph.frames || [], output: preset.graph.output}, rec.types).some(function (issue) { return issue.level === "error"; })) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.nodes = deepClone(preset.graph.nodes);
+    rec.graph.cables = deepClone(preset.graph.cables);
+    rec.graph.frames = deepClone(preset.graph.frames || []);
+    rec.graph.output = preset.graph.output;
+    rec.selected = {};
+    rec.selectedFrame = null;
+    rec.selectedCable = null;
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "preset.recall", id: String(id)});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphDeletePreset = function (rec, id) {
+    if (rec.block.readonly) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.presets = (isArray(rec.graph.presets) ? rec.graph.presets : []).filter(function (preset) { return String(preset.id) !== String(id); });
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "preset.delete", id: String(id)});
+    this.graphRenderPresets(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphMorphPresets = function (rec, fromId, toId) {
+    if (rec.block.readonly) return false;
+    var from = (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (preset) { return String(preset.id) === String(fromId); });
+    var to = (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (preset) { return String(preset.id) === String(toId); });
+    if (!from || !to || typeof this.adapter.graphAction !== "function") {
+      this.adapter.announce("warning", "Host does not expose graph morph.");
+      return false;
+    }
+    var result = this.adapter.graphAction({op: "preset.morph", from: String(fromId), to: String(toId), duration: 1, easing: "smoothstep"}, rec.graph, rec.block);
+    if (result === false) return false;
+    this.adapter.announce("info", "Morphing " + String(from.label || fromId) + " → " + String(to.label || toId) + ".");
+    return true;
+  };
+
+  Renderer.prototype.graphBookmarks = function (rec) {
+    return rec.graph && isObject(rec.graph.view) && isArray(rec.graph.view.bookmarks) ? rec.graph.view.bookmarks : [];
+  };
+
+  Renderer.prototype.graphRenderBookmarks = function (rec) {
+    if (!rec.bookmarkBar) return;
+    rec.bookmarkBar.textContent = "";
+    this.graphBookmarks(rec).forEach(function (bookmark) {
+      if (!isObject(bookmark)) return;
+      var button = el("button", {type: "button", class: "pui-graph-bookmark", text: String(bookmark.label || bookmark.id || "View")});
+      button.setAttribute("aria-label", "Restore " + String(bookmark.label || bookmark.id || "bookmark"));
+      button.addEventListener("click", function () { rec.__puiApplyBookmark(bookmark); });
+      rec.bookmarkBar.appendChild(button);
+    });
+  };
+
+  Renderer.prototype.graphSaveBookmark = function (rec) {
+    if (rec.block.readonly) return null;
+    var start = deepClone(rec.graph);
+    if (!isObject(rec.graph.view)) rec.graph.view = {zoom: 1, panX: 0, panY: 0};
+    if (!isArray(rec.graph.view.bookmarks)) rec.graph.view.bookmarks = [];
+    var index = 1;
+    while (rec.graph.view.bookmarks.some(function (bookmark) { return String(bookmark.id) === "b" + index; })) index++;
+    var bookmark = {id: "b" + index, label: "View " + index, zoom: rec.view.zoom, panX: rec.view.panX, panY: rec.view.panY};
+    rec.graph.view.bookmarks.push(bookmark);
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "view.bookmark", id: bookmark.id});
+    this.graphRenderBookmarks(rec);
+    return bookmark.id;
+  };
+
+  Renderer.prototype.graphFit = function (rec) {
+    var Graph = global.PupitreGraph;
+    if (!Graph || !rec || !rec.viewport) return;
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var bounds = Graph.graphBounds(rec.graph, rec.types);
+    var pad = 40;
+    var zoom = Math.min(2, Math.max(0.1, Math.min((box.width - pad * 2) / Math.max(1, bounds.w), (box.height - pad * 2) / Math.max(1, bounds.h))));
+    rec.view.zoom = zoom;
+    rec.view.panX = (box.width - bounds.w * zoom) / 2 - bounds.x1 * zoom;
+    rec.view.panY = (box.height - bounds.h * zoom) / 2 - bounds.y1 * zoom;
+    rec.applyView();
+  };
+
+  Renderer.prototype.graphDuplicate = function (rec) {
+    if (!rec || rec.block.readonly) return false;
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var nodes = rec.graph.nodes || [];
+    var idMap = {};
+    var newNodes = [];
+    ids.forEach(function (id) {
+      var node = nodes.find(function (item) { return String(item.id) === String(id); });
+      if (!node) return;
+      var next = String(id) + "-copy";
+      var index = 2;
+      while (nodes.some(function (item) { return String(item.id) === next; }) || newNodes.some(function (item) { return String(item.id) === next; })) next = String(id) + "-copy" + (index++);
+      idMap[String(id)] = next;
+      var copy = deepClone(node);
+      copy.id = next;
+      copy.x = Number(node.x) + 24;
+      copy.y = Number(node.y) + 24;
+      newNodes.push(copy);
+    });
+    if (!newNodes.length) return false;
+    var start = deepClone(rec.graph);
+    var newCables = [];
+    (rec.graph.cables || []).forEach(function (cable) {
+      var from = global.PupitreGraph.parseRef(cable.from);
+      var to = global.PupitreGraph.parseRef(cable.to);
+      if (!from || !to || !idMap[from.node] || !idMap[to.node]) return;
+      var copy = deepClone(cable);
+      copy.id = String(cable.id || "cable") + "-copy" + (newCables.length ? "-" + (newCables.length + 1) : "");
+      copy.from = idMap[from.node] + "." + from.port;
+      copy.to = idMap[to.node] + "." + to.port;
+      newCables.push(copy);
+    });
+    rec.graph.nodes = nodes.concat(newNodes);
+    rec.graph.cables = (rec.graph.cables || []).concat(newCables);
+    rec.selected = {};
+    Object.keys(idMap).forEach(function (id) { rec.selected[idMap[id]] = true; });
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "node.duplicate", ids: Object.keys(idMap), copies: Object.keys(idMap).map(function (id) { return idMap[id]; })});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphAddFrame = function (rec) {
+    if (rec.block.readonly) return null;
+    var index = 1;
+    while ((rec.graph.frames || []).some(function (frame) { return String(frame.id) === "f" + index; })) index++;
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var view = rec.view || {zoom: 1, panX: 0, panY: 0};
+    var x = Math.round(((box.width || 800) / 2 - (view.panX || 0)) / (view.zoom || 1) - 140);
+    var y = Math.round(((box.height || 500) / 2 - (view.panY || 0)) / (view.zoom || 1) - 90);
+    var frame = {id: "f" + index, x: x, y: y, w: 280, h: 180, title: "Frame " + index};
+    var start = deepClone(rec.graph);
+    rec.graph.frames = (rec.graph.frames || []).concat([frame]);
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "frame.add", id: frame.id});
+    this.rebuildGraph(rec);
+    return frame.id;
+  };
+
+  Renderer.prototype.graphRefreshIssues = function (rec) {
+    var Graph = global.PupitreGraph;
+    if (!Graph) return;
+    rec.issues = Graph.validateGraph(rec.graph, rec.types);
+    var errors = rec.issues.filter(function (issue) { return issue.level === "error"; }).length;
+    if (rec.issueEl) {
+      rec.issueEl.textContent = rec.issues.length + " issue" + (rec.issues.length === 1 ? "" : "s");
+      if (rec.issues.length) rec.issueEl.classList.toggle("is-error", errors > 0);
+      else { rec.issueEl.remove(); rec.issueEl = null; }
+    } else if (rec.issues.length && rec.head) {
+      rec.issueEl = el("span", {class: "pui-graph-issues" + (errors ? " is-error" : ""), text: rec.issues.length + " issue" + (rec.issues.length === 1 ? "" : "s")});
+      rec.head.appendChild(rec.issueEl);
+    }
+  };
+
+  Renderer.prototype.graphSetParam = function (rec, paramId, value) {
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.nodes.forEach(function (node) {
+      if (!rec.selected[String(node.id)]) return;
+      var type = rec.typeMap[String(node.type)];
+      if (!type || !(type.params || []).some(function (param) { return String(param.id) === String(paramId); })) return;
+      node.params = isObject(node.params) ? node.params : {};
+      node.params[paramId] = value;
+    });
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.graphRefreshIssues(rec);
+    this.writeGraph(rec, {op: "node.param", ids: ids, param: String(paramId), value: value});
+    return true;
+  };
+
+  Renderer.prototype.graphSetNodeField = function (rec, field, value) {
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.nodes.forEach(function (node) {
+      if (rec.selected[String(node.id)]) node[field] = value;
+    });
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.graphRefreshIssues(rec);
+    this.writeGraph(rec, {op: "node." + field, ids: ids, value: value});
+    return true;
+  };
+
+  Renderer.prototype.graphSetArity = function (rec, arity) {
+    var ids = Object.keys(rec.selected);
+    if (ids.length !== 1) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.nodes.forEach(function (node) {
+      if (rec.selected[String(node.id)]) node.arity = Math.max(1, Math.round(Number(arity) || 1));
+    });
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "node.arity", ids: ids, value: Number(arity)});
+    this.rebuildGraph(rec, ids[0]);
+    return true;
+  };
+
+  Renderer.prototype.graphInspectorControl = function (rec, param, value, mixed) {
+    var self = this;
+    var type = String(param.type || "float");
+    var options = [];
+    if (Array.isArray(param.options)) options = param.options;
+    else if (Array.isArray(param.values)) options = param.values.map(function (v) { return {value: v, label: v}; });
+    function commit(next) { self.graphSetParam(rec, param.id, next); }
+    if (type === "bool") {
+      var check = el("input", {type: "checkbox"});
+      check.checked = !mixed && !!value;
+      check.addEventListener("change", function () { commit(check.checked); });
+      return check;
+    }
+    if (type === "enum" && options.length) {
+      var select = el("select");
+      options.forEach(function (option) {
+        var optionValue = isObject(option) ? option.value : option;
+        select.appendChild(el("option", {value: String(optionValue), text: String(isObject(option) ? (option.label !== undefined ? option.label : optionValue) : option)}));
+        if (!mixed && equal(optionValue, value)) select.value = String(optionValue);
+      });
+      if (mixed) select.value = "";
+      select.addEventListener("change", function () {
+        var entry = options[select.selectedIndex];
+        commit(isObject(entry) ? entry.value : select.value);
+      });
+      return select;
+    }
+    if (type === "color") {
+      var color = el("input", {type: "color"});
+      color.value = mixed ? "#ffffff" : String(value || "#ffffff").slice(0, 7);
+      color.addEventListener("change", function () { commit(color.value); });
+      return color;
+    }
+    if (type === "vec2" || type === "vec3" || type === "vec4") {
+      var count = Number(type.slice(3));
+      var inputs = [];
+      var vector = el("span", {class: "pui-graph-param-vector"});
+      for (var i = 0; i < count; i++) {
+        (function (index) {
+          var input = el("input", {type: "number", step: "0.01", "aria-label": "Component " + (index + 1)});
+          input.value = mixed || !isArray(value) || value[index] === undefined ? "" : String(value[index]);
+          input.addEventListener("change", function () {
+            var next = inputs.map(function (item) { return Number(item.value) || 0; });
+            commit(next);
+          });
+          inputs.push(input);
+          vector.appendChild(input);
+        })(i);
+      }
+      return vector;
+    }
+    if (type === "int" || type === "float") {
+      var wrap = el("span", {class: "pui-graph-param-number"});
+      var numeric = el("input", {type: "number", step: type === "int" ? "1" : String(param.step !== undefined ? param.step : 0.01)});
+      if (param.min !== undefined) numeric.min = String(param.min);
+      if (param.max !== undefined) numeric.max = String(param.max);
+      numeric.value = mixed ? "" : String(value === undefined ? "" : value);
+      if (mixed) numeric.placeholder = "—";
+      numeric.addEventListener("change", function () { commit(type === "int" ? Math.round(Number(numeric.value)) : Number(numeric.value)); });
+      if (param.min !== undefined && param.max !== undefined) {
+        var range = el("input", {type: "range", step: String(param.step !== undefined ? param.step : (type === "int" ? 1 : 0.01))});
+        range.min = String(param.min); range.max = String(param.max);
+        range.value = mixed ? String(param.min) : String(value === undefined ? param.min : value);
+        range.addEventListener("input", function () { numeric.value = range.value; commit(type === "int" ? Math.round(Number(range.value)) : Number(range.value)); });
+        wrap.appendChild(range);
+      }
+      wrap.appendChild(numeric);
+      return wrap;
+    }
+    var line = el("input", {type: "text"});
+    line.value = mixed ? "" : String(value === undefined ? "" : value);
+    line.addEventListener("change", function () { commit(line.value); });
+    return line;
+  };
+
+  Renderer.prototype.renderGraphInspector = function (rec) {
+    var self = this;
+    if (!rec.inspector) return;
+    rec.inspector.textContent = "";
+    if (rec.selectedFrame) {
+      var frame = rec.selectedFrame;
+      rec.inspector.appendChild(el("h5", {text: String(frame.title || "Frame")}));
+      rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: isArray(frame.members) ? "Group · " + frame.members.length + " members" : "Frame"}));
+      var frameTitleRow = el("div", {class: "pui-graph-param"});
+      frameTitleRow.appendChild(el("label", {text: "Title"}));
+      var frameTitle = el("input", {type: "text", "aria-label": "Frame title"});
+      frameTitle.value = String(frame.title || "");
+      frameTitle.addEventListener("change", function () { self.graphSetFrameField(rec, "title", frameTitle.value); });
+      frameTitleRow.appendChild(frameTitle);
+      rec.inspector.appendChild(frameTitleRow);
+      var sizeRow = el("div", {class: "pui-graph-param pui-graph-frame-size"});
+      sizeRow.appendChild(el("label", {text: "Size"}));
+      var frameW = el("input", {type: "number", step: "1", min: "80", "aria-label": "Frame width"});
+      frameW.value = String(frame.w || 0);
+      frameW.addEventListener("change", function () { self.graphSetFrameField(rec, "w", Math.max(80, Number(frameW.value))); });
+      var frameH = el("input", {type: "number", step: "1", min: "60", "aria-label": "Frame height"});
+      frameH.value = String(frame.h || 0);
+      frameH.addEventListener("change", function () { self.graphSetFrameField(rec, "h", Math.max(60, Number(frameH.value))); });
+      sizeRow.appendChild(frameW);
+      sizeRow.appendChild(frameH);
+      rec.inspector.appendChild(sizeRow);
+      var frameActions = el("div", {class: "pui-graph-inspector-actions"});
+      if (isArray(frame.members)) {
+        var selectMembers = el("button", {type: "button", class: "pui-button", text: "Select members"});
+        selectMembers.addEventListener("click", function () { self.graphSelectFrameMembers(rec); });
+        frameActions.appendChild(selectMembers);
+      }
+      var fit = el("button", {type: "button", class: "pui-button", text: "Fit to contents"});
+      fit.addEventListener("click", function () { self.graphFitFrame(rec); });
+      var remove = el("button", {type: "button", class: "pui-button pui-danger", text: "Delete frame"});
+      remove.addEventListener("click", function () { self.graphDelete(rec); });
+      frameActions.appendChild(fit);
+      frameActions.appendChild(remove);
+      rec.inspector.appendChild(frameActions);
+      return;
+    }
+    var selected = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
+    if (!selected.length) {
+      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? "Cable" : "Inspector"}));
+      rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: rec.selectedCable ? (rec.selectedCable.from + " → " + rec.selectedCable.to) : "Select a node or cable."}));
+      return;
+    }
+    var firstType = rec.typeMap[String(selected[0].type)] || null;
+    rec.inspector.appendChild(el("h5", {text: selected.length > 1 ? selected.length + " nodes" : String(selected[0].label || (firstType && firstType.label) || selected[0].type)}));
+    if (firstType) rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: String(firstType.label || firstType.id)}));
+    var labelRow = el("div", {class: "pui-graph-param"});
+    labelRow.appendChild(el("label", {text: "Label", for: rec.id ? "" : ""}));
+    var labelInput = el("input", {type: "text", "aria-label": "Node label"});
+    labelInput.value = selected.length === 1 ? String(selected[0].label || "") : "";
+    labelInput.addEventListener("change", function () { self.graphSetNodeField(rec, "label", labelInput.value); });
+    labelRow.appendChild(labelInput);
+    rec.inspector.appendChild(labelRow);
+    var enabledRow = el("div", {class: "pui-graph-param"});
+    enabledRow.appendChild(el("label", {text: "Enabled"}));
+    var enabled = el("input", {type: "checkbox", "aria-label": "Node enabled"});
+    enabled.checked = selected.every(function (node) { return node.enabled !== false; });
+    enabled.addEventListener("change", function () { self.graphSetNodeField(rec, "enabled", enabled.checked); });
+    enabledRow.appendChild(enabled);
+    rec.inspector.appendChild(enabledRow);
+    var scaleRow = el("div", {class: "pui-graph-param"});
+    scaleRow.appendChild(el("label", {text: "Scale"}));
+    var scale = el("input", {type: "number", step: "0.01", min: "0", "aria-label": "Node scale"});
+    var scales = selected.map(function (node) { return node.scale === undefined ? 1 : Number(node.scale); });
+    var mixedScale = scales.some(function (value) { return value !== scales[0]; });
+    scale.value = mixedScale ? "" : String(scales[0]);
+    if (mixedScale) scale.placeholder = "—";
+    scale.addEventListener("change", function () { self.graphSetNodeField(rec, "scale", Number(scale.value)); });
+    scaleRow.appendChild(scale);
+    rec.inspector.appendChild(scaleRow);
+    // Params common to every selected node type.
+    var common = null;
+    selected.forEach(function (node) {
+      var type = rec.typeMap[String(node.type)];
+      var ids = {};
+      (type && type.params || []).forEach(function (param) { ids[String(param.id)] = param; });
+      if (common === null) common = ids;
+      else Object.keys(common).forEach(function (id) { if (!ids[id]) delete common[id]; });
+    });
+    Object.keys(common || {}).forEach(function (paramId) {
+      var param = common[paramId];
+      var values = selected.map(function (node) { return isObject(node.params) ? node.params[paramId] : undefined; });
+      var mixed = values.some(function (value) { return !equal(value, values[0]); });
+      var row = el("div", {class: "pui-graph-param" + (!mixed && param.default !== undefined && !equal(values[0], param.default) ? " is-modified" : "")});
+      var controlId = "pui-graph-param-" + String(paramId) + "-" + Math.random().toString(36).slice(2, 7);
+      row.appendChild(el("label", {text: String(param.label || paramId), for: controlId}));
+      var control = self.graphInspectorControl(rec, param, values[0], mixed);
+      if (control && control.setAttribute) control.setAttribute("id", controlId);
+      row.appendChild(control);
+      if (param.default !== undefined) {
+        var reset = el("button", {type: "button", class: "pui-reset", text: "↺", "aria-label": "Reset " + String(param.label || paramId)});
+        reset.addEventListener("click", function () { self.graphSetParam(rec, paramId, param.default); });
+        row.appendChild(reset);
+      }
+      rec.inspector.appendChild(row);
+    });
+    if (selected.length === 1 && firstType && isObject(firstType.dynamic)) {
+      var arityRow = el("div", {class: "pui-graph-param"});
+      arityRow.appendChild(el("label", {text: "Inputs"}));
+      var minus = el("button", {type: "button", class: "pui-button", text: "−", "aria-label": "Remove input"});
+      var plus = el("button", {type: "button", class: "pui-button", text: "+", "aria-label": "Add input"});
+      var currentArity = selected[0].arity === undefined ? (firstType.inputs || []).length : Number(selected[0].arity);
+      minus.addEventListener("click", function () { self.graphSetArity(rec, currentArity - 1); });
+      plus.addEventListener("click", function () { self.graphSetArity(rec, currentArity + 1); });
+      arityRow.appendChild(minus);
+      arityRow.appendChild(el("span", {class: "pui-graph-arity", text: String(currentArity)}));
+      arityRow.appendChild(plus);
+      rec.inspector.appendChild(arityRow);
+    }
+    if (selected.length === 1 && firstType) {
+      var visibility = el("details", {class: "pui-graph-visibility"});
+      visibility.appendChild(el("summary", {text: "Show / hide"}));
+      var visibilityList = el("div", {class: "pui-graph-visibility-list"});
+      var node = selected[0];
+      (firstType.inputs || []).forEach(function (port) {
+        var label = el("label", {class: "pui-graph-visibility-row"});
+        var check = el("input", {type: "checkbox"});
+        check.checked = !(isArray(node.hidden_inputs) && node.hidden_inputs.indexOf(String(port.id)) >= 0);
+        check.addEventListener("change", function () { self.graphSetNodeVisibility(rec, node, "inputs", port.id, check.checked); });
+        label.appendChild(check);
+        label.appendChild(el("span", {text: "Inlet · " + String(port.label || port.id)}));
+        visibilityList.appendChild(label);
+      });
+      (firstType.params || []).forEach(function (param) {
+        var label = el("label", {class: "pui-graph-visibility-row"});
+        var check = el("input", {type: "checkbox"});
+        check.checked = !(isArray(node.hidden_params) && node.hidden_params.indexOf(String(param.id)) >= 0);
+        check.addEventListener("change", function () { self.graphSetNodeVisibility(rec, node, "params", param.id, check.checked); });
+        label.appendChild(check);
+        label.appendChild(el("span", {text: "Param · " + String(param.label || param.id)}));
+        visibilityList.appendChild(label);
+      });
+      visibility.appendChild(visibilityList);
+      rec.inspector.appendChild(visibility);
+    }
+    var issues = rec.issues || (global.PupitreGraph ? global.PupitreGraph.validateGraph(rec.graph, rec.types) : []);
+    rec.inspector.appendChild(el("h6", {text: "Issues"}));
+    if (!issues.length) rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: "No issues."}));
+    else issues.slice(0, 8).forEach(function (issue) {
+      rec.inspector.appendChild(el("p", {class: "pui-graph-issue is-" + issue.level, text: String(issue.code || "") + ": " + String(issue.message || "")}));
+    });
+  };
+
+  Renderer.prototype.graphSetNodeVisibility = function (rec, node, kind, id, visible) {
+    if (rec.block.readonly) return false;
+    var start = deepClone(rec.graph);
+    var target = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(node.id); });
+    if (!target) return false;
+    var key = kind === "inputs" ? "hidden_inputs" : "hidden_params";
+    var hidden = isArray(target[key]) ? target[key].map(String) : [];
+    hidden = hidden.filter(function (item) { return item !== String(id); });
+    if (!visible) hidden.push(String(id));
+    target[key] = hidden;
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "node.visibility", ids: [String(node.id)], kind: kind, id: String(id), visible: !!visible});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphSetSelection = function (rec, ids) {
+    rec.selected = {};
+    (ids || []).forEach(function (id) { rec.selected[String(id)] = true; });
+    rec.selectedCable = null;
+    rec.selectedFrame = null;
+    (Object.keys(rec.frameEls || {})).forEach(function (id) { if (rec.frameEls[id].classList) rec.frameEls[id].classList.remove("is-selected"); });
+    rec.nodeEls && Object.keys(rec.nodeEls).forEach(function (nodeId) {
+      var el = rec.nodeEls[nodeId];
+      if (el && el.classList) el.classList.toggle("is-selected", !!rec.selected[nodeId]);
+    });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    if (rec.block.selection_bind && rec.graphPath === String(rec.block.bind || "")) this.writeSelection(rec, {ids: Object.keys(rec.selected), active: Object.keys(rec.selected)[0] || ""}, "node", "");
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphSelect = function (rec, id, additive) {
+    var key = String(id);
+    if (additive && rec.selected[key]) delete rec.selected[key];
+    else {
+      if (!additive) rec.selected = {};
+      rec.selected[key] = true;
+    }
+    rec.selectedCable = null;
+    rec.selectedFrame = null;
+    (Object.keys(rec.frameEls || {})).forEach(function (frameId) { if (rec.frameEls[frameId].classList) rec.frameEls[frameId].classList.remove("is-selected"); });
+    rec.nodeEls && Object.keys(rec.nodeEls).forEach(function (nodeId) {
+      var el = rec.nodeEls[nodeId];
+      if (el && el.classList) el.classList.toggle("is-selected", !!rec.selected[nodeId]);
+    });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    if (rec.block.selection_bind && rec.graphPath === String(rec.block.bind || "")) this.writeSelection(rec, {ids: Object.keys(rec.selected), active: key}, "node", "");
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphSelectCable = function (rec, cable) {
+    rec.selected = {};
+    rec.selectedCable = cable;
+    rec.selectedFrame = null;
+    (Object.keys(rec.frameEls || {})).forEach(function (frameId) { if (rec.frameEls[frameId].classList) rec.frameEls[frameId].classList.remove("is-selected"); });
+    rec.nodeEls && Object.keys(rec.nodeEls).forEach(function (id) {
+      if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.remove("is-selected");
+    });
+    (rec.cableRefs || []).forEach(function (ref) {
+      if (ref.el.classList) ref.el.classList.toggle("is-selected", ref.cable === cable);
+    });
+    if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "cable", String(cable.id || ""));
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphClearSelection = function (rec) {
+    rec.selected = {};
+    rec.selectedCable = null;
+    rec.selectedFrame = null;
+    (Object.keys(rec.frameEls || {})).forEach(function (frameId) { if (rec.frameEls[frameId].classList) rec.frameEls[frameId].classList.remove("is-selected"); });
+    rec.nodeEls && Object.keys(rec.nodeEls).forEach(function (id) {
+      if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.remove("is-selected");
+    });
+    (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "node", "");
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphStartWire = function (rec, nodeId, portId, isInput, event) {
+    var Graph = global.PupitreGraph;
+    if (!Graph || isInput || rec.block.readonly) return;
+    var node = (rec.graph.nodes || []).find(function (n) { return String(n.id) === String(nodeId); });
+    if (!node) return;
+    var point = Graph.portPosition(node, rec.typeMap[String(node.type)], portId, false);
+    if (!point) return;
+    if (event && event.preventDefault) event.preventDefault();
+    this.graphCancelWire(rec);
+    var path = svgEl("path", {class: "pui-graph-wire", d: ""});
+    rec.cableGroup.appendChild(path);
+    rec.wiring = {from: {node: nodeId, port: portId}, fromPoint: point, path: path};
+    var fromType = Graph.portTypeOf(rec.typeMap[String(node.type)], portId, false) || "tex";
+    this.graphMarkPorts(rec, fromType);
+    this.graphUpdateWire(rec, point);
+  };
+
+  Renderer.prototype.graphMarkPorts = function (rec, fromType) {
+    var Graph = global.PupitreGraph;
+    Object.keys(rec.portEls || {}).forEach(function (key) {
+      var entry = rec.portEls[key];
+      if (!entry || !entry.isInput) return;
+      var compatibility = Graph.portCompatible(fromType, entry.type);
+      entry.el.classList.toggle("is-compatible", compatibility !== "no");
+      entry.el.classList.toggle("is-incompatible", compatibility === "no");
+    });
+  };
+
+  Renderer.prototype.graphParamScrub = function (rec, node, param, event) {
+    if (rec.block.readonly) return;
+    if (event.stopPropagation) event.stopPropagation();
+    if (event.preventDefault) event.preventDefault();
+    var button = event.currentTarget;
+    var raw = isObject(node.params) ? node.params[param.id] : undefined;
+    rec.paramDrag = {start: deepClone(rec.graph), nodeId: String(node.id), param: param, x: event.clientX || 0,
+      value: raw === undefined ? Number(param.default) || 0 : Number(raw) || 0, el: button};
+    if (button && button.setPointerCapture) button.setPointerCapture(event.pointerId || 1);
+  };
+
+  Renderer.prototype.graphParamScrubMove = function (rec, event) {
+    var drag = rec && rec.paramDrag;
+    if (!drag) return;
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === drag.nodeId; });
+    if (!node) return;
+    var param = drag.param;
+    var isInt = String(param.type || "float") === "int";
+    var step = Number(param.step) > 0 ? Number(param.step) : isInt ? 1 : 0.01;
+    if (event.altKey) step /= 10;
+    if (event.shiftKey) step *= 10;
+    var dx = (event.clientX || 0) - drag.x;
+    var next = drag.value + Math.round(dx / 6) * step;
+    if (param.min !== undefined) next = Math.max(Number(param.min), next);
+    if (param.max !== undefined) next = Math.min(Number(param.max), next);
+    var precision = Number(param.precision);
+    if (isFinite(precision) && precision >= 0) next = Number(next.toFixed(precision));
+    if (isInt) next = Math.round(next);
+    node.params = isObject(node.params) ? node.params : {};
+    node.params[param.id] = next;
+    this.updateGraphDom(rec);
+    this.writeGraph(rec, {op: "node.param", ids: [node.id], param: String(param.id), value: next});
+  };
+
+  Renderer.prototype.graphParamScrubEnd = function (rec, event) {
+    if (!rec || !rec.paramDrag) return;
+    var drag = rec.paramDrag;
+    rec.paramDrag = null;
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === drag.nodeId; });
+    var value = node && isObject(node.params) ? node.params[drag.param.id] : drag.value;
+    this.graphPushUndo(rec, drag.start);
+    this.writeGraph(rec, {op: "node.param", ids: [drag.nodeId], param: String(drag.param.id), value: value});
+    if (rec.inspector) this.renderGraphInspector(rec);
+  };
+
+  Renderer.prototype.graphParamKey = function (rec, node, param, event) {
+    if (rec.block.readonly) return;
+    var keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+    if (keys.indexOf(event.key) < 0) return;
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    var isInt = String(param.type || "float") === "int";
+    var step = Number(param.step) > 0 ? Number(param.step) : isInt ? 1 : 0.01;
+    if (event.altKey) step /= 10;
+    if (event.shiftKey) step *= 10;
+    var raw = isObject(node.params) ? node.params[param.id] : undefined;
+    var value = (raw === undefined ? Number(param.default) || 0 : Number(raw) || 0) +
+      (event.key === "ArrowRight" || event.key === "ArrowUp" ? step : -step);
+    if (param.min !== undefined) value = Math.max(Number(param.min), value);
+    if (param.max !== undefined) value = Math.min(Number(param.max), value);
+    if (isInt) value = Math.round(value);
+    this.graphSetNodeParam(rec, node.id, param.id, value);
+  };
+
+  Renderer.prototype.graphSetNodeParam = function (rec, nodeId, paramId, value) {
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+    if (!node) return false;
+    var start = deepClone(rec.graph);
+    node.params = isObject(node.params) ? node.params : {};
+    node.params[paramId] = value;
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.writeGraph(rec, {op: "node.param", ids: [String(nodeId)], param: String(paramId), value: value});
+    return true;
+  };
+
+  Renderer.prototype.graphUpdateWire = function (rec, point) {
+    var Graph = global.PupitreGraph;
+    if (!rec.wiring || !Graph) return;
+    var p = Graph.cablePath(rec.wiring.fromPoint, point);
+    rec.wiring.path.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
+  };
+
+  Renderer.prototype.graphCancelWire = function (rec) {
+    if (rec.wiring && rec.wiring.path && rec.wiring.path.parentNode) rec.wiring.path.parentNode.removeChild(rec.wiring.path);
+    rec.wiring = null;
+    Object.keys(rec.portEls || {}).forEach(function (key) {
+      var entry = rec.portEls[key];
+      if (entry && entry.el.classList) entry.el.classList.remove("is-compatible", "is-incompatible");
+    });
+  };
+
+  Renderer.prototype.graphFinishWire = function (rec, toNodeId, toPortId, event) {
+    if (!rec.wiring) return;
+    if (event && event.stopPropagation) event.stopPropagation();
+    var from = rec.wiring.from;
+    this.graphCancelWire(rec);
+    this.graphConnect(rec, from.node, from.port, toNodeId, toPortId);
+  };
+
+  Renderer.prototype.graphConnect = function (rec, fromNodeId, fromPort, toNodeId, toPort) {
+    var Graph = global.PupitreGraph;
+    var fromNode = (rec.graph.nodes || []).find(function (n) { return String(n.id) === String(fromNodeId); });
+    var toNode = (rec.graph.nodes || []).find(function (n) { return String(n.id) === String(toNodeId); });
+    if (!fromNode || !toNode) return false;
+    var fromType = Graph.portTypeOf(rec.typeMap[String(fromNode.type)], fromPort, false);
+    var toType = Graph.portTypeOf(rec.typeMap[String(toNode.type)], toPort, true);
+    var compatibility = Graph.portCompatible(fromType, toType);
+    if (compatibility === "no") { this.adapter.announce("error", "Ports are not compatible."); return false; }
+    var duplicate = (rec.graph.cables || []).some(function (cable) { return String(cable.from) === String(fromNodeId) + "." + String(fromPort) && String(cable.to) === String(toNodeId) + "." + String(toPort); });
+    if (duplicate) { this.adapter.announce("warning", "That cable already exists."); return false; }
+    var start = deepClone(rec.graph);
+    var nextId = "c" + ((rec.graph.cables || []).length + 1);
+    while ((rec.graph.cables || []).some(function (cable) { return String(cable.id) === nextId; })) nextId += "x";
+    rec.graph.cables = (rec.graph.cables || []).concat([{id: nextId, from: String(fromNodeId) + "." + String(fromPort), to: String(toNodeId) + "." + String(toPort)}]);
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "cable.connect", from: String(fromNodeId) + "." + String(fromPort), to: String(toNodeId) + "." + String(toPort)});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphAddNode = function (rec, type) {
+    if (!type || rec.block.readonly) return null;
+    var Graph = global.PupitreGraph;
+    var nodes = rec.graph.nodes || [];
+    var index = 1;
+    while (nodes.some(function (node) { return String(node.id) === "n" + index; })) index++;
+    var viewportRect = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var view = rec.view || {zoom: 1, panX: 0, panY: 0};
+    var x = Math.round(((viewportRect.width || 800) / 2 - (view.panX || 0)) / (view.zoom || 1) - 78);
+    var y = Math.round(((viewportRect.height || 500) / 2 - (view.panY || 0)) / (view.zoom || 1) - 40);
+    var params = {};
+    (type.params || []).forEach(function (param) { if (param.default !== undefined) params[param.id] = deepClone(param.default); });
+    var node = {id: "n" + index, type: String(type.id), x: x, y: y, label: String(type.label || type.id), enabled: true, params: params};
+    var start = deepClone(rec.graph);
+    rec.graph.nodes = nodes.concat([node]);
+    this.graphPushUndo(rec, start);
+    rec.recentTypes = [String(type.id)].concat((rec.recentTypes || []).filter(function (id) { return id !== String(type.id); })).slice(0, 8);
+    this.writeGraph(rec, {op: "node.add", type: String(type.id), id: node.id});
+    this.rebuildGraph(rec, node.id);
+    return node.id;
+  };
+
+  Renderer.prototype.openGraphAdd = function (rec) {
+    var self = this;
+    if (rec.block.readonly) return;
+    var dialog = el("dialog", {class: "pui-dialog pui-graph-add", "aria-label": "Add node"});
+    var form = el("form", {method: "dialog"});
+    var input = el("input", {type: "search", "aria-label": "Search node types", placeholder: "Search node types…"});
+    var list = el("div", {class: "pui-graph-add-list", role: "listbox", "aria-label": "Node types"});
+    form.appendChild(input);
+    form.appendChild(list);
+    dialog.appendChild(form);
+    function close() { if (dialog.open) dialog.close(); dialog.remove(); }
+    function paint(query) {
+      list.textContent = "";
+      var needle = String(query || "").trim().toLowerCase();
+      var recent = rec.recentTypes || [];
+      var favorites = rec.favoriteTypes || {};
+      var types = rec.types.filter(function (type) {
+        return isObject(type) && (!needle || (String(type.label || "") + " " + String(type.id || "") + " " + String(type.category || "") + " " + String(type.description || "")).toLowerCase().indexOf(needle) >= 0);
+      });
+      types.sort(function (a, b) {
+        var af = favorites[String(a.id)] ? 0 : 1;
+        var bf = favorites[String(b.id)] ? 0 : 1;
+        if (af !== bf) return af - bf;
+        var ar = recent.indexOf(String(a.id));
+        var br = recent.indexOf(String(b.id));
+        if (ar < 0) ar = 999; if (br < 0) br = 999;
+        if (ar !== br) return ar - br;
+        var ac = String(a.category || "other");
+        var bc = String(b.category || "other");
+        if (ac !== bc) return ac < bc ? -1 : 1;
+        return String(a.label || a.id) < String(b.label || b.id) ? -1 : 1;
+      });
+      types.forEach(function (type) {
+        var row = el("div", {class: "pui-graph-add-row"});
+        var button = el("button", {type: "button", role: "option", class: "pui-graph-add-option", text: String(type.label || type.id) + (type.category ? " · " + type.category : "")});
+        button.setAttribute("aria-label", String(type.label || type.id) + (type.category ? ", " + type.category : ""));
+        button.addEventListener("click", function () { close(); self.graphAddNode(rec, type); });
+        var star = el("button", {type: "button", class: "pui-graph-add-star", text: favorites[String(type.id)] ? "★" : "☆", "aria-label": (favorites[String(type.id)] ? "Remove " : "Add ") + String(type.label || type.id) + " favorite"});
+        star.addEventListener("click", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          if (rec.favoriteTypes[String(type.id)]) delete rec.favoriteTypes[String(type.id)];
+          else rec.favoriteTypes[String(type.id)] = true;
+          paint(input.value);
+        });
+        row.appendChild(button);
+        row.appendChild(star);
+        list.appendChild(row);
+      });
+      if (!list.childNodes.length) list.appendChild(el("p", {class: "pui-graph-add-empty", text: "No matching node types."}));
+    }
+    input.addEventListener("input", function () { paint(input.value); });
+    input.addEventListener("keydown", function (event) {
+      var options = Array.from(list.querySelectorAll(".pui-graph-add-option"));
+      var index = options.indexOf(global.document.activeElement);
+      if (event.key === "Escape") { event.preventDefault(); close(); }
+      else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!options.length) return;
+        var next = event.key === "ArrowDown" ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
+        options[index < 0 ? 0 : next].focus();
+      } else if (event.key === "Enter" && index >= 0) {
+        event.preventDefault();
+        options[index].click();
+      }
+    });
+    dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
+    global.document.body.appendChild(dialog);
+    dialog.showModal();
+    paint("");
+    input.focus();
+  };
+
+  Renderer.prototype.graphPushUndo = function (rec, snapshot) {
+    rec.undo.push(deepClone(snapshot));
+    rec.redo = [];
+  };
+
+  Renderer.prototype.writeGraph = function (rec, intent) {
+    if (typeof this.adapter.graphAction === "function") {
+      try {
+        var result = this.adapter.graphAction(intent || {}, rec.graph, rec.block);
+        if (result === false) return false;
+      } catch (error) {
+        this.adapter.announce("error", "Graph action failed: " + String(error && error.message || error));
+        return false;
+      }
+    }
+    return this.setPath(String(rec.graphPath || rec.block.bind || ""), rec.graph, rec.block);
+  };
+
+  Renderer.prototype.updateGraphDom = function (rec) {
+    var Graph = global.PupitreGraph;
+    if (!Graph) return;
+    rec.graph.nodes.forEach(function (node) {
+      var el = rec.nodeEls[String(node.id)];
+      if (!el) return;
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      if (el.setAttribute) el.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
+      if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
+      var title = el.querySelector ? el.querySelector(".pui-graph-node-title") : null;
+      if (title) title.textContent = String(node.label || (rec.typeMap[String(node.type)] && rec.typeMap[String(node.type)].label) || node.type || node.id);
+      var paramInfo = rec.paramEls[String(node.id)];
+      if (paramInfo) {
+        paramInfo.defs.forEach(function (param, index) {
+          var raw = isObject(node.params) ? node.params[param.id] : undefined;
+          var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
+          if (paramInfo.elements[index]) {
+            paramInfo.elements[index].textContent = String(shown);
+            paramInfo.elements[index].setAttribute("aria-valuenow", String(Number(shown) || 0));
+            paramInfo.elements[index].setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+          }
+        });
+      }
+    });
+    (rec.graph.frames || []).forEach(function (frame) {
+      var frameEl = rec.frameEls[String(frame.id)];
+      if (frameEl && frameEl.setAttribute) frameEl.setAttribute("style", "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;");
+    });
+    rec.cableRefs.forEach(function (ref) {
+      var from = Graph.parseRef(ref.cable.from);
+      var to = Graph.parseRef(ref.cable.to);
+      if (!from || !to) return;
+      var fromNode = rec.graph.nodes.find(function (n) { return String(n.id) === from.node; });
+      var toNode = rec.graph.nodes.find(function (n) { return String(n.id) === to.node; });
+      if (!fromNode || !toNode) return;
+      var a = Graph.portPosition(fromNode, rec.typeMap[String(fromNode.type)], from.port, false);
+      var b = Graph.portPosition(toNode, rec.typeMap[String(toNode.type)], to.port, true);
+      if (!a || !b) return;
+      var p = Graph.cablePath(a, b);
+      ref.el.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
+    });
+    if (rec.renderMinimap) rec.renderMinimap();
+  };
+
+  Renderer.prototype.graphMove = function (rec, dx, dy) {
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var start = deepClone(rec.graph);
+    rec.graph.nodes.forEach(function (node) {
+      if (!rec.selected[String(node.id)]) return;
+      node.x = (Number(node.x) || 0) + dx;
+      node.y = (Number(node.y) || 0) + dy;
+    });
+    this.graphPushUndo(rec, start);
+    this.updateGraphDom(rec);
+    this.writeGraph(rec, {op: "node.move", ids: ids, dx: dx, dy: dy});
+    return true;
+  };
+
+  Renderer.prototype.graphDelete = function (rec) {
+    if (rec.selectedFrame) {
+      var frameStart = deepClone(rec.graph);
+      var selectedFrame = rec.selectedFrame;
+      rec.graph.frames = (rec.graph.frames || []).filter(function (frame) { return frame !== selectedFrame; });
+      rec.selectedFrame = null;
+      this.graphPushUndo(rec, frameStart);
+      this.writeGraph(rec, {op: "frame.delete", id: selectedFrame.id});
+      this.rebuildGraph(rec);
+      return true;
+    }
+    if (rec.selectedCable) {
+      var cableStart = deepClone(rec.graph);
+      var selectedCable = rec.selectedCable;
+      rec.graph.cables = (rec.graph.cables || []).filter(function (cable) { return cable !== selectedCable; });
+      rec.selectedCable = null;
+      this.graphPushUndo(rec, cableStart);
+      this.writeGraph(rec, {op: "cable.disconnect", id: selectedCable.id});
+      this.rebuildGraph(rec);
+      return true;
+    }
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var start = deepClone(rec.graph);
+    var selected = {};
+    ids.forEach(function (id) { selected[String(id)] = true; });
+    rec.graph.nodes = (rec.graph.nodes || []).filter(function (node) { return !selected[String(node.id)]; });
+    rec.graph.cables = (rec.graph.cables || []).filter(function (cable) {
+      var from = global.PupitreGraph.parseRef(cable.from);
+      var to = global.PupitreGraph.parseRef(cable.to);
+      return !(from && selected[from.node]) && !(to && selected[to.node]);
+    });
+    rec.selected = {};
+    if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "node", "");
+    this.graphPushUndo(rec, start);
+    this.writeGraph(rec, {op: "node.delete", ids: ids});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphUndo = function (rec) {
+    if (!rec.undo.length) return false;
+    rec.redo.push(deepClone(rec.graph));
+    rec.graph = rec.undo.pop();
+    this.writeGraph(rec, {op: "history.undo"});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphRedo = function (rec) {
+    if (!rec.redo.length) return false;
+    rec.undo.push(deepClone(rec.graph));
+    rec.graph = rec.redo.pop();
+    this.writeGraph(rec, {op: "history.redo"});
+    this.rebuildGraph(rec);
+    return true;
+  };
+
+  Renderer.prototype.rebuildGraph = function (rec, focusId, navStack) {
+    if (!rec.root || !rec.root.parentNode) return;
+    var parent = rec.root.parentNode;
+    var index = this.graphRecords.indexOf(rec);
+    var newRoot = this.buildGraph(rec.block, navStack || rec.navStack);
+    var newRec = this.graphRecords[this.graphRecords.length - 1];
+    if (newRec) {
+      if (navStack) {
+        newRec.selected = {};
+        newRec.selectedFrame = null;
+        newRec.selectedCable = null;
+      } else {
+        newRec.undo = rec.undo;
+        newRec.redo = rec.redo;
+        newRec.selected = rec.selected;
+        newRec.selectedFrame = rec.selectedFrame;
+        newRec.recentTypes = rec.recentTypes;
+        newRec.favoriteTypes = rec.favoriteTypes;
+      }
+    }
+    parent.replaceChild(newRoot, rec.root);
+    if (index >= 0) this.graphRecords.splice(index, 1);
+    if (focusId && newRec && newRec.nodeEls[String(focusId)] && newRec.nodeEls[String(focusId)].focus) newRec.nodeEls[String(focusId)].focus();
+  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Renderer.prototype.buildMacros = function (block) {
+    var self = this;
+    var root = el("section", {class: "pui-macros", "data-pui-macros": String(block.id || "")});
+    var head = el("div", {class: "pui-macros-head"});
+    head.appendChild(el("h4", {text: String(block.label || block.id || "Macros")}));
+    var items = isArray(block.items) ? block.items : [];
+    head.appendChild(el("span", {class: "pui-macros-count", text: items.length + " macros"}));
+    root.appendChild(head);
+    var grid = el("div", {class: "pui-macros-grid"});
+    items.forEach(function (item) {
+      if (!isObject(item)) return;
+      var button = el("button", {type: "button", class: "pui-macro", text: String(item.label || item.id || "Macro")});
+      if (item.color) button.style.setProperty("--pui-macro-color", String(item.color));
+      if (item.size === "2x1") button.classList.add("is-wide");
+      if (item.size === "1x2") button.classList.add("is-tall");
+      if (item.a11y && item.a11y.name) button.setAttribute("aria-label", String(item.a11y.name));
+      button.addEventListener("click", function () { self.startAction(item, button); });
+      grid.appendChild(button);
+    });
+    root.appendChild(grid);
+    return root;
+  };
+
+  Renderer.prototype.buildSlider = function (block) {
+    var field = Object.assign({}, block, {kind: "field", widget: block.widget || "range"});
+    var node = this.buildField(field);
+    if (node && node.classList) node.classList.add("pui-big-slider");
+    return node;
+  };
+
+  Renderer.prototype.buildDrawer = function (block) {
+    var self = this;
+    var root = el("section", {class: "pui-drawer", "data-pui-drawer": String(block.id || "")});
+    var trigger = el("button", {type: "button", class: "pui-drawer-trigger pui-button", text: String(block.trigger || block.label || "Open")});
+    trigger.setAttribute("aria-expanded", "false");
+    root.appendChild(trigger);
+    var backdrop = el("div", {class: "pui-drawer-backdrop", hidden: true});
+    var panel = el("aside", {class: "pui-drawer-panel is-" + String(block.side || "right"), hidden: true, role: "dialog", "aria-modal": "true"});
+    var titleId = this.id("drawer-title");
+    panel.setAttribute("aria-labelledby", titleId);
+    var head = el("div", {class: "pui-drawer-head"});
+    head.appendChild(el("h4", {id: titleId, text: String(block.label || block.id || "Panel")}));
+    var close = el("button", {type: "button", class: "pui-drawer-close", text: "×", "aria-label": "Close " + String(block.label || "panel")});
+    head.appendChild(close);
+    panel.appendChild(head);
+    var body = el("div", {class: "pui-drawer-body"});
+    (block.blocks || []).forEach(function (child) { body.appendChild(self.buildBlock(child)); });
+    panel.appendChild(body);
+    root.appendChild(backdrop);
+    root.appendChild(panel);
+    var rec = {block: block, root: root, panel: panel, backdrop: backdrop, trigger: trigger, body: body, open: false, localOpen: block.open === true};
+    var readOpen = function () {
+      if (block.open_bind) {
+        var value = self.adapter.getValue(String(block.open_bind));
+        return value === true || value === 1 || value === "true";
+      }
+      return !!rec.localOpen;
+    };
+    var render = function () {
+      var open = readOpen();
+      rec.open = open;
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      panel.hidden = !open;
+      backdrop.hidden = !open;
+      panel.style.setProperty("--pui-drawer-width", String(block.width || 480) + "px");
+      root.classList.toggle("is-open", open);
+    };
+    var toggle = function (open) {
+      if (block.open_bind) self.setPath(String(block.open_bind), !!open, block);
+      else rec.localOpen = !!open;
+      if (typeof self.adapter.drawerAction === "function") {
+        try { self.adapter.drawerAction({op: open ? "drawer.open" : "drawer.close", id: block.id}, !!open, block); } catch (error) { self.adapter.announce("error", "Drawer action failed: " + String(error && error.message || error)); }
+      }
+      render();
+      if (open) {
+        var first = panel.querySelector("button, input, select, textarea");
+        if (first && first.focus) first.focus();
+      } else {
+        if (trigger.focus) trigger.focus();
+      }
+    };
+    trigger.addEventListener("click", function () { toggle(!readOpen()); });
+    close.addEventListener("click", function () { toggle(false); });
+    backdrop.addEventListener("click", function () { toggle(false); });
+    panel.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); toggle(false); } });
+    rec.render = render;
+    this.drawerRecords.push(rec);
+    render();
+    return root;
+  };
+
+  Renderer.prototype.buildCurve = function (block) {
+    var self = this;
+    var Curve = global.PupitreCurve;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    if (!Curve) return el("p", {class: "pui-missing", text: "(curve model PupitreCurve is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(curve value is missing)"});
+    var root = el("section", {class: "pui-curve", "data-pui-curve": path});
+    var head = el("div", {class: "pui-curve-head"});
+    head.appendChild(el("h4", {text: String(block.label || block.id || "Envelope")}));
+    var shape = el("select", {"aria-label": "Curve shape"});
+    [["linear", "Linear"], ["smooth", "Smooth"], ["hold", "Hold"]].forEach(function (entry) {
+      shape.appendChild(el("option", {value: entry[0], text: entry[1]}));
+    });
+    shape.value = Curve.normalize(value).curve;
+    head.appendChild(shape);
+    var reset = null;
+    if (block.default && isObject(block.default)) {
+      reset = el("button", {type: "button", class: "pui-button", text: "Reset"});
+      head.appendChild(reset);
+    }
+    root.appendChild(head);
+    var fields = el("div", {class: "pui-curve-fields"});
+    var inputs = {};
+    [["attack", "A"], ["decay", "D"], ["sustain", "S"], ["hold", "H"], ["release", "R"]].forEach(function (entry) {
+      var label = el("label", {class: "pui-curve-field"});
+      label.appendChild(el("span", {text: entry[1]}));
+      var input = el("input", {type: "number", min: "0", step: "0.01", "aria-label": entry[0]});
+      input.value = String(Curve.normalize(value)[entry[0]]);
+      label.appendChild(input);
+      fields.appendChild(label);
+      inputs[entry[0]] = input;
+    });
+    root.appendChild(fields);
+    var chart = el("div", {class: "pui-curve-chart", style: "height:" + String(block.height || 220) + "px;", role: "group", "aria-label": String(block.label || "ADSR curve")});
+    var svg = svgEl("svg", {class: "pui-curve-svg", viewBox: "0 0 1000 240", preserveAspectRatio: "none", "aria-hidden": "true"});
+    var pathEl = svgEl("path", {class: "pui-curve-path"});
+    svg.appendChild(pathEl);
+    chart.appendChild(svg);
+    root.appendChild(chart);
+    var rec = {block: block, path: path, value: value, root: root, chart: chart, pathEl: pathEl, inputs: inputs, shape: shape, handleEls: {}, drag: null};
+    var chartRect = function () { return chart.getBoundingClientRect ? chart.getBoundingClientRect() : {left: 0, top: 0, width: 1, height: 1}; };
+    var update = function () {
+      rec.pathEl.setAttribute("d", Curve.path(rec.value, 1000, 240));
+      var state = Curve.normalize(rec.value);
+      var pts = Curve.points(state);
+      var byId = {};
+      pts.forEach(function (point) { byId[point.id] = point; });
+      Object.keys(rec.handleEls).forEach(function (id) {
+        var point = byId[id];
+        if (!point) return;
+        var handle = rec.handleEls[id];
+        handle.style.left = (point.x / Math.max(0.001, state.duration) * 100) + "%";
+        var chartHeight = chart.clientHeight || Number(block.height) || 220;
+        handle.style.top = Math.max(8, Math.min(chartHeight - 8, (1 - point.y) * chartHeight)) + "px";
+        handle.setAttribute("aria-label", id + " at " + point.x.toFixed(2) + "s, level " + point.y.toFixed(2));
+      });
+      Object.keys(inputs).forEach(function (key) { inputs[key].value = String(state[key]); });
+    };
+    ["attack", "decay", "hold", "release"].forEach(function (id) {
+      var handle = el("button", {type: "button", class: "pui-curve-handle is-" + id, "data-curve-handle": id});
+      handle.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        if (event.preventDefault) event.preventDefault();
+        rec.drag = {id: id, start: deepClone(rec.value), x: event.clientX || 0, y: event.clientY || 0};
+        rec.lastX = event.clientX || 0; rec.lastY = event.clientY || 0;
+        if (chart.setPointerCapture) chart.setPointerCapture(event.pointerId || 1);
+      });
+      chart.appendChild(handle);
+      rec.handleEls[id] = handle;
+    });
+    var finish = function () {
+      if (!rec.drag) return;
+      var drag = rec.drag;
+      rec.drag = null;
+      if (Math.abs((rec.lastX || 0) - drag.x) + Math.abs((rec.lastY || 0) - drag.y) > 0) self.curveWrite(rec, {op: "curve.edit", handle: drag.id});
+    };
+    chart.addEventListener("pointermove", function (event) {
+      if (!rec.drag) return;
+      rec.lastX = event.clientX || 0; rec.lastY = event.clientY || 0;
+      var box = chartRect();
+      var start = Curve.normalize(rec.drag.start);
+      var dx = (event.clientX || 0) - rec.drag.x;
+      var dy = (event.clientY || 0) - rec.drag.y;
+      var dt = dx / Math.max(1, box.width) * start.duration;
+      var id = rec.drag.id;
+      if (id === "attack") rec.value.attack = Math.max(0, Math.round((start.attack + dt) * 100) / 100);
+      else if (id === "decay") { rec.value.decay = Math.max(0, Math.round((start.decay + dt) * 100) / 100); rec.value.sustain = Math.max(0, Math.min(1, Math.round((start.sustain - dy / Math.max(1, box.height)) * 100) / 100)); }
+      else if (id === "hold") rec.value.hold = Math.max(0, Math.round((start.hold + dt) * 100) / 100);
+      else if (id === "release") rec.value.release = Math.max(0, Math.round((start.release + dt) * 100) / 100);
+      update();
+    });
+    chart.addEventListener("pointerup", finish);
+    chart.addEventListener("pointercancel", finish);
+    Object.keys(inputs).forEach(function (key) {
+      inputs[key].addEventListener("change", function () {
+        rec.value[key] = Math.max(0, Number(inputs[key].value) || 0);
+        if (key === "sustain") rec.value[key] = Math.min(1, rec.value[key]);
+        update();
+        self.curveWrite(rec, {op: "curve.edit", handle: key});
+      });
+    });
+    shape.addEventListener("change", function () { rec.value.curve = shape.value; update(); self.curveWrite(rec, {op: "curve.shape", shape: shape.value}); });
+    if (reset) reset.addEventListener("click", function () { rec.value = Object.assign({}, block.default); update(); self.curveWrite(rec, {op: "curve.reset"}); });
+    update();
+    return root;
+  };
+
+  Renderer.prototype.curveWrite = function (rec, intent) {
+    this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+    if (typeof this.adapter.curveAction === "function") {
+      try { this.adapter.curveAction(intent || {}, rec.value, rec.block); } catch (error) { this.adapter.announce("error", "Curve action failed: " + String(error && error.message || error)); }
+    }
+  };
+
+  Renderer.prototype.codeTokens = function (text, language) {
+    var out = [];
+    var source = String(text);
+    var lang = String(language || "json").toLowerCase();
+    if (lang === "json") {
+      var re = /("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}\[\],:])/g;
+      var last = 0;
+      var match;
+      while ((match = re.exec(source))) {
+        if (match.index > last) out.push({text: source.slice(last, match.index), cls: ""});
+        if (match[1]) {
+          out.push({text: match[1], cls: match[2] ? "pui-code-key" : "pui-code-string"});
+          if (match[2]) out.push({text: match[2], cls: "pui-code-punct"});
+        } else if (match[3]) out.push({text: match[3], cls: "pui-code-number"});
+        else if (match[4]) out.push({text: match[4], cls: "pui-code-literal"});
+        else if (match[5]) out.push({text: match[5], cls: "pui-code-punct"});
+        last = re.lastIndex;
+      }
+      if (last < source.length) out.push({text: source.slice(last), cls: ""});
+      return out;
+    }
+    var generic = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(\/\/[^\n]*|#[^\n]*)|(-?\d+(?:\.\d+)?)|\b(true|false|null|undefined|function|return|if|else|for|while|const|let|var|class|import|export)\b|([{}()\[\],.:;=+\-*\/])/g;
+    var cursor = 0;
+    while ((match = generic.exec(source))) {
+      if (match.index > cursor) out.push({text: source.slice(cursor, match.index), cls: ""});
+      out.push({text: match[0], cls: match[1] ? "pui-code-string" : match[2] ? "pui-code-comment" : match[3] ? "pui-code-number" : match[4] ? "pui-code-keyword" : "pui-code-punct"});
+      cursor = generic.lastIndex;
+    }
+    if (cursor < source.length) out.push({text: source.slice(cursor), cls: ""});
+    return out;
+  };
+
+  Renderer.prototype.buildCode = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var initial = this.adapter.getValue(path);
+    if (initial === undefined) initial = block.value;
+    var text = initial === undefined || initial === null ? "" : (typeof initial === "string" ? initial : JSON.stringify(initial, null, 2));
+    var label = String(block.label || block.id || "Editor");
+    var language = String(block.language || "json").toLowerCase();
+    var root = el("section", {class: "pui-code", "data-pui-code": path});
+    var head = el("div", {class: "pui-code-head"});
+    head.appendChild(el("h4", {text: label}));
+    head.appendChild(el("span", {class: "pui-code-language", text: language.toUpperCase()}));
+    var apply = el("button", {type: "button", class: "pui-button pui-primary", text: self.t("action.save", "Apply")});
+    apply.disabled = !!block.readonly;
+    head.appendChild(apply);
+    root.appendChild(head);
+    var editor = el("div", {class: "pui-code-editor", style: "height:" + String(block.height || 260) + "px;"});
+    var gutter = el("div", {class: "pui-code-gutter", "aria-hidden": "true"});
+    var highlight = el("pre", {class: "pui-code-highlight", "aria-hidden": "true"});
+    var area = el("textarea", {class: "pui-code-input", spellcheck: "false", "aria-label": label, readonly: !!block.readonly});
+    area.value = text;
+    editor.appendChild(gutter); editor.appendChild(highlight); editor.appendChild(area);
+    root.appendChild(editor);
+    var status = el("p", {class: "pui-code-status", role: "status", "aria-live": "polite"});
+    root.appendChild(status);
+    var rec = {block: block, path: path, area: area, highlight: highlight, status: status, dirty: false, text: text, setHighlight: null, setStatus: null, liveTimer: null};
+    var setHighlight = function (value) {
+      highlight.textContent = "";
+      self.codeTokens(value, language).forEach(function (token) {
+        highlight.appendChild(el("span", token.cls ? {class: token.cls, text: token.text} : {text: token.text}));
+      });
+      highlight.appendChild(document.createTextNode("\n"));
+      gutter.textContent = "";
+      var lines = String(value).split("\n").length;
+      for (var i = 1; i <= lines; i++) gutter.appendChild(el("span", {text: String(i)}));
+      highlight.scrollTop = area.scrollTop;
+      highlight.scrollLeft = area.scrollLeft;
+      gutter.scrollTop = area.scrollTop;
+    };
+    var setStatus = function (message, error) {
+      status.textContent = message || "";
+      status.className = "pui-code-status" + (error ? " is-error" : "");
+    };
+    rec.setHighlight = setHighlight;
+    rec.setStatus = setStatus;
+    this.codeRecords.push(rec);
+    var highlightFrame = null;
+    var scheduleHighlight = function () {
+      if (highlightFrame) return;
+      var schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : function (callback) { return setTimeout(callback, 16); };
+      highlightFrame = schedule(function () {
+        highlightFrame = null;
+        setHighlight(area.value);
+      });
+    };
+    area.addEventListener("input", function () {
+      rec.dirty = true;
+      rec.text = area.value;
+      scheduleHighlight();
+      setStatus("", false);
+      if (block.live) {
+        if (rec.liveTimer) clearTimeout(rec.liveTimer);
+        rec.liveTimer = setTimeout(function () {
+          rec.liveTimer = null;
+          if (self.write(path, area.value, block) !== false) { rec.dirty = false; rec.text = area.value; }
+        }, Number(block.throttle) > 0 ? Number(block.throttle) : 180);
+      }
+    });
+    area.addEventListener("scroll", function () { highlight.scrollTop = area.scrollTop; highlight.scrollLeft = area.scrollLeft; gutter.scrollTop = area.scrollTop; });
+    apply.addEventListener("click", function () {
+      var value = area.value;
+      if (language === "json" || block.validate === "json") {
+        try { JSON.parse(value); }
+        catch (error) { setStatus("Invalid JSON: " + String(error.message || error), true); return; }
+      }
+      if (self.write(path, value, block) === false) { setStatus("Host rejected the value.", true); return; }
+      rec.dirty = false;
+      rec.text = value;
+      setStatus("Applied.", false);
+      if (typeof self.adapter.codeAction === "function") {
+        try { self.adapter.codeAction({op: "code.apply", path: path, language: language}, value, block); } catch (error) { self.adapter.announce("error", "Code action failed: " + String(error && error.message || error)); }
+      }
+    });
+    setHighlight(text);
+    return root;
+  };
+
+  Renderer.prototype.buildWorkflow = function (block) {
+    var self = this;
+    var Workflow = global.PupitreWorkflow;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Workflow");
+    if (!Workflow) return el("p", {class: "pui-missing", text: "(workflow model PupitreWorkflow is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(workflow value is missing)"});
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-workflow", "data-pui-workflow": path});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root};
+    var render = function () { self.workflowRender(rec); };
+    rec.render = render;
+    render();
+    return root;
+  };
+
+  Renderer.prototype.workflowRender = function (rec) {
+    var self = this;
+    var Workflow = global.PupitreWorkflow;
+    if (!Workflow || !rec || !rec.root) return;
+    var state = Workflow.normalize(rec.value);
+    var step = state.steps[state.currentIndex] || null;
+    rec.root.textContent = "";
+    var head = el("div", {class: "pui-workflow-head"});
+    head.appendChild(el("h4", {text: String(rec.value.title || rec.block.label || "Workflow")}));
+    head.appendChild(el("span", {class: "pui-workflow-progress", text: state.progress + "% · " + state.completed.length + "/" + state.steps.length + " complete"}));
+    if (state.offline || (global.PupitreFile && !global.PupitreFile.isOnline())) head.appendChild(el("span", {class: "pui-workflow-offline", text: "Offline"}));
+    if (state.complete) head.appendChild(el("span", {class: "pui-workflow-complete", text: "Complete"}));
+    rec.root.appendChild(head);
+    var stepper = el("ol", {class: "pui-workflow-steps", role: "list"});
+    state.steps.forEach(function (item, index) {
+      var id = String(item.id);
+      var done = state.completed.indexOf(id) >= 0;
+      var skipped = state.skipped.indexOf(id) >= 0;
+      var button = el("button", {type: "button", class: "pui-workflow-step" + (index === state.currentIndex ? " is-current" : "") + (done ? " is-done" : "") + (skipped ? " is-skipped" : ""), text: String(index + 1) + ". " + String(item.label || id)});
+      if (index === state.currentIndex) button.setAttribute("aria-current", "step");
+      button.addEventListener("click", function () { rec.value.current = id; self.workflowWrite(rec, {op: "workflow.step", id: id}); self.workflowRender(rec); });
+      var li = el("li"); li.appendChild(button); stepper.appendChild(li);
+    });
+    rec.root.appendChild(stepper);
+    if (step) {
+      var body = el("div", {class: "pui-workflow-body", role: "region", "aria-live": "polite"});
+      body.appendChild(el("h5", {text: String(step.label || step.id)}));
+      if (step.description) body.appendChild(el("p", {text: String(step.description)}));
+      if (isArray(step.issues) && step.issues.length) {
+        var issues = el("ul", {class: "pui-workflow-issues"});
+        step.issues.forEach(function (issue) {
+          if (!isObject(issue)) return;
+          var item = el("li", {class: "is-" + String(issue.level || "warning")});
+          var button = el("button", {type: "button", class: "pui-workflow-issue", text: String(issue.text || issue.message || "Issue")});
+          button.addEventListener("click", function () {
+            if (isObject(issue.route)) self.navigate(issue.route);
+            self.workflowAction(rec, {op: "workflow.issue", issue: issue.id || issue.text, route: issue.route || null});
+          });
+          item.appendChild(button); issues.appendChild(item);
+        });
+        body.appendChild(issues);
+      }
+      if (isObject(step.route)) {
+        var open = el("button", {type: "button", class: "pui-button", text: "Open step"});
+        open.addEventListener("click", function () { self.navigate(step.route); });
+        body.appendChild(open);
+      }
+      var actions = el("div", {class: "pui-workflow-actions"});
+      var back = el("button", {type: "button", class: "pui-button", text: "Back"});
+      back.disabled = state.currentIndex === 0;
+      back.addEventListener("click", function () {
+        var previous = state.steps[state.currentIndex - 1];
+        if (!previous) return;
+        rec.value.current = String(previous.id);
+        self.workflowWrite(rec, {op: "workflow.back", id: rec.value.current});
+        self.workflowRender(rec);
+      });
+      var skip = el("button", {type: "button", class: "pui-button", text: "Skip"});
+      skip.addEventListener("click", function () {
+        if (state.skipped.indexOf(String(step.id)) < 0) state.skipped.push(String(step.id));
+        rec.value.skipped = state.skipped;
+        self.workflowWrite(rec, {op: "workflow.skip", id: step.id});
+        self.workflowRender(rec);
+      });
+      var next = el("button", {type: "button", class: "pui-button pui-primary", text: state.currentIndex === state.steps.length - 1 ? "Finish" : "Next"});
+      next.addEventListener("click", function () {
+        var nextStep = state.steps[state.currentIndex + 1];
+        rec.value.current = String(nextStep ? nextStep.id : step.id);
+        if (state.currentIndex === state.steps.length - 1) {
+          if (state.completed.indexOf(String(step.id)) < 0) state.completed.push(String(step.id));
+          rec.value.completed = state.completed;
+        }
+        self.workflowWrite(rec, {op: "workflow.next", id: rec.value.current});
+        self.workflowRender(rec);
+      });
+      actions.appendChild(back); actions.appendChild(skip); actions.appendChild(next); body.appendChild(actions);
+      rec.root.appendChild(body);
+    }
+    if (state.captures.length) {
+      var captures = el("div", {class: "pui-workflow-captures"});
+      captures.appendChild(el("h5", {text: "Capture manifest"}));
+      var list = el("ul");
+      state.captures.forEach(function (shot) {
+        var item = el("li", {class: "pui-workflow-capture"});
+        item.appendChild(el("strong", {text: String(shot.label || shot.id)}));
+        item.appendChild(el("span", {class: "pui-workflow-capture-status", text: String(shot.status || "planned")}));
+        if (shot.purpose) item.appendChild(el("span", {text: String(shot.purpose)}));
+        list.appendChild(item);
+      });
+      captures.appendChild(list);
+      var download = el("button", {type: "button", class: "pui-button", text: "Download capture manifest"});
+      download.addEventListener("click", function () {
+        var manifest = Workflow.captureManifest(rec.value);
+        self.workflowAction(rec, {op: "capture.manifest", manifest: manifest});
+        if (global.PupitreFile && global.PupitreFile.download) global.PupitreFile.download("capture-manifest.json", JSON.stringify(manifest, null, 2), "application/json");
+      });
+      captures.appendChild(download);
+      rec.root.appendChild(captures);
+    }
+  };
+
+  Renderer.prototype.workflowWrite = function (rec, intent) {
+    this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+    this.workflowAction(rec, intent);
+  };
+
+  Renderer.prototype.workflowAction = function (rec, intent) {
+    if (typeof this.adapter.workflowAction !== "function") return;
+    try { this.adapter.workflowAction(intent || {}, rec.value, rec.block); } catch (error) { this.adapter.announce("error", "Workflow action failed: " + String(error && error.message || error)); }
+  };
+
+  /** Generic mapping canvas: DOM/SVG shapes + focusable HTML handles. Hosts
+   * own mapping data/execution; PUI owns view, hit-testing, selection and edits. */
+  Renderer.prototype.buildCanvas = function (block) {
+    var self = this;
+    var Canvas = global.PupitreCanvas;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Canvas");
+    if (!Canvas) return el("p", {class: "pui-missing", text: "(canvas model PupitreCanvas is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(canvas value is missing)"});
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var options = isObject(block.canvas_options) ? block.canvas_options : {};
+    var root = el("section", {class: "pui-canvas", "data-pui-canvas": path});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root, options: options,
+      view: isObject(value.view) ? {zoom: Number(value.view.zoom) > 0 ? Number(value.view.zoom) : 1, panX: Number(value.view.panX) || 0, panY: Number(value.view.panY) || 0} : {zoom: 1, panX: 0, panY: 0},
+      selected: {}, drag: null, pan: null, marquee: null, undo: [], redo: [], handleEls: {}, layerEls: []};
+    (isArray(value.selected) ? value.selected : []).forEach(function (id) { rec.selected[String(id)] = true; });
+    var head = el("div", {class: "pui-canvas-head"});
+    head.appendChild(el("h4", {text: label}));
+    var count = el("span", {class: "pui-canvas-count", text: (value.handles || []).length + " handles · " + (value.layers || []).length + " layers"});
+    head.appendChild(count);
+    if (!block.readonly) {
+      var fit = el("button", {type: "button", class: "pui-button", text: "Fit"});
+      fit.addEventListener("click", function () { self.canvasFit(rec); });
+      var undo = el("button", {type: "button", class: "pui-button", text: "Undo"});
+      undo.addEventListener("click", function () { self.canvasUndo(rec); });
+      var redo = el("button", {type: "button", class: "pui-button", text: "Redo"});
+      redo.addEventListener("click", function () { self.canvasRedo(rec); });
+      head.appendChild(fit); head.appendChild(undo); head.appendChild(redo);
+      var tools = el("div", {class: "pui-canvas-tools"});
+      [["L", "x", "min"], ["C", "x", "center"], ["R", "x", "max"], ["T", "y", "min"], ["M", "y", "center"], ["B", "y", "max"]].forEach(function (entry) {
+        var button = el("button", {type: "button", class: "pui-button pui-canvas-align", text: entry[0], "aria-label": "Align " + entry[1] + " " + entry[2]});
+        button.addEventListener("click", function () { self.canvasAlign(rec, entry[1], entry[2]); });
+        tools.appendChild(button);
+      });
+      var distributeH = el("button", {type: "button", class: "pui-button", text: "Dist H", "aria-label": "Distribute horizontally"});
+      distributeH.addEventListener("click", function () { self.canvasDistribute(rec, "x"); });
+      var distributeV = el("button", {type: "button", class: "pui-button", text: "Dist V", "aria-label": "Distribute vertically"});
+      distributeV.addEventListener("click", function () { self.canvasDistribute(rec, "y"); });
+      tools.appendChild(distributeH); tools.appendChild(distributeV);
+      if (isObject(value.source)) {
+        var adopt = el("button", {type: "button", class: "pui-button", text: "Adopt source"});
+        adopt.addEventListener("click", function () { self.canvasAdoptSource(rec); });
+        tools.appendChild(adopt);
+      }
+      if (isObject(value.paint)) {
+        var paint = el("button", {type: "button", class: "pui-button pui-canvas-paint-toggle", text: "Paint", "aria-pressed": "false"});
+        paint.addEventListener("click", function () {
+          rec.paintMode = !rec.paintMode;
+          paint.setAttribute("aria-pressed", rec.paintMode ? "true" : "false");
+          paint.classList.toggle("is-active", rec.paintMode);
+          viewport.classList.toggle("is-painting", rec.paintMode);
+        });
+        tools.appendChild(paint);
+        var tool = el("select", {"aria-label": "Paint tool"});
+        [["lower", "Lower"], ["raise", "Raise"], ["smooth", "Smooth"], ["restore", "Restore"]].forEach(function (entry) {
+          tool.appendChild(el("option", {value: entry[0], text: entry[1]}));
+        });
+        tool.value = rec.paintTool || "lower";
+        tool.addEventListener("change", function () { rec.paintTool = tool.value; });
+        tools.appendChild(tool);
+      }
+      head.appendChild(tools);
+    }
+    if (value.profile) head.appendChild(el("span", {class: "pui-canvas-profile", text: String(value.profile)}));
+    root.appendChild(head);
+    var viewport = el("div", {class: "pui-canvas-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas"});
+    var content = el("div", {class: "pui-canvas-content"});
+    var svg = svgEl("svg", {class: "pui-canvas-shapes", "aria-hidden": "true"});
+    content.appendChild(svg);
+    viewport.appendChild(content);
+    root.appendChild(viewport);
+    rec.viewport = viewport;
+    rec.content = content;
+    rec.svg = svg;
+    var render = function () { self.canvasRender(rec); };
+    rec.render = render;
+    this.canvasRecords.push(rec);
+    render();
+    viewport.addEventListener("wheel", function (event) { self.canvasWheel(rec, event); }, {passive: false});
+    viewport.addEventListener("pointerdown", function (event) { self.canvasPointerDown(rec, event); });
+    viewport.addEventListener("pointermove", function (event) { self.canvasPointerMove(rec, event); });
+    viewport.addEventListener("pointerup", function (event) { self.canvasPointerUp(rec, event); });
+    viewport.addEventListener("keydown", function (event) { self.canvasKeydown(rec, event); });
+    if (options.live_slot) {
+      var live = this.buildCustom({kind: "custom", slot: String(options.live_slot), label: "Live inset", a11y: {name: "Live inset"}});
+      live.classList.add("pui-canvas-live");
+      root.appendChild(live);
+    }
+    var outline = el("details", {class: "pui-canvas-outline"});
+    outline.appendChild(el("summary", {text: "Canvas outline"}));
+    var list = el("ul");
+    (value.handles || []).forEach(function (handle) {
+      if (!isObject(handle)) return;
+      var item = el("li");
+      var button = el("button", {type: "button", class: "pui-canvas-outline-handle", text: String(handle.id) + " · " + Number(handle.x) + "," + Number(handle.y)});
+      button.addEventListener("click", function () { self.canvasSelect(rec, handle.id, false); });
+      item.appendChild(button);
+      list.appendChild(item);
+    });
+    outline.appendChild(list);
+    root.appendChild(outline);
+    this.canvasApplyView(rec);
+    return root;
+  };
+
+  Renderer.prototype.canvasRender = function (rec) {
+    var Canvas = global.PupitreCanvas;
+    if (!Canvas || !rec) return;
+    var self = this;
+    if (isObject(rec.value.view) && Number(rec.value.view.zoom) > 0) {
+      rec.view = {zoom: Number(rec.value.view.zoom), panX: Number(rec.value.view.panX) || 0, panY: Number(rec.value.view.panY) || 0};
+    }
+    rec.handleEls = {};
+    rec.layerEls = [];
+    rec.svg.textContent = "";
+    rec.svg.setAttribute("viewBox", "0 0 " + Number(rec.value.width) + " " + Number(rec.value.height));
+    rec.svg.setAttribute("width", String(rec.value.width));
+    rec.svg.setAttribute("height", String(rec.value.height));
+    var grid = el("g", {class: "pui-canvas-grid"});
+    var spacing = Number(rec.options.grid || 64);
+    for (var gx = 0; gx <= Number(rec.value.width); gx += spacing) grid.appendChild(svgEl("line", {x1: gx, y1: 0, x2: gx, y2: rec.value.height}));
+    for (var gy = 0; gy <= Number(rec.value.height); gy += spacing) grid.appendChild(svgEl("line", {x1: 0, y1: gy, x2: rec.value.width, y2: gy}));
+    rec.svg.appendChild(grid);
+    rec.paintEls = [];
+    if (isObject(rec.value.paint) && isArray(rec.value.paint.data) && Number(rec.value.paint.width) > 0 && Number(rec.value.paint.height) > 0) {
+      var paintGroup = svgEl("g", {class: "pui-canvas-paint"});
+      var cw = Number(rec.value.width) / Number(rec.value.paint.width);
+      var ch = Number(rec.value.height) / Number(rec.value.paint.height);
+      for (var py = 0; py < Number(rec.value.paint.height); py++) {
+        for (var px = 0; px < Number(rec.value.paint.width); px++) {
+          var index = py * Number(rec.value.paint.width) + px;
+          var cell = Number(rec.value.paint.data[index] || 0);
+          var rect = svgEl("rect", {class: "pui-canvas-paint-cell", x: px * cw, y: py * ch, width: cw, height: ch, "fill-opacity": String(cell / 255)});
+          paintGroup.appendChild(rect);
+          rec.paintEls.push(rect);
+        }
+      }
+      rec.svg.appendChild(paintGroup);
+    }
+    (rec.value.layers || []).forEach(function (layer) {
+      if (!isObject(layer)) return;
+      var points = Canvas.layerHandles(rec.value, layer);
+      if (layer.kind === "mesh") {
+        Canvas.layerEdges(rec.value, layer).forEach(function (edge) {
+          var line = svgEl("line", {class: "pui-canvas-edge", x1: edge[0].x, y1: edge[0].y, x2: edge[1].x, y2: edge[1].y});
+          rec.svg.appendChild(line);
+          rec.layerEls.push({line: line, edge: edge});
+        });
+      } else if (points.length) {
+        var polygon = svgEl("polygon", {class: "pui-canvas-polygon", points: points.map(function (point) { return point.x + "," + point.y; }).join(" ")});
+        rec.svg.appendChild(polygon);
+        rec.layerEls.push({polygon: polygon, layer: layer});
+      }
+    });
+    if (rec.handlesEl && rec.handlesEl.parentNode) rec.handlesEl.parentNode.removeChild(rec.handlesEl);
+    var handles = el("div", {class: "pui-canvas-handles"});
+    (rec.value.handles || []).forEach(function (handle) {
+      if (!isObject(handle)) return;
+      var id = String(handle.id);
+      var button = el("button", {type: "button", class: "pui-canvas-handle" + (rec.selected[id] ? " is-selected" : ""), "data-handle-id": id, style: "left:" + handle.x + "px;top:" + handle.y + "px;"});
+      button.setAttribute("aria-label", "Handle " + id + " at " + handle.x + ", " + handle.y);
+      button.addEventListener("pointerdown", function (event) { self.canvasHandleDown(rec, id, event); });
+      button.addEventListener("focus", function () { rec.focusId = id; });
+      handles.appendChild(button);
+      rec.handleEls[id] = button;
+    });
+    rec.content.appendChild(handles);
+    rec.handlesEl = handles;
+    this.canvasApplyView(rec);
+  };
+
+  Renderer.prototype.canvasApplyView = function (rec) {
+    if (!rec || !rec.content) return;
+    rec.content.style.transform = "translate(" + rec.view.panX + "px," + rec.view.panY + "px) scale(" + rec.view.zoom + ")";
+    Object.keys(rec.handleEls || {}).forEach(function (id) {
+      var el = rec.handleEls[id];
+      if (el && el.style) el.style.transform = "translate(-50%, -50%) scale(" + (1 / rec.view.zoom) + ")";
+    });
+  };
+
+  Renderer.prototype.canvasClientToCanvas = function (rec, event) {
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0};
+    return {x: ((event.clientX || 0) - box.left - rec.view.panX) / rec.view.zoom, y: ((event.clientY || 0) - box.top - rec.view.panY) / rec.view.zoom};
+  };
+
+  Renderer.prototype.canvasSelect = function (rec, id, additive) {
+    if (!rec) return;
+    if (additive) { if (rec.selected[id]) delete rec.selected[id]; else rec.selected[id] = true; }
+    else { rec.selected = {}; rec.selected[id] = true; }
+    Object.keys(rec.handleEls || {}).forEach(function (key) { rec.handleEls[key].classList.toggle("is-selected", !!rec.selected[key]); });
+    rec.value.selected = Object.keys(rec.selected);
+    this.writeCanvas(rec, {op: "selection.set", ids: rec.value.selected});
+  };
+
+  Renderer.prototype.canvasHandleDown = function (rec, id, event) {
+    if (event.stopPropagation) event.stopPropagation();
+    if (event.button !== undefined && event.button !== 0) return;
+    this.canvasSelect(rec, id, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+    if (rec.block.readonly) return;
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) ids = [id];
+    rec.drag = {start: deepClone(rec.value), ids: ids, x: event.clientX || 0, y: event.clientY || 0, moved: false};
+    if (event.preventDefault) event.preventDefault();
+  };
+
+  Renderer.prototype.canvasAlign = function (rec, axis, mode) {
+    if (rec.block.readonly) return false;
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return false;
+    var start = deepClone(rec.value);
+    var count = global.PupitreCanvas.alignHandles(rec.value, ids, axis, mode);
+    if (!count) return false;
+    this.canvasPushUndo(rec, start);
+    this.canvasUpdateGeometry(rec);
+    this.writeCanvas(rec, {op: "handle.align", ids: ids, axis: axis, mode: mode});
+    return true;
+  };
+
+  Renderer.prototype.canvasDistribute = function (rec, axis) {
+    if (rec.block.readonly) return false;
+    var ids = Object.keys(rec.selected);
+    if (ids.length < 3) return false;
+    var start = deepClone(rec.value);
+    if (!global.PupitreCanvas.distributeHandles(rec.value, ids, axis)) return false;
+    this.canvasPushUndo(rec, start);
+    this.canvasUpdateGeometry(rec);
+    this.writeCanvas(rec, {op: "handle.distribute", ids: ids, axis: axis});
+    return true;
+  };
+
+  Renderer.prototype.canvasAdoptSource = function (rec) {
+    if (rec.block.readonly) return false;
+    var start = deepClone(rec.value);
+    if (!global.PupitreCanvas.adoptSource(rec.value)) { this.adapter.announce("warning", "Canvas has no valid source size."); return false; }
+    this.canvasPushUndo(rec, start);
+    this.canvasRender(rec);
+    this.canvasFit(rec);
+    this.writeCanvas(rec, {op: "source.adopt"});
+    return true;
+  };
+
+  Renderer.prototype.canvasPaintAt = function (rec, point) {
+    if (!isObject(rec.value.paint) || !isArray(rec.value.paint.data)) return;
+    var paint = rec.value.paint;
+    var cellX = Math.floor(point.x / (Number(rec.value.width) / Number(paint.width)));
+    var cellY = Math.floor(point.y / (Number(rec.value.height) / Number(paint.height)));
+    var tool = rec.paintTool || "lower";
+    var radius = Math.max(0, Math.floor(Number(rec.options.brush) || 1));
+    for (var y = cellY - radius; y <= cellY + radius; y++) {
+      for (var x = cellX - radius; x <= cellX + radius; x++) {
+        if (x < 0 || y < 0 || x >= Number(paint.width) || y >= Number(paint.height)) continue;
+        var index = y * Number(paint.width) + x;
+        var old = Number(paint.data[index] || 0);
+        var next = old;
+        if (tool === "raise") next = Math.min(255, old + 32);
+        else if (tool === "lower") next = Math.max(0, old - 32);
+        else if (tool === "restore") next = 0;
+        else if (tool === "smooth") {
+          var sum = 0, count = 0;
+          for (var sy = y - 1; sy <= y + 1; sy++) for (var sx = x - 1; sx <= x + 1; sx++) {
+            if (sx >= 0 && sy >= 0 && sx < Number(paint.width) && sy < Number(paint.height)) { sum += Number(paint.data[sy * Number(paint.width) + sx] || 0); count++; }
+          }
+          next = Math.round(sum / Math.max(1, count));
+        }
+        paint.data[index] = Math.max(0, Math.min(255, next));
+        if (rec.paintEls[index]) rec.paintEls[index].setAttribute("fill-opacity", String(paint.data[index] / 255));
+      }
+    }
+  };
+
+  Renderer.prototype.canvasPointerDown = function (rec, event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target && event.target.closest && (event.target.closest(".pui-canvas-handle") || event.target.closest(".pui-canvas-live"))) return;
+    if (rec.paintMode && !rec.block.readonly) {
+      rec.paint = {start: deepClone(rec.value)};
+      this.canvasPaintAt(rec, this.canvasClientToCanvas(rec, event));
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+    if (event.shiftKey) {
+      var start = this.canvasClientToCanvas(rec, event);
+      var box = el("div", {class: "pui-canvas-marquee"});
+      rec.content.appendChild(box);
+      rec.marquee = {start: start, el: box};
+      if (event.preventDefault) event.preventDefault();
+      return;
+    }
+    rec.pan = {x: event.clientX || 0, y: event.clientY || 0, panX: rec.view.panX, panY: rec.view.panY};
+    if (event.preventDefault) event.preventDefault();
+  };
+
+  Renderer.prototype.canvasPointerMove = function (rec, event) {
+    if (rec.paint) {
+      this.canvasPaintAt(rec, this.canvasClientToCanvas(rec, event));
+      return;
+    }
+    if (rec.drag) {
+      var dx = (event.clientX || 0) - rec.drag.x;
+      var dy = (event.clientY || 0) - rec.drag.y;
+      if (!rec.drag.moved && Math.abs(dx) + Math.abs(dy) < 2) return;
+      rec.drag.moved = true;
+      var map = global.PupitreCanvas.handleMap(rec.value);
+      rec.drag.ids.forEach(function (id) {
+        var handle = map[String(id)];
+        var start = global.PupitreCanvas.handleMap(rec.drag.start)[String(id)];
+        if (handle && start) { handle.x = Number(start.x) + dx / rec.view.zoom; handle.y = Number(start.y) + dy / rec.view.zoom; }
+      });
+      this.canvasUpdateGeometry(rec);
+      return;
+    }
+    if (rec.pan) {
+      rec.view.panX = rec.pan.panX + (event.clientX || 0) - rec.pan.x;
+      rec.view.panY = rec.pan.panY + (event.clientY || 0) - rec.pan.y;
+      this.canvasApplyView(rec);
+      return;
+    }
+    if (rec.marquee) {
+      var point = this.canvasClientToCanvas(rec, event);
+      var x1 = Math.min(rec.marquee.start.x, point.x), y1 = Math.min(rec.marquee.start.y, point.y);
+      var x2 = Math.max(rec.marquee.start.x, point.x), y2 = Math.max(rec.marquee.start.y, point.y);
+      rec.marquee.el.style.left = x1 + "px"; rec.marquee.el.style.top = y1 + "px";
+      rec.marquee.el.style.width = (x2 - x1) + "px"; rec.marquee.el.style.height = (y2 - y1) + "px";
+      rec.marquee.bounds = {x1: x1, y1: y1, x2: x2, y2: y2};
+    }
+  };
+
+  Renderer.prototype.canvasPointerUp = function (rec) {
+    if (rec.paint) {
+      var stroke = rec.paint;
+      rec.paint = null;
+      this.canvasPushUndo(rec, stroke.start);
+      this.writeCanvas(rec, {op: "paint.stroke"});
+      return;
+    }
+    if (rec.drag) {
+      var drag = rec.drag;
+      rec.drag = null;
+      if (drag.moved) {
+        this.canvasPushUndo(rec, drag.start);
+        this.writeCanvas(rec, {op: "handle.move", ids: drag.ids});
+      }
+      return;
+    }
+    if (rec.pan) {
+      rec.pan = null;
+      rec.value.view = {zoom: rec.view.zoom, panX: rec.view.panX, panY: rec.view.panY};
+      this.writeCanvas(rec, {op: "view.set"});
+      return;
+    }
+    if (rec.marquee) {
+      var bounds = rec.marquee.bounds;
+      if (rec.marquee.el && rec.marquee.el.remove) rec.marquee.el.remove();
+      rec.marquee = null;
+      if (bounds) {
+        rec.selected = {};
+        (rec.value.handles || []).forEach(function (handle) {
+          if (isObject(handle) && Number(handle.x) >= bounds.x1 && Number(handle.x) <= bounds.x2 && Number(handle.y) >= bounds.y1 && Number(handle.y) <= bounds.y2) rec.selected[String(handle.id)] = true;
+        });
+        rec.value.selected = Object.keys(rec.selected);
+        this.canvasUpdateSelection(rec);
+        this.writeCanvas(rec, {op: "selection.set", ids: rec.value.selected});
+      }
+    }
+  };
+
+  Renderer.prototype.canvasUpdateGeometry = function (rec) {
+    var Canvas = global.PupitreCanvas;
+    (rec.value.handles || []).forEach(function (handle) {
+      var el = rec.handleEls[String(handle.id)];
+      if (el) { el.style.left = handle.x + "px"; el.style.top = handle.y + "px"; }
+    });
+    var map = Canvas.handleMap(rec.value);
+    (rec.layerEls || []).forEach(function (entry) {
+      if (entry.line && entry.edge) {
+        var a = map[String(entry.edge[0].id)], b = map[String(entry.edge[1].id)];
+        if (a && b) { entry.line.setAttribute("x1", a.x); entry.line.setAttribute("y1", a.y); entry.line.setAttribute("x2", b.x); entry.line.setAttribute("y2", b.y); }
+      } else if (entry.polygon) {
+        var points = Canvas.layerHandles(rec.value, entry.layer);
+        entry.polygon.setAttribute("points", points.map(function (point) { return point.x + "," + point.y; }).join(" "));
+      }
+    });
+  };
+
+  Renderer.prototype.canvasUpdateSelection = function (rec) {
+    Object.keys(rec.handleEls || {}).forEach(function (id) { rec.handleEls[id].classList.toggle("is-selected", !!rec.selected[id]); });
+  };
+
+  Renderer.prototype.canvasWheel = function (rec, event) {
+    if (event.preventDefault) event.preventDefault();
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0};
+    var sx = (event.clientX || 0) - box.left, sy = (event.clientY || 0) - box.top;
+    var gx = (sx - rec.view.panX) / rec.view.zoom, gy = (sy - rec.view.panY) / rec.view.zoom;
+    var next = Math.max(0.1, Math.min(8, rec.view.zoom * (event.deltaY < 0 ? 1.1 : 0.9)));
+    rec.view.zoom = next;
+    rec.view.panX = sx - gx * next;
+    rec.view.panY = sy - gy * next;
+    rec.value.view = {zoom: rec.view.zoom, panX: rec.view.panX, panY: rec.view.panY};
+    this.canvasApplyView(rec);
+  };
+
+  Renderer.prototype.canvasKeydown = function (rec, event) {
+    if (rec.block.readonly) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) this.canvasRedo(rec); else this.canvasUndo(rec); return; }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); rec.value.handles.forEach(function (handle) { rec.selected[String(handle.id)] = true; }); rec.value.selected = Object.keys(rec.selected); this.canvasUpdateSelection(rec); return; }
+    if (event.key === "Escape") { rec.selected = {}; rec.value.selected = []; this.canvasUpdateSelection(rec); return; }
+    if (event.key.indexOf("Arrow") !== 0) return;
+    var ids = Object.keys(rec.selected);
+    if (!ids.length) return;
+    event.preventDefault();
+    var step = event.shiftKey ? 10 : event.altKey ? 0.1 : 1;
+    var dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+    var dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+    var start = deepClone(rec.value);
+    var map = global.PupitreCanvas.handleMap(rec.value);
+    ids.forEach(function (id) { if (map[id]) { map[id].x += dx; map[id].y += dy; } });
+    this.canvasPushUndo(rec, start);
+    this.canvasUpdateGeometry(rec);
+    this.writeCanvas(rec, {op: "handle.nudge", ids: ids, dx: dx, dy: dy});
+  };
+
+  Renderer.prototype.canvasFit = function (rec) {
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 450};
+    var next = global.PupitreCanvas.fitView(rec.value, box.width || 800, box.height || 450, 24);
+    rec.view = next;
+    rec.value.view = {zoom: next.zoom, panX: next.panX, panY: next.panY};
+    this.canvasApplyView(rec);
+    this.writeCanvas(rec, {op: "view.fit"});
+  };
+
+  Renderer.prototype.canvasPushUndo = function (rec, snapshot) {
+    rec.undo.push(deepClone(snapshot));
+    rec.redo = [];
+  };
+
+  Renderer.prototype.canvasUndo = function (rec) {
+    if (!rec.undo.length) return false;
+    rec.redo.push(deepClone(rec.value));
+    rec.value = rec.undo.pop();
+    rec.render();
+    this.writeCanvas(rec, {op: "history.undo"});
+    return true;
+  };
+
+  Renderer.prototype.canvasRedo = function (rec) {
+    if (!rec.redo.length) return false;
+    rec.undo.push(deepClone(rec.value));
+    rec.value = rec.redo.pop();
+    rec.render();
+    this.writeCanvas(rec, {op: "history.redo"});
+    return true;
+  };
+
+  Renderer.prototype.writeCanvas = function (rec, intent) {
+    if (typeof this.adapter.canvasAction === "function") {
+      try { this.adapter.canvasAction(intent || {}, rec.value, rec.block); } catch (error) { this.adapter.announce("error", "Canvas action failed: " + String(error && error.message || error)); }
+    }
+    return this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+  };
+
+  /** Project/file status block. Hosts own persistence; browser file helpers are
+   * the fallback when projectAction is not supplied. */
+  Renderer.prototype.buildProject = function (block) {
+    var self = this;
+    var Project = global.PupitreProject;
+    var File = global.PupitreFile;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Project");
+    if (!Project) return el("p", {class: "pui-missing", text: "(project model PupitreProject is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(project value is missing)"});
+    var options = isObject(block.project_options) ? block.project_options : {};
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-project", "data-pui-project": path});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root, options: options, statusText: ""};
+    var head = el("div", {class: "pui-project-head"});
+    head.appendChild(el("h4", {text: label}));
+    var nameEl = el("span", {class: "pui-project-name"});
+    head.appendChild(nameEl);
+    var badges = el("span", {class: "pui-project-badges"});
+    head.appendChild(badges);
+    root.appendChild(head);
+    var actions = el("div", {class: "pui-project-actions"});
+    var newButton = el("button", {type: "button", class: "pui-button", text: "New"});
+    newButton.addEventListener("click", function () { self.projectCommand(rec, "project.new"); });
+    var open = el("button", {type: "button", class: "pui-button", text: "Open"});
+    open.addEventListener("click", function () { self.projectCommand(rec, "project.open"); });
+    var save = el("button", {type: "button", class: "pui-button pui-primary", text: "Save"});
+    save.addEventListener("click", function () { self.projectCommand(rec, "project.save"); });
+    var importButton = el("button", {type: "button", class: "pui-button", text: "Import"});
+    importButton.addEventListener("click", function () { self.projectCommand(rec, "project.import"); });
+    var exportButton = el("button", {type: "button", class: "pui-button", text: "Export"});
+    exportButton.addEventListener("click", function () { self.projectCommand(rec, "project.export"); });
+    actions.appendChild(newButton); actions.appendChild(open); actions.appendChild(save);
+    if (options.allow_import !== false) actions.appendChild(importButton);
+    if (options.allow_export !== false) actions.appendChild(exportButton);
+    root.appendChild(actions);
+    var autosaveRow = el("label", {class: "pui-project-autosave"});
+    var autosave = el("input", {type: "checkbox"});
+    autosave.addEventListener("change", function () {
+      rec.value.autosave = !!autosave.checked;
+      self.setPath(rec.path, rec.value, rec.block);
+      self.projectCommand(rec, "project.autosave", {value: rec.value.autosave});
+    });
+    autosaveRow.appendChild(autosave);
+    autosaveRow.appendChild(el("span", {text: "Autosave"}));
+    root.appendChild(autosaveRow);
+    var status = el("p", {class: "pui-project-status", role: "status", "aria-live": "polite"});
+    root.appendChild(status);
+    rec.autosave = autosave;
+    rec.status = status;
+    var refresh = function () {
+      var live = self.adapter.getValue(rec.path);
+      if (isObject(live)) rec.value = live;
+      var state = Project.normalize(rec.value);
+      state.offline = state.offline || (File ? !File.isOnline() : false);
+      nameEl.textContent = state.name + (state.path ? " · " + state.path : "");
+      badges.textContent = "";
+      [["dirty", "Unsaved"], ["offline", "Offline"], ["autosave", "Autosave"]].forEach(function (pair) {
+        if (!state[pair[0]]) return;
+        var className = pair[0] === "dirty" ? "is-dirty" : pair[0] === "offline" ? "is-offline" : "is-autosave";
+        badges.appendChild(el("span", {class: "pui-project-badge " + className, text: pair[1]}));
+      });
+      autosave.checked = state.autosave;
+      status.textContent = rec.statusText || (state.lastSaved ? "Last saved " + state.lastSaved : Project.stateLabel(state));
+      save.disabled = !state.dirty;
+      root.setAttribute("data-project-state", Project.stateLabel(state));
+    };
+    rec.refresh = refresh;
+    this.projectRecords.push(rec);
+    refresh();
+    if (options.service_worker && File) File.registerServiceWorker(String(options.service_worker));
+    return root;
+  };
+
+  Renderer.prototype.projectCommand = function (rec, op, extra, skipAction) {
+    var self = this;
+    var File = global.PupitreFile;
+    var intent = Object.assign({op: op, path: String(rec.value && rec.value.path || ""), name: String(rec.value && rec.value.name || "")}, extra || {});
+    var finish = function (ok, message) {
+      rec.statusText = message || (ok ? "Host handled " + op + "." : "Host rejected " + op + ".");
+      if (ok) self.adapter.announce("success", rec.statusText); else self.adapter.announce("error", rec.statusText);
+      if (rec.refresh) rec.refresh();
+    };
+    if (!skipAction && typeof this.adapter.projectAction === "function") {
+      try {
+        var result = this.adapter.projectAction(intent, rec.value, rec.block);
+        if (result === false) { finish(false); return false; }
+        if (result && typeof result.then === "function") {
+          result.then(function () { finish(true); }).catch(function (error) { finish(false, String(error && error.message || error)); });
+        } else finish(true);
+      } catch (error) { finish(false, String(error && error.message || error)); }
+      return true;
+    }
+    if (!File) { finish(false, "No project or file adapter is available."); return false; }
+    if (op === "project.autosave") {
+      finish(true, rec.value && rec.value.autosave ? "Autosave enabled." : "Autosave disabled.");
+      return true;
+    }
+    if (op === "project.save" || op === "project.export") {
+      var content = JSON.stringify(this.adapter.getValue(rec.path), null, 2);
+      var filename = (rec.options.filename || global.PupitreProject.filename(global.PupitreProject.normalize(rec.value), rec.options.extension || "pui.json"));
+      var ok = File.download(filename, content, "application/json");
+      finish(ok, ok ? "Downloaded " + filename : "Could not create file.");
+      return ok;
+    }
+    if (op === "project.open" || op === "project.import") {
+      File.pickFile({accept: rec.options.accept || ".json,application/json"}).then(function (picked) {
+        var parsed = File.parseJSON(picked.text);
+        if (!parsed.ok) { finish(false, "Invalid project JSON: " + parsed.error); return; }
+        self.setPath(rec.path, parsed.value, rec.block);
+        rec.value = parsed.value;
+        finish(true, "Loaded " + picked.name);
+      }).catch(function (error) { finish(false, String(error && error.message || error)); });
+      return true;
+    }
+    finish(false, "This project action requires a host adapter.");
+    return false;
+  };
+
+  Renderer.prototype.buildDisclosure = function (block) {
+    var self = this;
+    var root = el("section", {class: "pui-disclosure", "data-pui-disclosure": String(block.id || block.bind || "")});
+    var bodyId = this.id("disclosure-body");
+    var key = String(block.storage_key || block.id || block.bind || "default");
+    var stored = null;
+    try { stored = window.localStorage && window.localStorage.getItem("pui.disclosure." + key); } catch (error) {}
+    var defaultOpen = block.open === true || block.default_open === true;
+    var open = stored === null || stored === undefined ? defaultOpen : stored === "1";
+    var summary = el("button", {type: "button", class: "pui-disclosure-summary", "aria-expanded": open ? "true" : "false", "aria-controls": bodyId});
+    var dot = el("span", {class: "pui-disclosure-dot", "aria-hidden": "true"});
+    summary.appendChild(dot);
+    summary.appendChild(el("span", {class: "pui-disclosure-title", text: String(block.label || block.title || block.id || "Details")}));
+    var summaryText = el("span", {class: "pui-disclosure-summary-text"});
+    summary.appendChild(summaryText);
+    var status = el("span", {class: "pui-disclosure-status"});
+    summary.appendChild(status);
+    var modified = el("span", {class: "pui-disclosure-modified", text: "modified"});
+    summary.appendChild(modified);
+    summary.appendChild(el("span", {class: "pui-disclosure-chevron", "aria-hidden": "true", text: open ? "▾" : "▸"}));
+    root.appendChild(summary);
+    var body = el("div", {class: "pui-disclosure-body", id: bodyId, hidden: !open});
+    (block.blocks || []).forEach(function (child) { body.appendChild(self.buildBlock(child)); });
+    if (isArray(block.actions) && block.actions.length) body.appendChild(self.buildActions(block.actions));
+    root.appendChild(body);
+    var refresh = function () {
+      var summaryValue = block.summary;
+      if (block.summary_bind) summaryValue = self.adapter.getValue(String(block.summary_bind));
+      summaryText.textContent = summaryValue === undefined || summaryValue === null ? "" : String(summaryValue);
+      var statusValue = block.status;
+      if (block.status_bind) statusValue = self.adapter.getValue(String(block.status_bind));
+      var statusText = "";
+      var statusLevel = String(block.status_level || "");
+      if (isObject(statusValue)) {
+        statusText = String(statusValue.text || statusValue.message || statusValue.state || "");
+        statusLevel = String(statusValue.level || statusValue.state || statusLevel);
+      } else if (statusValue !== undefined && statusValue !== null) statusText = String(statusValue);
+      status.textContent = statusText;
+      var tone = /fail|error|conflict/i.test(statusLevel + " " + statusText) ? "error" : /warn|stale|busy|pending/i.test(statusLevel + " " + statusText) ? "warn" : statusText ? "ok" : "";
+      dot.className = "pui-disclosure-dot" + (tone ? " is-" + tone : "");
+      var modifiedValue = block.modified === true;
+      if (block.modified_bind) modifiedValue = !!self.adapter.getValue(String(block.modified_bind));
+      modified.hidden = !modifiedValue;
+      root.classList.toggle("is-modified", modifiedValue);
+      body.style.setProperty("--pui-disclosure-depth", String(block.depth || 0));
+    };
+    var setOpen = function (next) {
+      open = next;
+      summary.setAttribute("aria-expanded", open ? "true" : "false");
+      summary.querySelector(".pui-disclosure-chevron").textContent = open ? "▾" : "▸";
+      body.hidden = !open;
+      try { if (window.localStorage) window.localStorage.setItem("pui.disclosure." + key, open ? "1" : "0"); } catch (error) {}
+    };
+    summary.addEventListener("click", function () { setOpen(!open); });
+    this.disclosureRecords.push({refresh: refresh});
+    refresh();
+    return root;
+  };
+
+  Renderer.prototype.readSelection = function (path, block) {
+    if (!path) return {ids: [], active: "", kind: "", label: "", mixed: []};
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(String(path), block || {})
+      : this.adapter.getValue(String(path));
+    if (global.PupitreSelection) return global.PupitreSelection.normalize(value);
+    var ids = isArray(value) ? value.map(String) : (isObject(value) && isArray(value.ids) ? value.ids.map(String) : []);
+    return {ids: ids, active: isObject(value) && value.active ? String(value.active) : (ids[0] || ""), kind: isObject(value) && value.kind ? String(value.kind) : "", label: "", mixed: []};
+  };
+
+  Renderer.prototype.writeSelection = function (rec, state, kind, label) {
+    var path = rec && rec.block && rec.block.selection_bind ? String(rec.block.selection_bind) : "";
+    if (!path) return false;
+    var current = this.adapter.getValue(path);
+    var ids = isArray(state) ? state.map(String) : (isObject(state) && isArray(state.ids) ? state.ids.map(String) : []);
+    var next = {ids: ids, active: isObject(state) && state.active ? String(state.active) : (ids[0] || ""), kind: kind || (isObject(state) && state.kind ? String(state.kind) : ""), label: label !== undefined ? String(label) : ""};
+    if (global.PupitreSelection) next = global.PupitreSelection.normalize(Object.assign({}, next, {kind: next.kind}));
+    var value = global.PupitreSelection ? global.PupitreSelection.toShape(current, next) : (isArray(current) ? next.ids : Object.assign({}, current, next));
+    this.setPath(path, value, rec.block);
+    if (typeof this.adapter.selectionAction === "function") {
+      try { this.adapter.selectionAction({op: "selection.set", ids: next.ids, active: next.active, kind: next.kind}, next, rec.block); } catch (error) { this.adapter.announce("error", "Selection action failed: " + String(error && error.message || error)); }
+    }
+    this.refreshSelections(rec);
+    return true;
+  };
+
+  Renderer.prototype.refreshSelections = function (except) {
+    for (var i = 0; i < this.selectionRecords.length; i++) {
+      var record = this.selectionRecords[i];
+      if (record.owner === except) continue;
+      if (record.refresh) record.refresh();
+    }
+  };
+
+  Renderer.prototype.buildSelection = function (block) {
+    var self = this;
+    var Selection = global.PupitreSelection;
+    var path = String(block.bind || "");
+    if (!Selection) return el("p", {class: "pui-missing", text: "(selection model PupitreSelection is not loaded)"});
+    var root = el("section", {class: "pui-selection", "data-pui-selection": path, role: "group"});
+    var label = String(block.label || block.id || "Selection");
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, root: root, options: isObject(block.selection_options) ? block.selection_options : {}};
+    var head = el("div", {class: "pui-selection-head"});
+    head.appendChild(el("h4", {text: label}));
+    var count = el("span", {class: "pui-selection-count"});
+    head.appendChild(count);
+    root.appendChild(head);
+    var body = el("div", {class: "pui-selection-body"});
+    root.appendChild(body);
+    var context = el("div", {class: "pui-selection-actions"});
+    root.appendChild(context);
+    var refresh = function () {
+      var state = self.readSelection(path, block);
+      count.textContent = state.ids.length + " selected";
+      body.textContent = "";
+      var context = self.root && self.root.querySelector ? self.root.querySelector(".pui-selection-actions") : null;
+      if (context) context.textContent = "";
+      if (!state.ids.length) {
+        body.appendChild(el("p", {class: "pui-selection-empty", text: self.t("selection.none", "No selection.")}));
+        return;
+      }
+      if (state.active) body.appendChild(el("span", {class: "pui-selection-active", text: "Active: " + state.active}));
+      if (state.kind) body.appendChild(el("span", {class: "pui-selection-kind", text: state.kind}));
+      var chips = el("div", {class: "pui-selection-chips"});
+      state.ids.forEach(function (id) {
+        chips.appendChild(el("span", {class: "pui-selection-chip" + (id === state.active ? " is-active" : ""), text: id}));
+      });
+      body.appendChild(chips);
+      if (state.mixed.length) body.appendChild(el("span", {class: "pui-selection-mixed", text: "Mixed: " + state.mixed.join(", ")}));
+      (rec.options.context || block.context || []).forEach(function (item) {
+        if (!isObject(item)) return;
+        var button = el("button", {type: "button", class: "pui-button", text: String(item.label || item.id || "Action")});
+        button.addEventListener("click", function () { self.performAction(item, button, {selection: state.ids, active: state.active}); });
+        if (context) context.appendChild(button);
+      });
+    };
+    rec.refresh = refresh;
+    rec.owner = rec;
+    this.selectionRecords.push(rec);
+    refresh();
+    return root;
+  };
+
+  /** Fixed status line + bounded command-history overlay. Hosts own commands,
+   * rollback and audit; PUI only presents bounded state and a11y semantics. */
+  Renderer.prototype.buildCommandLog = function (block) {
+    var self = this;
+    var CommandLog = global.PupitreCommandLog;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Command log");
+    if (!CommandLog) return el("p", {class: "pui-missing", text: "(command log model PupitreCommandLog is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(command log value is missing)"});
+    var options = isObject(block.commandlog_options) ? block.commandlog_options : {};
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-commandlog", "data-pui-commandlog": path});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root, options: options, statusBind: block.status_bind ? String(block.status_bind) : "", history: null, dialog: null};
+    var head = el("div", {class: "pui-commandlog-head"});
+    head.appendChild(el("h4", {text: label}));
+    var historyButton = el("button", {type: "button", class: "pui-button", text: "History", "aria-haspopup": "dialog", "aria-expanded": "false"});
+    head.appendChild(historyButton);
+    root.appendChild(head);
+    var statusLine = el("div", {class: "pui-commandlog-status", role: "status", "aria-live": "polite"});
+    root.appendChild(statusLine);
+    var failures = el("div", {class: "pui-commandlog-failures"});
+    root.appendChild(failures);
+    var dialog = el("dialog", {class: "pui-dialog pui-commandlog-history", "aria-labelledby": this.id("commandlog-title")});
+    var title = el("h5", {id: this.id("commandlog-title"), text: "Command history"});
+    dialog.appendChild(title);
+    var close = el("button", {type: "button", class: "pui-button", text: "Close"});
+    close.addEventListener("click", function () { dialog.close(); historyButton.setAttribute("aria-expanded", "false"); });
+    dialog.appendChild(close);
+    var list = el("ol", {class: "pui-commandlog-list"});
+    dialog.appendChild(list);
+    root.appendChild(dialog);
+    rec.dialog = dialog;
+    rec.list = list;
+    rec.statusLine = statusLine;
+    rec.failures = failures;
+    rec.historyButton = historyButton;
+    var refresh = function () { self.commandLogRefresh(rec); };
+    rec.refresh = refresh;
+    historyButton.addEventListener("click", function () {
+      self.commandLogRefresh(rec);
+      dialog.showModal();
+      historyButton.setAttribute("aria-expanded", "true");
+    });
+    dialog.addEventListener("cancel", function (event) { event.preventDefault(); dialog.close(); historyButton.setAttribute("aria-expanded", "false"); });
+    this.commandLogRecords.push(rec);
+    refresh();
+    return root;
+  };
+
+  Renderer.prototype.commandLogRefresh = function (rec) {
+    var CommandLog = global.PupitreCommandLog;
+    if (!CommandLog || !rec) return;
+    var live = this.adapter.getValue(rec.path);
+    if (isObject(live)) rec.value = live;
+    var override = rec.statusBind ? this.adapter.getValue(rec.statusBind) : undefined;
+    var state = CommandLog.normalize(rec.value, override, rec.options.history_limit);
+    var tone = CommandLog.statusTone(state.status, state);
+    rec.statusLine.className = "pui-commandlog-status is-" + tone;
+    rec.statusLine.textContent = "";
+    rec.statusLine.appendChild(el("span", {class: "pui-commandlog-dot", "aria-hidden": "true"}));
+    rec.statusLine.appendChild(el("span", {class: "pui-commandlog-status-text", text: state.status}));
+    rec.statusLine.appendChild(el("span", {class: "pui-commandlog-meta", text: state.total + " entries · " + state.failed.length + " failed target" + (state.failed.length === 1 ? "" : "s") + (state.rolledBack ? " · " + state.rolledBack + " rolled back" : "")}));
+    rec.failures.textContent = "";
+    if (state.failed.length) {
+      rec.failures.appendChild(el("span", {class: "pui-commandlog-failure-label", text: "Failed targets: "}));
+      rec.failures.appendChild(el("span", {text: state.failed.map(function (entry) { return String(entry.target || entry.op || entry.id); }).join(", ")}));
+    }
+    rec.historyButton.textContent = "History (" + state.total + ")";
+    rec.historyButton.setAttribute("aria-label", "Command history, " + state.total + " entries");
+    rec.list.textContent = "";
+    state.entries.slice().reverse().forEach(function (entry) {
+      var item = el("li", {class: "pui-commandlog-entry is-" + String(entry.status || "unknown")});
+      item.appendChild(el("span", {class: "pui-commandlog-entry-op", text: String(entry.op || entry.id || "command")}));
+      item.appendChild(el("span", {class: "pui-commandlog-entry-status", text: CommandLog.statusLabel(entry.status)}));
+      if (entry.target) item.appendChild(el("code", {text: String(entry.target)}));
+      if (entry.message) item.appendChild(el("span", {class: "pui-commandlog-entry-message", text: String(entry.message)}));
+      item.appendChild(el("span", {class: "pui-commandlog-meta", text: String(entry.actor || "host") + (entry.at ? " · " + String(entry.at) : "")}));
+      rec.list.appendChild(item);
+    });
+    if (!state.entries.length) rec.list.appendChild(el("li", {class: "pui-commandlog-empty", text: "No commands yet."}));
+  };
+
+  /** ARIA tree/navigator. Host owns nodes/actions; PUI owns folds, ARIA,
+   * selection, keyboard movement and edit intents. */
+  Renderer.prototype.buildTree = function (block) {
+    var self = this;
+    var Tree = global.PupitreTree;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Tree");
+    if (!Tree) return el("p", {class: "pui-missing", text: "(tree model PupitreTree is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(tree value is missing)"});
+    var options = isObject(block.tree_options) ? block.tree_options : {};
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-tree", "data-pui-tree": path});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root, options: options,
+      selectionPath: block.selection_bind ? String(block.selection_bind) : "",
+      expandedPath: block.expanded_bind ? String(block.expanded_bind) : "",
+      selected: {}, expanded: {}, focusId: "", rows: {}, renaming: null, menu: null, shouldFocus: false};
+    var readList = function (bind) {
+      var list = bind ? self.adapter.getValue(bind) : null;
+      return isArray(list) ? list.map(String) : [];
+    };
+    var selected = rec.selectionPath ? self.readSelection(rec.selectionPath, block).ids : (isArray(value.selected) ? value.selected : []);
+    selected.forEach(function (id) { rec.selected[String(id)] = true; });
+    var expanded = rec.expandedPath ? readList(rec.expandedPath) : (isArray(value.expanded) ? value.expanded : []);
+    if (!rec.expandedPath && !expanded.length) {
+      try {
+        var stored = window.localStorage && window.localStorage.getItem("pui.tree." + String(options.storage_key || block.id || path));
+        if (stored) expanded = JSON.parse(stored);
+      } catch (error) {}
+    }
+    if (!isArray(expanded)) expanded = [];
+    expanded.forEach(function (id) { rec.expanded[String(id)] = true; });
+    var flat = Tree.flattenTree(value, rec.expanded);
+    rec.focusId = selected.length ? String(selected[0]) : (flat[0] ? flat[0].id : "");
+    var head = el("div", {class: "pui-tree-head"});
+    head.appendChild(el("h4", {text: label}));
+    head.appendChild(el("span", {class: "pui-tree-count", text: (value.roots || []).length + " root" + ((value.roots || []).length === 1 ? "" : "s")}));
+    root.appendChild(head);
+    var tree = el("div", {class: "pui-tree-view", role: "tree", "aria-label": a11y.name || label, tabindex: "-1"});
+    root.appendChild(tree);
+    rec.tree = tree;
+    this.treeRender(rec);
+    tree.addEventListener("keydown", function (event) { self.treeKeydown(rec, event); });
+    if (rec.selectionPath) this.selectionRecords.push({owner: rec, refresh: function () { self.treeSelectionRefresh(rec); }});
+    tree.addEventListener("contextmenu", function (event) {
+      var row = event.target && event.target.closest ? event.target.closest("[data-node-id]") : null;
+      if (!row) return;
+      if (event.preventDefault) event.preventDefault();
+      self.treeOpenMenu(rec, row.getAttribute("data-node-id"));
+    });
+    return root;
+  };
+
+  Renderer.prototype.treeRender = function (rec) {
+    var self = this;
+    var Tree = global.PupitreTree;
+    if (!Tree || !rec || !rec.tree) return;
+    rec.tree.textContent = "";
+    rec.rows = {};
+    var makeRows = function (nodes) {
+      if (!isArray(nodes)) return null;
+      var group = el("div", {class: "pui-tree-group", role: "group"});
+      nodes.forEach(function (node, index) {
+        if (!isObject(node)) return;
+        var id = String(node.id === undefined ? "" : node.id);
+        var children = isArray(node.children) ? node.children : [];
+        var isExpanded = children.length > 0 && !!rec.expanded[id];
+        var row = el("div", {class: "pui-tree-row" + (rec.selected[id] ? " is-selected" : ""), role: "treeitem", "data-node-id": id,
+          "aria-posinset": String(index + 1), "aria-setsize": String(nodes.length)});
+        row.depth = 0;
+        row.setAttribute("aria-level", "1");
+        if (children.length) row.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        row.setAttribute("aria-selected", rec.selected[id] ? "true" : "false");
+        row.tabIndex = rec.focusId === id ? 0 : -1;
+        if (children.length) {
+          var expander = el("button", {type: "button", class: "pui-tree-expander", text: isExpanded ? "▾" : "▸", "aria-label": (isExpanded ? "Collapse " : "Expand ") + String(node.label || id)});
+          expander.tabIndex = -1;
+          expander.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.treeToggle(rec, id); });
+          row.appendChild(expander);
+        } else {
+          row.appendChild(el("span", {class: "pui-tree-spacer", "aria-hidden": "true"}));
+        }
+        var labelSpan = el("span", {class: "pui-tree-label", text: String(node.label || id)});
+        row.appendChild(labelSpan);
+        if (node.kind) row.appendChild(el("span", {class: "pui-tree-kind", text: String(node.kind)}));
+        var badgeText = Tree.badgesText(node);
+        if (badgeText) row.appendChild(el("span", {class: "pui-tree-badges", text: badgeText}));
+        row.addEventListener("click", function (event) { self.treeSelect(rec, id, !!(event.ctrlKey || event.metaKey || event.shiftKey)); });
+        row.addEventListener("dblclick", function (event) { if (event.preventDefault) event.preventDefault(); self.treeStartRename(rec, id); });
+        row.addEventListener("focus", function () { rec.focusId = id; });
+        if (rec.focusId === id) rec.rows[id] = row;
+        group.appendChild(row);
+        if (children.length && isExpanded) {
+          var childGroup = makeRows(children);
+          if (childGroup) group.appendChild(childGroup);
+        }
+        var nested = row.querySelectorAll ? row.querySelectorAll(".pui-tree-row") : [];
+        if (nested.length) nested.forEach(function (child) { child.depth = (child.depth || 0) + 1; });
+      });
+      // Assign levels after creation so nested rows receive depth.
+      var all = group.querySelectorAll(".pui-tree-row");
+      all.forEach(function (row) {
+        var depth = 0, node = row.parentElement;
+        while (node) { if (node.classList && node.classList.contains("pui-tree-group")) depth += 1; node = node.parentElement; }
+        depth = Math.max(0, depth - 1);
+        row.setAttribute("aria-level", String(depth + 1));
+        row.depth = depth;
+        rec.rows[row.getAttribute("data-node-id")] = row;
+      });
+      return group;
+    };
+    var group = makeRows(rec.value.roots);
+    if (group) rec.tree.appendChild(group);
+    if (rec.shouldFocus && rec.rows[rec.focusId]) {
+      rec.shouldFocus = false;
+      if (rec.rows[rec.focusId].focus) rec.rows[rec.focusId].focus();
+    }
+  };
+
+  Renderer.prototype.treeSelectionRefresh = function (rec) {
+    if (!rec || !rec.selectionPath) return;
+    var state = this.readSelection(rec.selectionPath, rec.block);
+    rec.selected = {};
+    state.ids.forEach(function (id) { rec.selected[id] = true; });
+    Object.keys(rec.rows || {}).forEach(function (id) {
+      var row = rec.rows[id];
+      if (!row) return;
+      row.classList.toggle("is-selected", !!rec.selected[id]);
+      row.setAttribute("aria-selected", rec.selected[id] ? "true" : "false");
+    });
+  };
+
+  Renderer.prototype.treeSelect = function (rec, id, additive) {
+    if (!rec || !rec.value) return false;
+    if (additive) {
+      if (rec.selected[id]) delete rec.selected[id]; else rec.selected[id] = true;
+    } else {
+      rec.selected = {};
+      rec.selected[id] = true;
+    }
+    rec.focusId = id;
+    var ids = Object.keys(rec.selected);
+    this.writeTree(rec, {op: "tree.select", id: id, ids: ids}, !rec.selectionPath);
+    if (rec.selectionPath) this.writeSelection(rec, {ids: ids, active: id}, "tree", String(rec.value && rec.value.label || ""));
+    rec.shouldFocus = true;
+    this.treeRender(rec);
+    return true;
+  };
+
+  Renderer.prototype.treeToggle = function (rec, id) {
+    if (!rec || !rec.value) return false;
+    rec.expanded[id] = !rec.expanded[id];
+    var ids = Object.keys(rec.expanded).filter(function (key) { return rec.expanded[key]; });
+    this.writeTree(rec, {op: rec.expanded[id] ? "tree.expand" : "tree.collapse", id: id, expanded: ids}, !rec.expandedPath);
+    if (rec.expandedPath) this.setPath(rec.expandedPath, ids, rec.block);
+    this.treeStore(rec, ids);
+    rec.focusId = id;
+    rec.shouldFocus = true;
+    this.treeRender(rec);
+    return true;
+  };
+
+  Renderer.prototype.treeStore = function (rec, ids) {
+    try { if (window.localStorage) window.localStorage.setItem("pui.tree." + String(rec.options.storage_key || rec.block.id || rec.path), JSON.stringify(ids)); } catch (error) {}
+  };
+
+  Renderer.prototype.treeStartRename = function (rec, id) {
+    if (rec.block.readonly || (rec.options.rename === false)) return false;
+    var found = global.PupitreTree.findNode(rec.value, id);
+    var row = rec.rows[id];
+    if (!found || !row) return false;
+    var label = row.querySelector(".pui-tree-label");
+    if (!label) return false;
+    var input = el("input", {type: "text", class: "pui-tree-rename", value: String(found.node.label || id), "aria-label": "Rename " + String(found.node.label || id)});
+    label.hidden = true;
+    row.appendChild(input);
+    var done = function (commit) {
+      if (rec.renaming !== input) return;
+      rec.renaming = null;
+      if (commit && input.value.trim()) {
+        found.node.label = input.value.trim();
+        rec.writeTreePending = true;
+        self.treeWrite(rec, {op: "tree.rename", id: id, label: found.node.label});
+      }
+      rec.shouldFocus = true;
+      self.treeRender(rec);
+    };
+    var self = this;
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { if (event.preventDefault) event.preventDefault(); done(true); }
+      else if (event.key === "Escape") { if (event.preventDefault) event.preventDefault(); done(false); }
+    });
+    input.addEventListener("blur", function () { done(true); });
+    rec.renaming = input;
+    if (input.focus) input.focus();
+    if (input.select) input.select();
+    return true;
+  };
+
+  Renderer.prototype.treeWrite = function (rec, intent) {
+    this.writeTree(rec, intent, true);
+  };
+
+  Renderer.prototype.writeTree = function (rec, intent, writeValue) {
+    if (writeValue !== false) this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+    if (typeof this.adapter.treeAction === "function") {
+      try { this.adapter.treeAction(intent || {}, rec.value, rec.block); } catch (error) { this.adapter.announce("error", "Tree action failed: " + String(error && error.message || error)); }
+    }
+  };
+
+  Renderer.prototype.treeAction = function (rec, intent) {
+    if (typeof this.adapter.treeAction === "function") {
+      try { this.adapter.treeAction(intent || {}, rec.value, rec.block); } catch (error) { this.adapter.announce("error", "Tree action failed: " + String(error && error.message || error)); }
+    }
+  };
+
+  Renderer.prototype.treeKeydown = function (rec, event) {
+    var self = this;
+    if (!rec || !rec.value) return;
+    if (rec.menu && event.key === "Escape") {
+      if (event.preventDefault) event.preventDefault();
+      rec.menu.remove();
+      rec.menu = null;
+      return;
+    }
+    var Tree = global.PupitreTree;
+    if (rec.renaming) return;
+    var activeRow = document.activeElement && document.activeElement.closest ? document.activeElement.closest("[data-node-id]") : null;
+    if (activeRow) rec.focusId = activeRow.getAttribute("data-node-id");
+    var flat = Tree.flattenTree(rec.value, rec.expanded);
+    var index = flat.findIndex(function (entry) { return entry.id === rec.focusId; });
+    if (index < 0) index = 0;
+    var current = flat[index];
+    var focusAt = function (next) { if (next) { rec.focusId = next.id; rec.shouldFocus = true; self.treeRender(rec); } };
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      if (rec.block.readonly || (rec.options.reorder === false)) return;
+      var moved = Tree.moveSibling(rec.value, rec.focusId, event.key === "ArrowUp" ? -1 : 1);
+      if (moved) { this.treeWrite(rec, {op: "tree.reorder", id: rec.focusId, delta: event.key === "ArrowUp" ? -1 : 1}); rec.shouldFocus = true; this.treeRender(rec); }
+      return;
+    }
+    if (event.key === "ArrowDown") { event.preventDefault(); focusAt(flat[index + 1]); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); focusAt(flat[index - 1]); return; }
+    if (event.key === "Home") { event.preventDefault(); focusAt(flat[0]); return; }
+    if (event.key === "End") { event.preventDefault(); focusAt(flat[flat.length - 1]); return; }
+    if (event.key === "ArrowRight" && current) {
+      event.preventDefault();
+      var children = current.node.children || [];
+      if (children.length && !rec.expanded[current.id]) this.treeToggle(rec, current.id);
+      else if (children.length && flat[index + 1]) focusAt(flat[index + 1]);
+      return;
+    }
+    if (event.key === "ArrowLeft" && current) {
+      event.preventDefault();
+      if ((current.node.children || []).length && rec.expanded[current.id]) this.treeToggle(rec, current.id);
+      else if (current.parentId) focusAt(flat.find(function (entry) { return entry.id === String(current.parentId); }));
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.treeSelect(rec, rec.focusId, false); return; }
+    if (event.key === "F2") { event.preventDefault(); this.treeStartRename(rec, rec.focusId); return; }
+    if (event.key === "F10" && event.shiftKey) { event.preventDefault(); this.treeOpenMenu(rec, rec.focusId); return; }
+  };
+
+  Renderer.prototype.treeOpenMenu = function (rec, id) {
+    if (!rec || !rec.root || !id) return false;
+    if (rec.menu) rec.menu.remove();
+    var self = this;
+    var items = isArray(rec.options.context) ? rec.options.context : [];
+    if (!items.length || rec.block.readonly) return false;
+    var menu = el("div", {class: "pui-tree-menu", role: "menu", "aria-label": "Tree actions"});
+    items.forEach(function (item) {
+      if (!isObject(item)) return;
+      var button = el("button", {type: "button", class: "pui-tree-menu-item", role: "menuitem", text: String(item.label || item.id || "Action")});
+      button.addEventListener("click", function () {
+        if (rec.menu) rec.menu.remove();
+        rec.menu = null;
+        self.performAction(item, button, {nodeId: id, path: rec.path});
+      });
+      menu.appendChild(button);
+    });
+    rec.root.appendChild(menu);
+    rec.menu = menu;
+    if (menu.querySelector) { var first = menu.querySelector("button"); if (first && first.focus) first.focus(); }
+    return true;
+  };
+
+  /** Local/live stage control surface. The host owns file access, rendering,
+   * transport and conflict resolution; PUI owns state presentation and intents. */
+  Renderer.prototype.buildStage = function (block) {
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var Stage = global.PupitreStage;
+    var label = String(block.label || block.id || "Stage");
+    if (!Stage) return el("p", {class: "pui-missing", text: "(stage model PupitreStage is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(stage value is missing)"});
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("section", {class: "pui-stage", "data-pui-stage": path, role: "group"});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {block: block, path: path, value: value, root: root, statusText: "", statusEl: null};
+    this.stageRender(rec);
+    return root;
+  };
+
+  Renderer.prototype.stageRender = function (rec) {
+    var self = this;
+    var Stage = global.PupitreStage;
+    if (!rec || !rec.root || !Stage) return;
+    var value = rec.value;
+    var project = isObject(value.project) ? value.project : {};
+    var readonly = !!rec.block.readonly;
+    rec.root.textContent = "";
+    var head = el("div", {class: "pui-stage-head"});
+    head.appendChild(el("h4", {text: String(rec.block.label || rec.block.id || "Stage")}));
+    if (project.name) head.appendChild(el("span", {class: "pui-stage-project", text: String(project.name)}));
+    if (project.offline) head.appendChild(el("span", {class: "pui-stage-badge is-offline", text: "Offline"}));
+    if (project.dirty) head.appendChild(el("span", {class: "pui-stage-badge is-dirty", text: "Unsaved"}));
+    if (value.draft) head.appendChild(el("span", {class: "pui-stage-badge", text: "Draft"}));
+    head.appendChild(el("span", {class: "pui-stage-sync is-" + String(value.sync || "in_sync"), text: Stage.syncLabel(value.sync)}));
+    if (!readonly) {
+      var open = el("button", {type: "button", class: "pui-button", text: "Open project"});
+      open.addEventListener("click", function () { self.stageCommand(rec, {op: "project.open", path: project.path || ""}); });
+      var save = el("button", {type: "button", class: "pui-button", text: "Save project"});
+      save.addEventListener("click", function () { self.stageCommand(rec, {op: "project.save", path: project.path || ""}); });
+      head.appendChild(open);
+      head.appendChild(save);
+    }
+    rec.root.appendChild(head);
+
+    var modes = el("div", {class: "pui-stage-modes", role: "group", "aria-label": "Stage mode"});
+    Stage.MODES.forEach(function (mode) {
+      var button = el("button", {type: "button", class: "pui-button pui-stage-mode" + (String(value.mode) === mode ? " is-active" : ""), text: Stage.modeLabel(mode)});
+      button.setAttribute("aria-pressed", String(value.mode) === mode ? "true" : "false");
+      button.disabled = readonly;
+      button.addEventListener("click", function () { self.stageSetMode(rec, mode); });
+      modes.appendChild(button);
+    });
+    var crossfade = el("label", {class: "pui-stage-crossfade"});
+    crossfade.appendChild(el("span", {text: "Crossfade"}));
+    var crossfadeInput = el("input", {type: "range", min: "0", max: "1", step: "0.01", "aria-label": "Crossfade"});
+    crossfadeInput.value = String(Stage.clampCrossfade(value.crossfade));
+    crossfadeInput.disabled = readonly;
+    crossfadeInput.addEventListener("input", function () { self.stageSetCrossfade(rec, Number(crossfadeInput.value)); });
+    crossfade.appendChild(crossfadeInput);
+    crossfade.appendChild(el("output", {class: "pui-stage-crossfade-value", text: Math.round(Stage.clampCrossfade(value.crossfade) * 100) + "%"}));
+    modes.appendChild(crossfade);
+    rec.root.appendChild(modes);
+
+    var actions = el("div", {class: "pui-stage-actions", role: "group", "aria-label": "Stage actions"});
+    [["push", "Push"], ["pull", "Pull"], ["pin", "Pin"], ["clear", "Clear"]].forEach(function (pair) {
+      var button = el("button", {type: "button", class: "pui-button", text: pair[1]});
+      button.disabled = readonly;
+      button.addEventListener("click", function () { self.stageCommand(rec, {op: "stage." + pair[0], mode: value.mode}); });
+      actions.appendChild(button);
+    });
+    rec.root.appendChild(actions);
+
+    var cards = el("div", {class: "pui-stage-cards"});
+    [["local", "Local", value.local], ["live", "Live", value.live]].forEach(function (entry) {
+      var card = el("div", {class: "pui-stage-card is-" + entry[0] + (String(value.mode) === entry[0] || String(value.mode) === "crossfade" ? " is-visible" : "")});
+      card.appendChild(el("h5", {text: entry[1]}));
+      var data = isObject(entry[2]) ? entry[2] : {};
+      card.appendChild(el("strong", {text: String(data.label || entry[1])}));
+      if (data.summary) card.appendChild(el("p", {text: String(data.summary)}));
+      cards.appendChild(card);
+    });
+    rec.root.appendChild(cards);
+
+    if (isObject(value.conflict)) {
+      var conflict = value.conflict;
+      var box = el("div", {class: "pui-stage-conflict", role: "alert"});
+      box.appendChild(el("h5", {text: "Conflict · " + String(conflict.path || conflict.id || "value")}));
+      if (conflict.reason) box.appendChild(el("p", {class: "pui-stage-conflict-reason", text: String(conflict.reason)}));
+      var sides = el("div", {class: "pui-stage-conflict-sides"});
+      ["base", "local", "remote"].forEach(function (name) {
+        if (!isObject(conflict[name])) return;
+        var side = el("div", {class: "pui-stage-conflict-side is-" + name});
+        side.appendChild(el("strong", {text: name}));
+        side.appendChild(el("code", {text: JSON.stringify(conflict[name].value)}));
+        side.appendChild(el("span", {class: "pui-stage-provenance", text: "rev " + String(conflict[name].rev) + " · " + String(conflict[name].source || "unknown") + (conflict[name].at ? " · " + String(conflict[name].at) : "")}));
+        sides.appendChild(side);
+      });
+      box.appendChild(sides);
+      var conflictActions = el("div", {class: "pui-stage-actions"});
+      ["keep_mine", "take_theirs"].forEach(function (op) {
+        var button = el("button", {type: "button", class: "pui-button " + (op === "keep_mine" ? "pui-primary" : "pui-danger"), text: op === "keep_mine" ? "Keep mine" : "Take theirs"});
+        button.disabled = readonly;
+        button.addEventListener("click", function () { self.stageCommand(rec, {op: "conflict." + op, conflictId: conflict.id, path: conflict.path}); });
+        conflictActions.appendChild(button);
+      });
+      box.appendChild(conflictActions);
+      rec.root.appendChild(box);
+    }
+    if (isArray(value.commands) && value.commands.length) {
+      var log = el("details", {class: "pui-stage-log"});
+      log.appendChild(el("summary", {text: "Command log · " + value.commands.length}));
+      var list = el("ul");
+      value.commands.slice(-20).reverse().forEach(function (command) {
+        if (!isObject(command)) return;
+        var item = el("li", {class: "pui-stage-command is-" + String(command.status || "unknown")});
+        item.appendChild(el("span", {class: "pui-stage-command-op", text: String(command.op || command.id || "command")}));
+        item.appendChild(el("span", {class: "pui-stage-command-status", text: String(command.status || "unknown")}));
+        if (command.path) item.appendChild(el("code", {text: String(command.path)}));
+        if (command.message) item.appendChild(el("span", {class: "pui-stage-command-message", text: String(command.message)}));
+        item.appendChild(el("span", {class: "pui-stage-provenance", text: String(command.actor || "host") + (command.at ? " · " + String(command.at) : "")}));
+        list.appendChild(item);
+      });
+      log.appendChild(list);
+      rec.root.appendChild(log);
+    }
+    if (isArray(value.unsupported) && value.unsupported.length) {
+      var unsupported = el("div", {class: "pui-stage-unsupported"});
+      unsupported.appendChild(el("strong", {text: "Unsupported: "}));
+      unsupported.appendChild(el("span", {text: value.unsupported.map(String).join(", ")}));
+      rec.root.appendChild(unsupported);
+    }
+    if (isArray(value.pinned) && value.pinned.length) rec.root.appendChild(el("p", {class: "pui-stage-pinned", text: "Pinned: " + value.pinned.map(String).join(", ")}));
+
+    var status = el("p", {class: "pui-stage-status", role: "status", "aria-live": "polite"});
+    status.textContent = rec.statusText || (project.offline ? "Offline preview; host keeps the live output untouched." : "Stage ready.");
+    rec.statusEl = status;
+    rec.root.appendChild(status);
+  };
+
+  Renderer.prototype.stageSetMode = function (rec, mode) {
+    if (rec.block.readonly || global.PupitreStage.MODES.indexOf(String(mode)) < 0) return false;
+    rec.value.mode = String(mode);
+    this.stageWrite(rec, {op: "stage.mode", mode: rec.value.mode});
+    this.stageRender(rec);
+    return true;
+  };
+
+  Renderer.prototype.stageSetCrossfade = function (rec, value) {
+    if (rec.block.readonly) return false;
+    rec.value.crossfade = global.PupitreStage.clampCrossfade(value);
+    this.stageWrite(rec, {op: "stage.crossfade", value: rec.value.crossfade});
+    this.stageRender(rec);
+    return true;
+  };
+
+  Renderer.prototype.stageWrite = function (rec, intent) {
+    if (typeof this.adapter.stageAction === "function") {
+      try {
+        var result = this.adapter.stageAction(intent || {}, rec.value, rec.block);
+        if (result === false) return false;
+      } catch (error) {
+        this.adapter.announce("error", "Stage action failed: " + String(error && error.message || error));
+        return false;
+      }
+    }
+    return this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+  };
+
+  Renderer.prototype.stageCommand = function (rec, intent) {
+    if (rec.block.readonly) return false;
+    if (typeof this.adapter.stageAction !== "function") {
+      this.adapter.announce("warning", "Host does not expose stage actions.");
+      return false;
+    }
+    try {
+      var result = this.adapter.stageAction(intent || {}, rec.value, rec.block);
+      if (result === false) return false;
+      rec.statusText = "Host received " + String(intent.op || "stage command") + ".";
+      this.stageRender(rec);
+      return true;
+    } catch (error) {
+      this.adapter.announce("error", "Stage action failed: " + String(error && error.message || error));
+      return false;
+    }
+  };
+
+  /** Generic timeline view: host owns playback/interpolation, PUI owns the
+   * tracks/keys/playhead geometry, editing intents and accessibility. */
+  Renderer.prototype.buildTimeline = function (block) {
+    var self = this;
+    var Timeline = global.PupitreTimeline;
+    var path = String(block.bind || "");
+    var value = path ? this.adapter.getValue(path) : null;
+    var label = String(block.label || block.id || "Timeline");
+    if (!Timeline) return el("p", {class: "pui-missing", text: "(timeline model PupitreTimeline is not loaded)"});
+    if (!isObject(value)) return el("p", {class: "pui-missing", text: "(timeline value is missing)"});
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var options = isObject(block.timeline_options) ? block.timeline_options : {};
+    var root = el("section", {class: "pui-timeline", "data-pui-timeline": path, role: "group"});
+    if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var rec = {
+      block: block, path: path, value: value, root: root, options: options,
+      selectedKey: null, selectedTrackId: (value.tracks && value.tracks[0] && value.tracks[0].id !== undefined) ? String(value.tracks[0].id) : "",
+      drag: null, labelsEl: null, lanesEl: null, playheadEl: null, playheadInput: null, playheadOutput: null
+    };
+    var head = el("div", {class: "pui-timeline-head"});
+    head.appendChild(el("h4", {text: label}));
+    var count = el("span", {class: "pui-timeline-count", text: (value.tracks || []).length + " tracks · " + (value.keys || []).length + " keys"});
+    head.appendChild(count);
+    var loop = el("button", {type: "button", class: "pui-button pui-timeline-loop", text: "Loop"});
+    loop.setAttribute("aria-pressed", value.loop ? "true" : "false");
+    loop.disabled = !!block.readonly;
+    loop.addEventListener("click", function () {
+      rec.value.loop = !rec.value.loop;
+      loop.setAttribute("aria-pressed", rec.value.loop ? "true" : "false");
+      self.writeTimeline(rec, {op: "loop.set", value: !!rec.value.loop});
+    });
+    head.appendChild(loop);
+    if (!block.readonly) {
+      var addKey = el("button", {type: "button", class: "pui-button", text: "Add key"});
+      addKey.addEventListener("click", function () { self.timelineAddKey(rec); });
+      head.appendChild(addKey);
+    }
+    var playheadLabel = el("label", {class: "pui-timeline-playhead-control"});
+    playheadLabel.appendChild(el("span", {text: this.t("timeline.playhead", "Playhead")}));
+    var playheadInput = el("input", {type: "range", min: "0", max: String(Math.max(0.01, Number(value.duration) || 1)), step: "0.01", "aria-label": "Timeline playhead"});
+    playheadInput.value = String(Number(value.playhead) || 0);
+    playheadInput.disabled = !!block.readonly;
+    var playheadOutput = el("output", {class: "pui-timeline-time", text: Timeline.formatTime(value.playhead)});
+    playheadInput.addEventListener("input", function () { self.timelineSetPlayhead(rec, Number(playheadInput.value)); });
+    playheadLabel.appendChild(playheadInput);
+    playheadLabel.appendChild(playheadOutput);
+    head.appendChild(playheadLabel);
+    root.appendChild(head);
+    var body = el("div", {class: "pui-timeline-body"});
+    var labels = el("div", {class: "pui-timeline-labels"});
+    labels.appendChild(el("div", {class: "pui-timeline-label-head", text: "Track"}));
+    body.appendChild(labels);
+    var lanes = el("div", {class: "pui-timeline-lanes"});
+    body.appendChild(lanes);
+    root.appendChild(body);
+    rec.labelsEl = labels;
+    rec.lanesEl = lanes;
+    rec.playheadInput = playheadInput;
+    rec.playheadOutput = playheadOutput;
+    this.timelineRender(rec);
+    root.addEventListener("pointermove", function (event) { self.timelineDragMove(rec, event); });
+    root.addEventListener("pointerup", function (event) { self.timelineDragEnd(rec, event); });
+    root.addEventListener("pointercancel", function () { self.timelineDragEnd(rec); });
+    root.addEventListener("keydown", function (event) { self.timelineKeydown(rec, event); });
+    return root;
+  };
+
+  Renderer.prototype.timelineRender = function (rec) {
+    var self = this;
+    var Timeline = global.PupitreTimeline;
+    if (!Timeline || !rec || !rec.value) return;
+    var value = rec.value;
+    var duration = Number(value.duration) > 0 ? Number(value.duration) : 1;
+    rec.keyEls = {};
+    var groups = {labels: rec.labelsEl, lanes: rec.lanesEl};
+    if (!groups.labels || !groups.lanes) return;
+    groups.labels.textContent = "";
+    groups.labels.appendChild(el("div", {class: "pui-timeline-label-head", text: "Track"}));
+    groups.lanes.textContent = "";
+    var ruler = el("div", {class: "pui-timeline-ruler", "aria-hidden": "true"});
+    for (var tick = 0; tick <= 4; tick++) {
+      var tickTime = duration * tick / 4;
+      var mark = el("span", {class: "pui-timeline-tick", style: "left:" + (tick * 25) + "%;"});
+      mark.appendChild(el("span", {class: "pui-timeline-tick-label", text: Timeline.formatTime(tickTime)}));
+      ruler.appendChild(mark);
+    }
+    groups.lanes.appendChild(ruler);
+    var trackList = el("div", {class: "pui-timeline-tracks"});
+    (value.tracks || []).forEach(function (track) {
+      if (!isObject(track)) return;
+      var trackId = String(track.id);
+      var labelButton = el("button", {type: "button", class: "pui-timeline-track-label" + (rec.selectedTrackId === trackId ? " is-selected" : ""), text: String(track.label || trackId)});
+      labelButton.setAttribute("aria-pressed", rec.selectedTrackId === trackId ? "true" : "false");
+      labelButton.addEventListener("click", function () { rec.selectedTrackId = trackId; self.timelineRender(rec); });
+      var labelRow = el("div", {class: "pui-timeline-label-row"});
+      labelRow.appendChild(labelButton);
+      if (track.target) labelRow.appendChild(el("span", {class: "pui-timeline-target", text: String(track.target)}));
+      rec.labelsEl.appendChild(labelRow);
+      var lane = el("div", {class: "pui-timeline-lane", "data-track-id": trackId, tabindex: "0", role: "group"});
+      lane.setAttribute("aria-label", String(track.label || trackId) + " keys");
+      lane.addEventListener("pointerdown", function (event) {
+        if (event.target && event.target.closest && event.target.closest(".pui-timeline-key")) return;
+        rec.selectedTrackId = trackId;
+        var box = lane.getBoundingClientRect ? lane.getBoundingClientRect() : {left: 0, width: 1};
+        self.timelineSetPlayhead(rec, Timeline.xToTime((event.clientX || 0) - box.left, box.width || 1, duration));
+      });
+      Timeline.keysForTrack(value, trackId).forEach(function (key) {
+        if (!isObject(key)) return;
+        var button = el("button", {type: "button", class: "pui-timeline-key is-" + String(key.curve || "linear") + (rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? " is-selected" : ""), style: "left:" + Timeline.timeToPercent(key.time, duration) + "%;", "data-key-id": String(key.id || "")});
+        button.setAttribute("aria-label", Timeline.keyLabel(key));
+        button.setAttribute("aria-pressed", rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? "true" : "false");
+        button.addEventListener("pointerdown", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          if (rec.block.readonly) { self.timelineSelectKey(rec, key); return; }
+          self.timelineSelectKey(rec, key, true);
+          rec.drag = {key: key, startTime: Number(key.time) || 0, x: event.clientX || 0, lane: lane, moved: false};
+        });
+        button.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.timelineSelectKey(rec, key); });
+        rec.keyEls[String(key.id || "")] = button;
+        lane.appendChild(button);
+      });
+      trackList.appendChild(lane);
+    });
+    groups.lanes.appendChild(trackList);
+    var playhead = el("div", {class: "pui-timeline-playhead", style: "left:" + Timeline.timeToPercent(value.playhead, duration) + "%;"});
+    groups.lanes.appendChild(playhead);
+    rec.playheadEl = playhead;
+    if (rec.playheadInput) rec.playheadInput.value = String(Number(value.playhead) || 0);
+    if (rec.playheadOutput) rec.playheadOutput.textContent = Timeline.formatTime(value.playhead);
+    this.timelineRenderInspector(rec);
+  };
+
+  Renderer.prototype.timelineRenderInspector = function (rec) {
+    if (!rec || !rec.root) return;
+    var old = rec.root.querySelector(".pui-timeline-inspector");
+    if (old && old.remove) old.remove();
+    if (!rec.selectedKey) return;
+    var self = this;
+    var Timeline = global.PupitreTimeline;
+    var inspector = el("div", {class: "pui-timeline-inspector"});
+    inspector.appendChild(el("span", {class: "pui-timeline-inspector-title", text: "Key " + String(rec.selectedKey.id || "?")}));
+    var curve = el("select", {"aria-label": "Key curve"});
+    Timeline.CURVES.forEach(function (name) {
+      var option = el("option", {value: name, text: name});
+      if (String(rec.selectedKey.curve || "linear") === name) option.selected = true;
+      curve.appendChild(option);
+    });
+    curve.disabled = !!rec.block.readonly;
+    curve.addEventListener("change", function () {
+      rec.selectedKey.curve = curve.value;
+      self.writeTimeline(rec, {op: "key.curve", id: rec.selectedKey.id, curve: rec.selectedKey.curve});
+      self.timelineRender(rec);
+    });
+    inspector.appendChild(curve);
+    var valueInput = el("input", {type: "number", step: "0.01", "aria-label": "Key value"});
+    valueInput.value = String(Number(rec.selectedKey.value) || 0);
+    valueInput.disabled = !!rec.block.readonly;
+    valueInput.addEventListener("change", function () {
+      rec.selectedKey.value = Number(valueInput.value);
+      self.writeTimeline(rec, {op: "key.value", id: rec.selectedKey.id, value: rec.selectedKey.value});
+      self.timelineRender(rec);
+    });
+    inspector.appendChild(valueInput);
+    var timeInput = el("input", {type: "number", step: "0.01", min: "0", max: String(Number(rec.value.duration) || 0), "aria-label": "Key time"});
+    timeInput.value = String(Number(rec.selectedKey.time) || 0);
+    timeInput.disabled = !!rec.block.readonly;
+    timeInput.addEventListener("change", function () {
+      rec.selectedKey.time = Timeline.snapTime(Number(timeInput.value), rec.options.snap, rec.value.duration);
+      self.writeTimeline(rec, {op: "key.time", id: rec.selectedKey.id, time: rec.selectedKey.time});
+      self.timelineRender(rec);
+    });
+    inspector.appendChild(timeInput);
+    rec.root.appendChild(inspector);
+  };
+
+  Renderer.prototype.timelineSelectKey = function (rec, key, keepElement) {
+    rec.selectedKey = key;
+    var track = key && key.track !== undefined ? String(key.track) : "";
+    if (track) rec.selectedTrackId = track;
+    if (keepElement) {
+      Object.keys(rec.keyEls || {}).forEach(function (id) {
+        var element = rec.keyEls[id];
+        var selected = key && String(key.id) === String(id);
+        if (element.classList) element.classList.toggle("is-selected", selected);
+        if (element.setAttribute) element.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+      this.timelineRenderInspector(rec);
+      return;
+    }
+    this.timelineRender(rec);
+  };
+
+  Renderer.prototype.timelineSetPlayhead = function (rec, time) {
+    if (!rec || !rec.value) return;
+    var duration = Number(rec.value.duration) > 0 ? Number(rec.value.duration) : 1;
+    var next = Math.max(0, Math.min(duration, Number(time) || 0));
+    rec.value.playhead = next;
+    if (rec.playheadInput) rec.playheadInput.value = String(next);
+    if (rec.playheadEl) rec.playheadEl.style.left = global.PupitreTimeline.timeToPercent(next, duration) + "%";
+    if (rec.playheadOutput) rec.playheadOutput.textContent = global.PupitreTimeline.formatTime(next);
+    if (!rec.block.readonly) this.writeTimeline(rec, {op: "playhead.set", time: next});
+  };
+
+  Renderer.prototype.timelineAddKey = function (rec) {
+    if (rec.block.readonly) return null;
+    var Timeline = global.PupitreTimeline;
+    var track = rec.selectedTrackId || (rec.value.tracks && rec.value.tracks[0] && rec.value.tracks[0].id);
+    if (track === undefined || track === null) return null;
+    var trackDef = Timeline.findTrack(rec.value, track);
+    var index = 1;
+    while ((rec.value.keys || []).some(function (key) { return String(key.id) === "k" + index; })) index++;
+    var key = {id: "k" + index, track: String(track), time: Number(rec.value.playhead) || 0, value: trackDef && trackDef.default !== undefined ? trackDef.default : 0, curve: "linear"};
+    rec.value.keys = (rec.value.keys || []).concat([key]);
+    rec.selectedKey = key;
+    this.writeTimeline(rec, {op: "key.add", id: key.id});
+    this.timelineRender(rec);
+    return key.id;
+  };
+
+  Renderer.prototype.timelineDragMove = function (rec, event) {
+    if (!rec || !rec.drag || rec.block.readonly) return;
+    var dx = (event.clientX || 0) - rec.drag.x;
+    if (!rec.drag.moved && Math.abs(dx) < 2) return;
+    rec.drag.moved = true;
+    var box = rec.drag.lane.getBoundingClientRect ? rec.drag.lane.getBoundingClientRect() : {width: 1};
+    var duration = Number(rec.value.duration) > 0 ? Number(rec.value.duration) : 1;
+    var delta = dx / Math.max(1, box.width || 1) * duration;
+    rec.drag.key.time = global.PupitreTimeline.snapTime(rec.drag.startTime + delta, rec.options.snap, duration);
+    var keyEl = rec.keyEls && rec.keyEls[String(rec.drag.key.id)];
+    if (keyEl) {
+      keyEl.style.left = global.PupitreTimeline.timeToPercent(rec.drag.key.time, duration) + "%";
+      keyEl.setAttribute("aria-label", global.PupitreTimeline.keyLabel(rec.drag.key));
+    }
+  };
+
+  Renderer.prototype.timelineDragEnd = function (rec, event) {
+    if (!rec || !rec.drag) return;
+    var drag = rec.drag;
+    rec.drag = null;
+    if (drag.moved) {
+      this.writeTimeline(rec, {op: "key.move", id: drag.key.id, time: drag.key.time});
+      this.timelineRender(rec);
+    }
+  };
+
+  Renderer.prototype.timelineKeydown = function (rec, event) {
+    if (!rec || rec.block.readonly) return;
+    if (event.target && event.target.closest && event.target.closest("input, select, textarea")) return;
+    if ((event.key === "Delete" || event.key === "Backspace") && rec.selectedKey) {
+      if (event.preventDefault) event.preventDefault();
+      var id = rec.selectedKey.id;
+      rec.value.keys = (rec.value.keys || []).filter(function (key) { return key !== rec.selectedKey; });
+      rec.selectedKey = null;
+      this.writeTimeline(rec, {op: "key.delete", id: id});
+      this.timelineRender(rec);
+      return;
+    }
+    if (rec.selectedKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      if (event.preventDefault) event.preventDefault();
+      var step = Number(rec.options.snap) > 0 ? Number(rec.options.snap) : 0.1;
+      if (event.shiftKey) step *= 10;
+      rec.selectedKey.time = Math.max(0, Math.min(Number(rec.value.duration) || 0, Number(rec.selectedKey.time) + (event.key === "ArrowRight" ? step : -step)));
+      this.writeTimeline(rec, {op: "key.time", id: rec.selectedKey.id, time: rec.selectedKey.time});
+      this.timelineRender(rec);
+    }
+  };
+
+  Renderer.prototype.writeTimeline = function (rec, intent) {
+    if (typeof this.adapter.timelineAction === "function") {
+      try {
+        var result = this.adapter.timelineAction(intent || {}, rec.value, rec.block);
+        if (result === false) return false;
+      } catch (error) {
+        this.adapter.announce("error", "Timeline action failed: " + String(error && error.message || error));
+        return false;
+      }
+    }
+    return this.setPath(String(rec.path || rec.block.bind || ""), rec.value, rec.block);
+  };
+
+  Renderer.prototype.buildField = function (block, context) {
+    var field = this.effective(block);
+    var path = String(field.bind || "");
+    if (!path) return el("p", {class: "pui-missing", text: "(field without bind)"});
+    var widget = String(field.widget || "text");
+    var root = el("div", {class: "pui-field", "data-pui-block": "", "data-pui-path": path});
+    var rec = {
+      path: path, block: field, root: root, inputs: [], control: null,
+      label: null, widget: widget, order: field.order || 0, dragging: false,
+      readonly: !!field.readonly, disabled: !!field.disabled,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      collectionRecordIndex: this._collectionRecordIndex,
+      rawBind: String(block.__pui_raw_bind !== undefined ? block.__pui_raw_bind : (block.bind || "")), collection: context || null
+    };
+    var id = this.id("field");
+    if (widget === "switch" || widget === "checkbox") {
+      var wrap = el("label", {class: "pui-switch"});
+      var input = el("input", {type: "checkbox", id: id, "data-pui-bind": path});
+      if (widget === "switch") input.setAttribute("role", "switch");
+      input.checked = !!this.value(rec);
+      input.addEventListener("change", function () { this.writeRecord(rec, input.checked); }.bind(this));
+      var switchLabel = el("span", {text: this.labelText(field)});
+      wrap.appendChild(switchLabel);
+      wrap.appendChild(input);
+      root.appendChild(wrap);
+      var switchReset = this.resetButton(field, path);
+      if (switchReset) {
+        switchReset.classList.add("pui-switch-reset");
+        rec.resetEl = switchReset;
+        switchReset.style.visibility = "hidden";
+        switchReset.setAttribute("aria-hidden", "true");
+        root.appendChild(switchReset);
+      }
+      rec.control = input;
+      rec.inputs = [input];
+      rec.label = wrap;
+      rec.labelTextEl = switchLabel;
+      var switchHelp = this.helpEl(field, id);
+      if (switchHelp) {
+        root.appendChild(switchHelp);
+        rec.helpEl = switchHelp;
+      }
+    } else if (widget === "readout" || widget === "none") {
+      this.buildReadoutInto(root, field, rec);
+    } else {
+      if (widget !== "button") {
+        var cap = caption(field, id);
+        root.appendChild(cap);
+        rec.label = cap;
+        rec.labelTextEl = cap;
+        if (field.help) {
+          var fieldHelp = this.helpEl(field, id);
+          root.appendChild(fieldHelp);
+          rec.helpEl = fieldHelp;
+        }
+      }
+      var control = this.controlFor(field, widget, id, rec);
+      if (!control) return el("p", {class: "pui-missing", text: "(no widget for " + widget + ")"});
+      if (widget !== "button") {
+        var row = el("div", {class: "pui-control-row"});
+        row.appendChild(control);
+        var reset = this.resetButton(field, path);
+        if (reset) {
+          rec.resetEl = reset;
+          reset.style.visibility = "hidden";
+          reset.setAttribute("aria-hidden", "true");
+          row.appendChild(reset);
+        }
+        root.appendChild(row);
+      } else {
+        root.appendChild(control);
+      }
+      if (!rec.control) rec.control = control;
+    }
+    if (rec.readonly || rec.disabled) rec.inputs.forEach(function (input) { input.disabled = true; });
+    this.a11y(rec.control, field, rec.label, rec.inputs);
+    rec.statusEl = el("p", {class: "pui-status", role: "status", "aria-live": "polite", hidden: true});
+    root.appendChild(rec.statusEl);
+    this.records.push(rec);
+    if (field.visible_when || field.enabled_when) rec.conditional = true;
+    this.updateModified(rec);
+    return root;
+  };
+
+  Renderer.prototype.controlFor = function (field, widget, id, rec) {
+    var self = this;
+    var path = rec.path;
+    if (widget === "range") {
+      var row = el("div", {class: "pui-range"});
+      var range = el("input", {type: "range", id: id, "data-pui-bind": path});
+      var current = this.value(rec);
+      var mixed = isMixedValue(current);
+      range.min = String(field.min !== undefined ? field.min : 0);
+      range.max = String(field.max !== undefined ? field.max : 1);
+      range.step = String(field.step !== undefined ? field.step : 0.01);
+      range.value = mixed ? range.min : String(this.numberValue(rec));
+      var number = el("input", {type: "number", class: "pui-number-input", "aria-label": this.labelText(field) + " — precise value"});
+      number.min = range.min; number.max = range.max; number.step = range.step;
+      number.value = mixed ? "" : formatNumeric(this.numberValue(rec), field);
+      number.placeholder = mixed ? "—" : "";
+      if (mixed) {
+        range.setAttribute("aria-valuetext", "mixed");
+        rec.root.classList.add("is-mixed");
+      }
+      var emit = function (value, final) {
+        var next = quantizeNumeric(value, field);
+        var min = Number(range.min), max = Number(range.max);
+        if (isFinite(min)) next = Math.max(min, next);
+        if (isFinite(max)) next = Math.min(max, next);
+        rec.rangeValue = next;
+        range.value = String(next);
+        number.value = formatNumeric(next, field);
+        rec.root.classList.remove("is-mixed");
+        number.placeholder = "";
+        var throttle = Number(field.throttle);
+        if (field.live_emit && throttle > 0 && !final) {
+          rec.livePending = next;
+          if (!rec.liveTimer) {
+            self.writeRecord(rec, next);
+            rec.liveTimer = setTimeout(function () {
+              rec.liveTimer = null;
+              if (rec.livePending !== undefined) {
+                var pending = rec.livePending;
+                rec.livePending = undefined;
+                self.writeRecord(rec, pending);
+              }
+            }, throttle);
+          }
+          return;
+        }
+        if (rec.liveTimer) { clearTimeout(rec.liveTimer); rec.liveTimer = null; }
+        rec.livePending = undefined;
+        self.writeRecord(rec, next);
+      };
+      var nudge = function (direction, event) {
+        if (document.activeElement !== range && document.activeElement !== number) return;
+        if (event.preventDefault) event.preventDefault();
+        var precision = numericPrecision(field);
+        var step = Number(field.step) || (precision !== null ? Math.pow(10, -precision) : 0.01);
+        if (event.altKey && precision !== null) step = Math.pow(10, -precision);
+        if (event.shiftKey) step *= 10;
+        emit(Number(range.value) + direction * step, false);
+      };
+      range.addEventListener("wheel", function (event) { nudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
+      number.addEventListener("wheel", function (event) { nudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
+      range.addEventListener("input", function () { emit(Number(range.value), false); });
+      number.addEventListener("change", function () { emit(Number(number.value), true); });
+      range.addEventListener("pointerdown", function () { rec.dragging = true; });
+      range.addEventListener("pointerup", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
+      range.addEventListener("blur", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
+      row.appendChild(range); row.appendChild(number);
+      rec.inputs = [range, number];
+      rec.range = range; rec.number = number;
+      rec.control = range;
+      return row;
+    }
+    if (widget === "number") {
+      var spin = el("input", {type: "number", id: id, "data-pui-bind": path});
+      spin.min = String(field.min !== undefined ? field.min : -1e12);
+      spin.max = String(field.max !== undefined ? field.max : 1e12);
+      spin.step = String(field.step !== undefined ? field.step : 1);
+      spin.value = formatNumeric(this.numberValue(rec), field);
+      var spinNudge = function (direction, event) {
+        if (document.activeElement !== spin) return;
+        if (event.preventDefault) event.preventDefault();
+        var precision = numericPrecision(field);
+        var base = Number(field.step) || (precision !== null ? Math.pow(10, -precision) : 1);
+        if (event.altKey && precision !== null) base = Math.pow(10, -precision);
+        if (event.shiftKey) base *= 10;
+        var next = quantizeNumeric(Number(spin.value) + direction * base, field);
+        if (field.min !== undefined) next = Math.max(Number(field.min), next);
+        if (field.max !== undefined) next = Math.min(Number(field.max), next);
+        spin.value = formatNumeric(next, field);
+        self.writeRecord(rec, next);
+      };
+      spin.addEventListener("wheel", function (event) { spinNudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
+      spin.addEventListener("change", function () { self.writeRecord(rec, quantizeNumeric(Number(spin.value), field)); });
+      rec.inputs = [spin];
+      return spin;
+    }
+    if (widget === "select") {
+      var select = el("select", {id: id, "data-pui-bind": path});
+      var current = this.value(rec);
+      var selectOptions = this.optionsFor(field);
+      selectOptions.forEach(function (entry) {
+        var option = el("option", {value: String(entry.value), text: String(entry.label !== undefined ? entry.label : entry.value)});
+        if (equal(entry.value, current)) option.selected = true;
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        var entry = self.optionsFor(field)[select.selectedIndex];
+        self.writeRecord(rec, entry ? entry.value : select.value);
+      });
+      rec.inputs = [select];
+      return select;
+    }
+    if (widget === "radio") {
+      var group = el("fieldset", {class: "pui-radio-group", id: id, "data-pui-bind": path, role: "radiogroup"});
+      group.appendChild(el("legend", {class: "pui-sr-only", text: this.labelText(field)}));
+      var currentRadio = this.value(rec);
+      rec.optionLabels = [];
+      this.optionsFor(field).forEach(function (entry, index) {
+        var label = el("label", {class: "pui-radio"});
+        var radio = el("input", {type: "radio", name: id, value: String(entry.value)});
+        radio.checked = equal(entry.value, currentRadio);
+        radio.addEventListener("change", function () { if (radio.checked) self.write(path, entry.value); });
+        var optionText = el("span", {text: String(entry.label !== undefined ? entry.label : entry.value)});
+        label.appendChild(radio); label.appendChild(optionText);
+        group.appendChild(label); rec.inputs.push(radio); rec.optionLabels.push(optionText);
+      });
+      return group;
+    }
+    if (widget === "textarea" || widget === "json") {
+      var box = el("div", {class: "pui-textarea"});
+      var area = el("textarea", {id: id, "data-pui-bind": path, rows: widget === "json" ? 6 : 4});
+      area.value = valueText(this.value(rec), field);
+      var apply = el("button", {type: "button", class: "pui-button", text: "Apply"});
+      apply.addEventListener("click", function () { self.writeRecord(rec, area.value); });
+      box.appendChild(area); box.appendChild(apply);
+      rec.inputs = [area];
+      rec.edit = area;
+      rec.control = area;
+      return box;
+    }
+    if (widget === "color") {
+      var value = this.value(rec);
+      var hasAlpha = (typeof value === "string" && /^#[0-9a-fA-F]{8}$/.test(value)) || (isArray(value) && value.length >= 4);
+      var color = el("input", {type: "color", id: id, "data-pui-bind": path});
+      color.value = this.colorValue(value);
+      var commitColor = function () {
+        var alpha = rec.alphaInput ? Math.round(Number(rec.alphaInput.value) / 100 * 255).toString(16).padStart(2, "0") : null;
+        self.writeRecord(rec, alpha === null ? color.value : color.value + alpha);
+      };
+      color.addEventListener("change", commitColor);
+      rec.inputs = [color];
+      if (hasAlpha) {
+        var alphaInput = el("input", {type: "number", class: "pui-color-alpha", min: "0", max: "100", step: "1", "aria-label": self.labelText(field) + " alpha"});
+        alphaInput.value = String(Math.round(this.colorAlphaValue(value) * 100));
+        alphaInput.addEventListener("change", commitColor);
+        var wrap = el("span", {class: "pui-color-control"});
+        wrap.appendChild(color);
+        wrap.appendChild(alphaInput);
+        wrap.appendChild(el("span", {class: "pui-unit", text: "% α"}));
+        rec.inputs.push(alphaInput);
+        rec.alphaInput = alphaInput;
+        return wrap;
+      }
+      return color;
+    }
+    if (widget === "xy-pad") {
+      var xyValues = components(this.value(rec), 2);
+      var xyMin = field.min !== undefined ? Number(field.min) : 0;
+      var xyMax = field.max !== undefined ? Number(field.max) : 1;
+      var xyStep = field.step !== undefined ? Number(field.step) : 0.01;
+      var xyWrap = el("div", {class: "pui-xypad-control", id: id, "data-pui-bind": path});
+      var pad = el("div", {class: "pui-xypad", tabindex: "0", role: "application", "aria-label": this.labelText(field) + " XY pad"});
+      var dot = el("span", {class: "pui-xypad-dot"});
+      pad.appendChild(dot);
+      var xyInputs = [];
+      var xySync = function (values) {
+        var x = Math.max(xyMin, Math.min(xyMax, Number(values[0]) || 0));
+        var y = Math.max(xyMin, Math.min(xyMax, Number(values[1]) || 0));
+        if (xyInputs[0]) xyInputs[0].value = formatNumeric(x, field);
+        if (xyInputs[1]) xyInputs[1].value = formatNumeric(y, field);
+        dot.style.left = (xyMax === xyMin ? 0 : (x - xyMin) / (xyMax - xyMin) * 100) + "%";
+        dot.style.top = (xyMax === xyMin ? 0 : (1 - (y - xyMin) / (xyMax - xyMin)) * 100) + "%";
+        rec.xyValue = [x, y];
+        return [x, y];
+      };
+      var xyWrite = function () { self.writeRecord(rec, xySync(rec.xyValue || xyValues)); };
+      var xyFromEvent = function (event) {
+        var box = pad.getBoundingClientRect ? pad.getBoundingClientRect() : {left: 0, top: 0, width: 1, height: 1};
+        var x = xyMin + Math.max(0, Math.min(1, ((event.clientX || 0) - box.left) / Math.max(1, box.width))) * (xyMax - xyMin);
+        var y = xyMin + (1 - Math.max(0, Math.min(1, ((event.clientY || 0) - box.top) / Math.max(1, box.height)))) * (xyMax - xyMin);
+        var precision = numericPrecision(field);
+        if (precision !== null) { x = Number(x.toFixed(precision)); y = Number(y.toFixed(precision)); }
+        xySync([x, y]);
+      };
+      pad.addEventListener("pointerdown", function (event) {
+        if (event.preventDefault) event.preventDefault();
+        rec.xyDrag = true;
+        xyFromEvent(event);
+        if (pad.setPointerCapture) pad.setPointerCapture(event.pointerId || 1);
+      });
+      pad.addEventListener("pointermove", function (event) { if (rec.xyDrag) xyFromEvent(event); });
+      pad.addEventListener("pointerup", function () { if (rec.xyDrag) { rec.xyDrag = false; xyWrite(); } });
+      pad.addEventListener("pointercancel", function () { rec.xyDrag = false; });
+      pad.addEventListener("keydown", function (event) {
+        if (event.key.indexOf("Arrow") !== 0) return;
+        if (event.preventDefault) event.preventDefault();
+        var step = xyStep;
+        if (event.altKey) step /= 10;
+        if (event.shiftKey) step *= 10;
+        var value = xySync(rec.xyValue || xyValues).slice();
+        if (event.key === "ArrowLeft") value[0] -= step;
+        else if (event.key === "ArrowRight") value[0] += step;
+        else if (event.key === "ArrowUp") value[1] += step;
+        else if (event.key === "ArrowDown") value[1] -= step;
+        xySync(value);
+        xyWrite();
+      });
+      [0, 1].forEach(function (index) {
+        var comp = el("input", {type: "number", "aria-label": index === 0 ? "X " + self.labelText(field) : "Y " + self.labelText(field), min: String(xyMin), max: String(xyMax), step: String(xyStep)});
+        comp.value = formatNumeric(xyValues[index], field);
+        comp.addEventListener("change", function () {
+          var typed = Number(comp.value);
+          var current = xySync(rec.xyValue || xyValues).slice();
+          current[index] = typed;
+          xySync(current);
+          xyWrite();
+        });
+        comp.addEventListener("wheel", function (event) {
+          if (document.activeElement !== comp) return;
+          if (event.preventDefault) event.preventDefault();
+          var current = xySync(rec.xyValue || xyValues).slice();
+          current[index] += (event.deltaY < 0 ? 1 : -1) * xyStep * (event.shiftKey ? 10 : 1);
+          xySync(current);
+          xyWrite();
+        }, {passive: false});
+        xyInputs.push(comp);
+        xyWrap.appendChild(el("label", {class: "pui-xypad-input"}, el("span", {text: index === 0 ? "X" : "Y"}), comp));
+      });
+      xyWrap.insertBefore(pad, xyWrap.firstChild);
+      xySync(xyValues);
+      rec.inputs = xyInputs;
+      rec.control = pad;
+      rec.xyPad = pad;
+      rec.xyDot = dot;
+      rec.xyInputs = xyInputs;
+      return xyWrap;
+    }
+    if (widget === "vector") {
+      var count = componentCount(field);
+      var values = components(this.value(rec), count);
+      var vector = el("div", {class: "pui-vector", id: id, "data-pui-bind": path});
+      var names = ["X", "Y", "Z", "W"];
+      for (var i = 0; i < count; i++) {
+        (function (index) {
+          var comp = el("input", {type: "number", "aria-label": names[index] + " " + self.labelText(field), step: String(field.step !== undefined ? field.step : (String(field.type || "").charAt(0) === "i" ? 1 : 0.01))});
+          comp.value = formatNumeric(values[index] !== undefined ? values[index] : 0, field);
+          comp.addEventListener("change", function () {
+            var out = rec.inputs.map(function (input) { return quantizeNumeric(Number(input.value), field); });
+            rec.inputs.forEach(function (input, inputIndex) { input.value = formatNumeric(out[inputIndex], field); });
+            self.writeRecord(rec, out);
+          });
+          comp.addEventListener("wheel", function (event) {
+            if (document.activeElement !== comp) return;
+            if (event.preventDefault) event.preventDefault();
+            var precision = numericPrecision(field);
+            var base = Number(field.step) || (precision !== null ? Math.pow(10, -precision) : 0.01);
+            if (event.altKey && precision !== null) base = Math.pow(10, -precision);
+            if (event.shiftKey) base *= 10;
+            var next = quantizeNumeric(Number(comp.value) + (event.deltaY < 0 ? base : -base), field);
+            if (field.min !== undefined) next = Math.max(Number(field.min), next);
+            if (field.max !== undefined) next = Math.min(Number(field.max), next);
+            comp.value = formatNumeric(next, field);
+            var out = rec.inputs.map(function (input) { return quantizeNumeric(Number(input.value), field); });
+            self.writeRecord(rec, out);
+          }, {passive: false});
+          rec.inputs.push(comp);
+          vector.appendChild(el("label", {class: "pui-vector-comp"}, el("span", {text: names[index]}), comp));
+        })(i);
+      }
+      return vector;
+    }
+    if (widget === "flags") {
+      var bits = el("fieldset", {class: "pui-flags", id: id, "data-pui-bind": path});
+      bits.appendChild(el("legend", {class: "pui-sr-only", text: this.labelText(field)}));
+      var mask = Number(this.value(rec) || 0);
+      rec.optionLabels = [];
+      this.optionsFor(field).forEach(function (entry) {
+        var label = el("label", {class: "pui-check"});
+        var check = el("input", {type: "checkbox", value: String(entry.value), "data-pui-bit": String(entry.value)});
+        check.checked = (mask & Number(entry.value)) !== 0;
+        check.addEventListener("change", function () {
+          var next = 0;
+          rec.inputs.forEach(function (input) { if (input.checked) next |= Number(input.getAttribute("data-pui-bit")); });
+          self.write(path, next);
+        });
+        var optionText = el("span", {text: String(entry.label !== undefined ? entry.label : entry.value)});
+        label.appendChild(check); label.appendChild(optionText);
+        bits.appendChild(label); rec.inputs.push(check); rec.optionLabels.push(optionText);
+      });
+      return bits;
+    }
+    if (widget === "button") {
+      var button = el("button", {type: "button", class: "pui-button", id: id, "data-pui-bind": path, text: this.labelText(field)});
+      button.addEventListener("click", function () { self.writeRecord(rec, null); });
+      rec.inputs = [button];
+      return button;
+    }
+    var line = el("input", {type: "text", id: id, "data-pui-bind": path});
+    line.value = valueText(this.value(rec), field);
+    if (field.maxlength) line.maxLength = Number(field.maxlength);
+    line.addEventListener("change", function () { self.writeRecord(rec, line.value); });
+    line.addEventListener("keydown", function (event) { if (event.key === "Enter") self.writeRecord(rec, line.value); });
+    rec.inputs = [line];
+    return line;
+  };
+
+  Renderer.prototype.collectionItems = function (block) {
+    if (typeof this.adapter.getCollection === "function") {
+      var direct = this.adapter.getCollection(String(block.bind || ""), block);
+      if (isArray(direct)) return direct;
+    }
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(String(block.bind || ""), block)
+      : this.adapter.getValue(String(block.bind || ""));
+    return isArray(value) ? value : [];
+  };
+
+  Renderer.prototype.collectionKey = function (block, item, index) {
+    var keyField = String(block.item_key || "id");
+    if (isObject(item) && item[keyField] !== undefined) return item[keyField];
+    return index;
+  };
+
+  Renderer.prototype.collectionPath = function (block, key, rawBind) {
+    var raw = String(rawBind || "");
+    if (typeof this.adapter.resolveCollectionPath === "function") {
+      return this.adapter.resolveCollectionPath(String(block.bind || ""), key, raw, block);
+    }
+    if (raw.indexOf("{item}") >= 0) return raw.replace(/\{item\}/g, String(key));
+    if (raw.charAt(0) === "/") return raw;
+    return String(block.bind || "") + "/" + String(key) + "/" + raw.replace(/^\./, "");
+  };
+
+  Renderer.prototype.buildCollection = function (block) {
+    var self = this;
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var bind = String(block.bind || "");
+    var selectedPath = String(block.selected || "");
+    var items = this.collectionItems(block);
+    var selected = selectedPath ? (typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(selectedPath, block) : this.adapter.getValue(selectedPath)) : undefined;
+    var title = String(block.label || block.title || "Items");
+    var root = el("section", {class: "pui-collection", "data-pui-collection": bind, role: String(a11y.role || "group")});
+    var collectionRecord = {element: root, block: block, options: [], pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, visible: true, enabled: true};
+    var previousCollectionIndex = this._collectionRecordIndex;
+    this._collectionRecordIndex = this.collectionRecords.length;
+    this.collectionRecords.push(collectionRecord);
+    if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
+    if (block.help) root.appendChild(el("p", {class: "pui-help", text: String(block.help)}));
+    var head = el("div", {class: "pui-collection-head"}, el("h4", {text: title}));
+    root.appendChild(head);
+    var list = el("div", {class: "pui-collection-list", role: "listbox", "aria-label": title});
+    var selectedItem = null;
+    var selectedKey = null;
+    for (var i = 0; i < items.length; i++) {
+      (function (item, index) {
+        var key = self.collectionKey(block, item, index);
+        if (equal(key, selected)) { selectedItem = item; selectedKey = key; }
+        var option = el("button", {type: "button", class: "pui-collection-option", role: "option", "data-pui-key": String(key)});
+        var itemLabel = isObject(item) ? String(item.label || item.name || item.title || key) : String(item);
+        option.appendChild(el("span", {class: "pui-collection-name", text: itemLabel}));
+        option.setAttribute("aria-selected", equal(key, selected) ? "true" : "false");
+        option.addEventListener("click", function () {
+          if (!selectedPath) return;
+          self.setPath(selectedPath, key, block);
+          self.render(self.doc);
+        });
+        collectionRecord.options.push(option);
+        list.appendChild(option);
+      })(items[i], i);
+    }
+    root.appendChild(list);
+    if (!items.length) {
+      if (isObject(block.empty)) root.appendChild(this.buildBlock(block.empty));
+      else root.appendChild(el("p", {class: "pui-collection-empty", text: "No items."}));
+    }
+    if (isArray(block.actions) && block.actions.length) {
+      var actions = block.actions.map(function (item) {
+        var copy = Object.assign({}, item);
+        copy.collection_bind = bind;
+        copy.collection_selected = selectedPath;
+        copy.collection_item = selectedKey;
+        return copy;
+      });
+      root.appendChild(this.buildActions(actions, "collection"));
+    }
+    if (selectedItem) {
+      var itemPanel = el("div", {class: "pui-collection-item", role: "group", "aria-label": String(block.label || "Selected item")});
+      var template = block.item && isArray(block.item.template) ? block.item.template : (isArray(block.template) ? block.template : []);
+      var context = {bind: bind, key: selectedKey, item: selectedItem, items: items, block: block};
+      for (var t = 0; t < template.length; t++) {
+        var copy = Object.assign({}, template[t]);
+        var rawBind = String(copy.bind || "");
+        if (copy.bind) copy.bind = this.collectionPath(block, selectedKey, copy.bind);
+        copy.__pui_raw_bind = rawBind;
+        itemPanel.appendChild(this.buildBlock(copy, context));
+      }
+      root.appendChild(itemPanel);
+    }
+    this._collectionRecordIndex = previousCollectionIndex;
+    return root;
+  };
+
+  Renderer.prototype.buildReadout = function (block) {
+    var field = this.effective(block);
+    var root = el("div", {class: "pui-field pui-readout", "data-pui-block": "", "data-pui-path": String(field.bind || "")});
+    var rec = {path: String(field.bind || ""), block: field, root: root, inputs: [], control: null, label: null, widget: "readout", order: field.order || 0, pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, collectionRecordIndex: this._collectionRecordIndex};
+    this.buildReadoutInto(root, field, rec);
+    this.records.push(rec);
+    return root;
+  };
+
+  Renderer.prototype.buildReadoutInto = function (root, field, rec) {
+    var id = this.id("readout");
+    var cap = caption(field, id);
+    var output = el("output", {id: id, "data-pui-bind": String(field.bind || ""), class: "pui-readout-value", text: valueText(this.value(rec), field)});
+    var row = el("div", {class: "pui-readout-row"}, cap, output);
+    root.appendChild(row);
+    if (field.help) {
+      var readoutHelp = this.helpEl(field, id);
+      root.appendChild(readoutHelp);
+      rec.helpEl = readoutHelp;
+    }
+    rec.control = output;
+    rec.label = cap;
+    rec.labelTextEl = cap;
+    rec.readout = output;
+    this.a11y(output, field, cap, []);
+  };
+
+  Renderer.prototype.registerSlot = function (name, factory) {
+    this.slots[String(name)] = factory;
+    var self = this;
+    return function () { if (self.slots[String(name)] === factory) delete self.slots[String(name)]; };
+  };
+
+  Renderer.prototype.slotHost = function (block) {
+    var self = this;
+    return {
+      slot: String(block.slot || ""),
+      block: block,
+      getValue: function (path) {
+        return typeof self.adapter.getValueFor === "function" ? self.adapter.getValueFor(path, block) : self.adapter.getValue(path);
+      },
+      setValue: function (path, value) {
+        return typeof self.adapter.setValueFor === "function" ? self.adapter.setValueFor(path, value, block) : self.adapter.setValue(path, value);
+      },
+      callAction: function (name, args) { return self.adapter.callAction(name, args || {}); },
+      callCustom: function (name, args) {
+        return self.adapter.callCustom ? self.adapter.callCustom(name, args || {}) : self.adapter.callAction(name, args || {});
+      },
+      subscribe: function (callback) { return self.adapter.subscribe(callback); },
+      announce: function (level, textValue) { self.adapter.announce(level, textValue); },
+      update: function (data) { self.updateSlot(block.slot, data); },
+      document: function () { return self.doc; },
+      ui: self
+    };
+  };
+
+  Renderer.prototype.buildCustom = function (block) {
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var slot = String(block.slot || "");
+    if (this.slots[slot]) {
+      var container = el("div", {class: "pui-slot", "data-pui-slot": slot, role: String(a11y.role || "region")});
+      if (a11y.name) container.setAttribute("aria-label", String(a11y.name));
+      if (a11y.description) container.setAttribute("aria-description", String(a11y.description));
+      var host = this.slotHost(block);
+      var instance = this.slots[slot];
+      if (typeof instance === "function") instance = {mount: instance};
+      var record = {name: slot, block: block, container: container, host: host, instance: instance,
+        pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, collectionRecordIndex: this._collectionRecordIndex, visible: true, enabled: true};
+      try {
+        if (typeof instance.mount === "function") instance.mount(container, host, block);
+        this.slotInstances.push(record);
+        this.customRecords.push(record);
+        return container;
+      } catch (error) {
+        this.adapter.announce("error", "custom slot '" + slot + "' failed: " + String(error && error.message || error));
+        container.remove();
+      }
+    }
+    var fallback = block.fallback;
+    var node;
+    if (isObject(fallback)) node = this.buildBlock(fallback);
+    else node = el("p", {class: "pui-missing", text: "(custom panel '" + slot + "' is not available here)"});
+    if (a11y.name) node.setAttribute("aria-label", String(a11y.name));
+    if (a11y.description) node.setAttribute("aria-description", String(a11y.description));
+    node.setAttribute("data-pui-slot-fallback", slot);
+    this.customRecords.push({name: slot, block: block, container: node, fallback: true,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, collectionRecordIndex: this._collectionRecordIndex, visible: true, enabled: true});
+    return node;
+  };
+
+  Renderer.prototype.updateSlot = function (name, data) {
+    for (var i = 0; i < this.slotInstances.length; i++) {
+      var record = this.slotInstances[i];
+      if (record.name !== String(name)) continue;
+      if (record.instance && typeof record.instance.update === "function") {
+        try { record.instance.update(data, record.block, record.host); }
+        catch (error) { this.adapter.announce("error", "custom slot update failed: " + String(error && error.message || error)); }
+      }
+    }
+  };
+
+  Renderer.prototype.destroySlots = function () {
+    for (var i = 0; i < this.slotInstances.length; i++) {
+      var record = this.slotInstances[i];
+      if (record.instance && typeof record.instance.destroy === "function") {
+        try { record.instance.destroy(); } catch (error) { /* cleanup must not break render */ }
+      }
+    }
+    this.slotInstances = [];
+  };
+
+  Renderer.prototype.destroy = function () {
+    this.unbindShortcuts();
+    this.unbindPaletteShortcut();
+    if (this._hashHandler && typeof window !== "undefined" && window.removeEventListener) window.removeEventListener("hashchange", this._hashHandler);
+    this._hashHandler = null;
+    if (this._palette) this._palette.close();
+    this.destroySlots();
+    if (this.mount) while (this.mount.firstChild) this.mount.removeChild(this.mount.firstChild);
+  };
+
+  Renderer.prototype.buildActions = function (items, kind, storage) {
+    var bar = el("div", {class: "pui-actions", "data-pui-actions": kind || "actions"});
+    for (var i = 0; i < items.length; i++) {
+      this.addActionButton(bar, items[i]);
+    }
+    if (isObject(storage)) {
+      if (isObject(storage.save)) {
+        var save = Object.assign({label: "Save preset…", style: "primary"}, storage.save);
+        this.addActionButton(bar, save);
+      }
+      if (isObject(storage.delete)) this.addActionButton(bar, storage.delete);
+      if (isObject(storage.rename)) this.addActionButton(bar, storage.rename);
+    }
+    return bar;
+  };
+
+  Renderer.prototype.addActionButton = function (bar, item) {
+    if (!isObject(item)) return;
+    var button = el("button", {type: "button", class: "pui-button " + (item.style === "primary" ? "pui-primary" : item.style === "danger" ? "pui-danger" : ""), text: String(item.label || item.id || "Action")});
+    if (item.help) button.title = String(item.help);
+    if (item.color) button.style.setProperty("--pui-action-color", String(item.color));
+    button.disabled = !!item.disabled;
+    var a11y = item.a11y || {};
+    if (a11y.name) button.setAttribute("aria-label", String(a11y.name));
+    if (a11y.description) button.setAttribute("aria-description", String(a11y.description));
+    button.addEventListener("click", function () { this.startAction(item, button); }.bind(this));
+    bar.appendChild(button);
+    this.actions.push({control: button, block: item, bar: bar, status: null, pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, collectionRecordIndex: this._collectionRecordIndex});
+    return button;
+  };
+
+  Renderer.prototype.startAction = function (item, button) {
+    if (isArray(item.inputs) && item.inputs.length) {
+      this.openActionForm(item, button);
+      return;
+    }
+    if (item.confirm) {
+      this.openConfirm(item, button);
+      return;
+    }
+    this.performAction(item, button, {});
+  };
+
+  Renderer.prototype.defaultAction = function (item) {
+    if (isObject(item.set) && Number(item.morph) > 0) {
+      return morph(this.adapter, item.set, Number(item.morph), String(item.easing || "linear")).then(function () { return true; });
+    }
+    if (item.collection_bind) {
+      if (item.id === "add" && typeof this.adapter.addCollectionItem === "function") {
+        return this.adapter.addCollectionItem(item.collection_bind, item);
+      }
+      if (item.id === "remove" && typeof this.adapter.removeCollectionItem === "function") {
+        return this.adapter.removeCollectionItem(item.collection_bind, item.collection_item, item);
+      }
+      if (item.call) {
+        var extra = {bind: item.collection_bind, selected: item.collection_item, item: item.collection_item};
+        return this.adapter.callAction(String(item.call), Object.assign({}, isObject(item.args) ? item.args : {}, extra));
+      }
+    }
+    var ok = true;
+    if (isObject(item.set)) {
+      if (typeof this.adapter.setValues === "function") return this.adapter.setValues(item.set);
+      var paths = Object.keys(item.set);
+      for (var i = 0; i < paths.length; i++) {
+        if (!this.setPath(paths[i], item.set[paths[i]], null)) ok = false;
+      }
+      return ok;
+    }
+    if (item.call) return this.adapter.callAction(String(item.call), isObject(item.args) ? item.args : {});
+    if (item.custom) {
+      if (this.adapter.callCustom) return this.adapter.callCustom(String(item.custom), isObject(item.args) ? item.args : {});
+      return this.adapter.callAction(String(item.custom), isObject(item.args) ? item.args : {});
+    }
+    if (item.bind) return this.adapter.setValue(String(item.bind), null, null);
+    return false;
+  };
+
+  Renderer.prototype.actionStatus = function (record, textValue, error) {
+    if (!record) return;
+    if (!record.status) {
+      record.status = el("span", {class: "pui-action-status", role: "status", "aria-live": "polite"});
+      record.bar.appendChild(record.status);
+    }
+    record.status.textContent = textValue || "";
+    record.status.className = "pui-action-status" + (error ? " pui-status-error" : "");
+    record.status.hidden = !textValue;
+  };
+
+  Renderer.prototype.performAction = function (item, button, extraArgs) {
+    var self = this;
+    var record = null;
+    for (var i = 0; i < this.actions.length; i++) if (this.actions[i].control === button) record = this.actions[i];
+    var args = Object.assign({}, isObject(item.args) ? item.args : {}, extraArgs || {});
+    var payload = Object.assign({}, item, {args: args});
+    var original = button.textContent;
+    if (item.pending) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.textContent = String(item.pending);
+    }
+    var finish = function (ok, detail) {
+      button.disabled = !!item.disabled;
+      button.removeAttribute("aria-busy");
+      button.textContent = original;
+      var message = ok ? String(item.result || "") : String(detail || item.error || "Action failed");
+      self.actionStatus(record, message, !ok);
+      if (message) self.adapter.announce(ok ? "success" : "error", message);
+      if (ok && item.collection_bind && self.doc) {
+        self.render(self.doc);
+      } else {
+        self.apply();
+      }
+      return ok;
+    };
+    var result;
+    try {
+      result = typeof this.adapter.action === "function"
+        ? this.adapter.action(payload, this)
+        : this.defaultAction(payload);
+    } catch (error) {
+      return finish(false, String(error && error.message || error));
+    }
+    if (result && typeof result.then === "function") {
+      var timeout = Number(item.timeout || 0);
+      var timed = timeout > 0 ? new Promise(function (_resolve, reject) {
+        setTimeout(function () { reject(new Error("Action timed out")); }, timeout);
+      }) : null;
+      var race = timed ? Promise.race([result, timed]) : result;
+      return race.then(function (value) {
+        return finish(value !== false, value && value.error ? String(value.error) : "");
+      }).catch(function (error) {
+        return finish(false, String(error && error.message || error));
+      });
+    }
+    return finish(result !== false, "");
+  };
+
+  Renderer.prototype.actionFormField = function (input, formId) {
+    var id = formId + "-" + String(input.name || "arg");
+    var label = el("label", {class: "pui-dialog-label", for: id, text: String(input.label || input.name || "Value")});
+    var control;
+    var type = String(input.type || "text");
+    if (type === "select") {
+      control = el("select", {id: id, name: String(input.name || "")});
+      var selectOptions = optionList(input);
+      control.__puiOptions = selectOptions;
+      selectOptions.forEach(function (entry) {
+        control.appendChild(el("option", {value: String(entry.value), text: String(entry.label !== undefined ? entry.label : entry.value)}));
+      });
+      if (input.value !== undefined) {
+        for (var oi = 0; oi < selectOptions.length; oi++) {
+          if (equal(selectOptions[oi].value, input.value)) { control.selectedIndex = oi; break; }
+        }
+      }
+    } else if (type === "textarea") {
+      control = el("textarea", {id: id, name: String(input.name || ""), rows: 3});
+    } else if (type === "checkbox") {
+      control = el("input", {type: "checkbox", id: id, name: String(input.name || "")});
+    } else {
+      var inputType = type === "number" || type === "integer" ? "number" : type === "color" ? "color" : "text";
+      control = el("input", {type: inputType, id: id, name: String(input.name || "")});
+      if (input.min !== undefined) control.min = String(input.min);
+      if (input.max !== undefined) control.max = String(input.max);
+      if (input.step !== undefined) control.step = String(input.step);
+      else if (type === "integer") control.step = "1";
+    }
+    if (input.required) control.required = true;
+    if (input.placeholder && control.setAttribute) control.setAttribute("placeholder", String(input.placeholder));
+    if (input.value !== undefined && type !== "checkbox") control.value = String(input.value);
+    if (type === "checkbox") control.checked = !!input.value;
+    return {label: label, control: control};
+  };
+
+  Renderer.prototype.openActionForm = function (item, button) {
+    var self = this;
+    var formId = this.id("form");
+    var dialog = el("dialog", {class: "pui-dialog", "aria-labelledby": formId + "-title"});
+    var form = el("form", {method: "dialog"});
+    form.appendChild(el("h2", {id: formId + "-title", text: String(item.label || "Action")}));
+    var fields = [];
+    for (var i = 0; i < item.inputs.length; i++) {
+      var made = this.actionFormField(item.inputs[i], formId);
+      form.appendChild(made.label);
+      form.appendChild(made.control);
+      fields.push({input: item.inputs[i], control: made.control});
+    }
+    var status = el("p", {class: "pui-status", role: "alert", hidden: true});
+    form.appendChild(status);
+    var bar = el("div", {class: "pui-dialog-actions"});
+    var cancel = el("button", {type: "button", class: "pui-button", text: self.t("action.cancel", "Cancel")});
+    var submit = el("button", {type: "submit", class: "pui-button pui-primary", text: self.t("action.save", "Save")});
+    bar.appendChild(cancel); bar.appendChild(submit); form.appendChild(bar);
+    dialog.appendChild(form);
+    var close = function () { if (dialog.open) dialog.close(); dialog.remove(); };
+    cancel.addEventListener("click", close);
+    dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (typeof form.reportValidity === "function" && !form.reportValidity()) return;
+      var values = {};
+      fields.forEach(function (field) {
+        var control = field.control;
+        var type = String(field.input.type || "text");
+        if (type === "checkbox") values[String(field.input.name || "")] = !!control.checked;
+        else if (type === "select" && control.__puiOptions) {
+          var selected = control.__puiOptions[control.selectedIndex];
+          values[String(field.input.name || "")] = selected ? selected.value : control.value;
+        } else if (type === "number" || type === "integer") values[String(field.input.name || "")] = Number(control.value);
+        else values[String(field.input.name || "")] = control.value;
+      });
+      close();
+      if (item.confirm) self.openConfirm(item, button, values);
+      else self.performAction(item, button, values);
+    });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    if (fields.length && fields[0].control.focus) fields[0].control.focus();
+  };
+
+  Renderer.prototype.openConfirm = function (item, button, extraArgs) {
+    var self = this;
+    var dialog = el("dialog", {class: "pui-dialog", "aria-labelledby": this.id("confirm")});
+    var form = el("form", {method: "dialog"});
+    form.appendChild(el("h2", {id: dialog.getAttribute("aria-labelledby"), text: String(item.confirm_text || item.label || "Confirm")}));
+    var bar = el("div", {class: "pui-dialog-actions"});
+    var cancel = el("button", {type: "button", class: "pui-button", text: self.t("action.cancel", "Cancel")});
+    var confirm = el("button", {type: "submit", class: "pui-button " + (item.style === "danger" ? "pui-danger" : "pui-primary"), text: String(item.confirm_label || self.t("action.confirm", "Confirm"))});
+    bar.appendChild(cancel); bar.appendChild(confirm); form.appendChild(bar);
+    dialog.appendChild(form);
+    var close = function () { if (dialog.open) dialog.close(); dialog.remove(); };
+    cancel.addEventListener("click", close);
+    dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      close();
+      self.performAction(item, button, extraArgs || {});
+    });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    cancel.focus();
+  };
+
+  Renderer.prototype.resetButton = function (field, path) {
+    var target;
+    if (isObject(field.reset) && Object.prototype.hasOwnProperty.call(field.reset, "value")) target = field.reset.value;
+    else if (Object.prototype.hasOwnProperty.call(field, "default")) target = field.default;
+    else return null;
+    var button = el("button", {type: "button", class: "pui-reset", text: "↺", "aria-label": "Reset " + this.labelText(field) + " to default"});
+    button.addEventListener("click", function () { this.write(path, target); }.bind(this));
+    return button;
+  };
+
+  Renderer.prototype.helpEl = function (field, id) {
+    var textValue = String(field.help || "");
+    if (!textValue) return null;
+    var node = el("p", {class: "pui-field-help", id: id + "-help", text: textValue});
+    return node;
+  };
+
+  Renderer.prototype.labelText = function (field) {
+    var label = String(field.label || field.bind || "Parameter");
+    if (field.unit && label.indexOf("(" + field.unit + ")") < 0) label += " (" + field.unit + ")";
+    return label;
+  };
+
+  Renderer.prototype.a11y = function (control, field, label, inputs) {
+    if (!control) return;
+    var a11y = isObject(field.a11y) ? field.a11y : {};
+    var role = a11y.role || control.getAttribute("role") || implicitRole(control);
+    if (role) control.setAttribute("role", role);
+    var name = String(a11y.name || field.label || field.bind || "Parameter");
+    if (field.unit && name.indexOf("(" + field.unit + ")") < 0) name += " (" + field.unit + ")";
+    if (a11y.name) control.setAttribute("aria-label", name);
+    else if (label && label.id && label.tagName.toLowerCase() === "label") control.setAttribute("aria-labelledby", label.id);
+    else if (!control.getAttribute("aria-label")) control.setAttribute("aria-label", name);
+    var explicitDescription = a11y.description || "";
+    if (a11y.keyboard && explicitDescription.indexOf("Keyboard:") < 0) {
+      explicitDescription += (explicitDescription ? " " : "") + "Keyboard: " + String(a11y.keyboard);
+    }
+    var visibleHelp = control.closest ? control.closest(".pui-field") && control.closest(".pui-field").querySelector(".pui-field-help") : null;
+    if (explicitDescription || field.help) {
+      if (!explicitDescription && visibleHelp) {
+        if (!visibleHelp.id) visibleHelp.id = this.id("help");
+        control.setAttribute("aria-describedby", visibleHelp.id);
+      } else {
+        if (control.__puiDescription && control.__puiDescription.parentNode) {
+          control.__puiDescription.parentNode.removeChild(control.__puiDescription);
+        }
+        var descId = this.id("desc");
+        var desc = el("span", {class: "pui-sr-only", id: descId, text: String(explicitDescription || field.help)});
+        control.parentNode && control.parentNode.insertBefore(desc, control.nextSibling);
+        control.__puiDescription = desc;
+        control.setAttribute("aria-describedby", descId);
+      }
+    }
+    var required = !!(a11y.required || field.required);
+    if (required) {
+      control.setAttribute("aria-required", "true");
+      if ("required" in control) control.required = true;
+    } else {
+      control.removeAttribute("aria-required");
+      if ("required" in control) control.required = false;
+    }
+    if (a11y.readonly || field.readonly) control.setAttribute("aria-readonly", "true");
+    else control.removeAttribute("aria-readonly");
+    if (a11y.live && a11y.live !== "off") control.setAttribute("aria-live", String(a11y.live));
+    var widgetName = String(field.widget || "");
+    if (widgetName === "switch" || widgetName === "checkbox") control.setAttribute("aria-checked", control.checked ? "true" : "false");
+    if (field.min !== undefined && field.max !== undefined) {
+      control.setAttribute("aria-valuemin", String(field.min));
+      control.setAttribute("aria-valuemax", String(field.max));
+    }
+    if (field.unit) control.setAttribute("aria-valuetext", valueText(this.value({path: field.bind, block: field}), field));
+    (inputs || []).forEach(function (input) {
+      var optionInput = input.type === "radio" || (input.hasAttribute && input.hasAttribute("data-pui-bit"));
+      if (input !== control && !optionInput && !input.getAttribute("aria-label") && !input.getAttribute("aria-labelledby")) {
+        input.setAttribute("aria-label", String(a11y.name || this.labelText(field)) + (input.type === "number" ? " — precise value" : ""));
+      }
+    }, this);
+  };
+
+  Renderer.prototype.value = function (rec) {
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(rec.path, rec.block)
+      : this.adapter.getValue(rec.path);
+    if (value === undefined && rec.collection && rec.collection.item) {
+      var raw = String(rec.rawBind || "");
+      if (typeof this.adapter.getCollectionValue === "function") {
+        value = this.adapter.getCollectionValue(rec.collection.bind, rec.collection.key, raw);
+      }
+      if (value === undefined && raw && raw.charAt(0) !== "/") {
+        value = getByPath(rec.collection.item, raw);
+      }
+    }
+    if (value === undefined) value = rec.block.default;
+    return value;
+  };
+
+  Renderer.prototype.numberValue = function (rec) {
+    var value = this.value(rec);
+    return value === undefined || value === null || isNaN(Number(value)) ? 0 : Number(value);
+  };
+
+  Renderer.prototype.colorValue = function (value) {
+    if (typeof value === "string" && /^#[0-9a-fA-F]{8}$/.test(value)) return value.slice(0, 7);
+    if (typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)) return value;
+    if (isArray(value)) {
+      return "#" + value.slice(0, 3).map(function (x) { return Math.round(Number(x) * 255).toString(16).padStart(2, "0"); }).join("");
+    }
+    return "#ffffff";
+  };
+
+  Renderer.prototype.colorAlphaValue = function (value) {
+    if (typeof value === "string" && /^#[0-9a-fA-F]{8}$/.test(value)) return parseInt(value.slice(7, 9), 16) / 255;
+    if (isArray(value) && value.length >= 4) return Math.max(0, Math.min(1, Number(value[3])));
+    return 1;
+  };
+
+  Renderer.prototype.setPath = function (path, value, block) {
+    return typeof this.adapter.setValueFor === "function"
+      ? this.adapter.setValueFor(path, value, block)
+      : this.adapter.setValue(path, value);
+  };
+
+  Renderer.prototype.write = function (path, value, block) {
+    if (!this.setPath(path, value, block)) { this.apply(); return; }
+    this.apply();
+  };
+
+  Renderer.prototype.writeRecord = function (rec, value) {
+    if (rec.collection && rec.collection.items && rec.collection.item) {
+      var ok = typeof this.adapter.setCollectionItem === "function"
+        ? this.adapter.setCollectionItem(rec.collection.bind, rec.collection.key, rec.rawBind, value, rec.block)
+        : this.setPath(rec.path, value, rec.block);
+      if (!ok) {
+        var raw = String(rec.rawBind || "");
+        if (raw && raw.charAt(0) !== "/") setByPath(rec.collection.item, raw, value);
+        this.setPath(rec.collection.bind, rec.collection.items, rec.block);
+        this.apply();
+        return;
+      }
+      this.apply();
+      return;
+    }
+    this.write(rec.path, value, rec.block);
+  };
+
+  Renderer.prototype.optionsFor = function (field) {
+    if (field.options_bind) {
+      var dynamic = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(String(field.options_bind), field)
+        : this.adapter.getValue(String(field.options_bind));
+      if (isArray(dynamic)) return normalizeOptions(dynamic);
+    }
+    return optionList(field);
+  };
+
+  Renderer.prototype.effective = function (block) {
+    var out = {};
+    Object.keys(block).forEach(function (key) { out[key] = block[key]; });
+    if (out.label_key) out.label = this.t(String(out.label_key), String(out.label || out.bind || ""));
+    if (out.help_key) out.help = this.t(String(out.help_key), String(out.help || ""));
+    var meta = this.adapter.getPathMeta(out.bind) || {};
+    ["type", "unit", "min", "max", "step", "options", "precision"].forEach(function (key) {
+      if (out[key] === undefined && meta[key] !== undefined) out[key] = meta[key];
+    });
+    if (out.min === undefined && meta.range && meta.range.length && isObject(meta.range[0])) {
+      if (meta.range[0].MIN !== undefined) out.min = meta.range[0].MIN;
+      if (meta.range[0].MAX !== undefined) out.max = meta.range[0].MAX;
+      if (meta.range[0].STEP_SIZE !== undefined) out.step = meta.range[0].STEP_SIZE;
+    }
+    return out;
+  };
+
+  Renderer.prototype.apply = function () {
+    for (var i = 0; i < this.records.length; i++) {
+      this.applyRecord(this.records[i]);
+      this.applyStatus(this.records[i]);
+      this.updateModified(this.records[i]);
+    }
+    for (var c = 0; c < this.commandLogRecords.length; c++) {
+      if (this.commandLogRecords[c].refresh) this.commandLogRecords[c].refresh();
+    }
+    for (var s = 0; s < this.selectionRecords.length; s++) {
+      if (this.selectionRecords[s].refresh) this.selectionRecords[s].refresh();
+    }
+    for (var d = 0; d < this.disclosureRecords.length; d++) {
+      if (this.disclosureRecords[d].refresh) this.disclosureRecords[d].refresh();
+    }
+    for (var p = 0; p < this.projectRecords.length; p++) {
+      if (this.projectRecords[p].refresh) this.projectRecords[p].refresh();
+    }
+    for (var dr = 0; dr < this.drawerRecords.length; dr++) {
+      if (this.drawerRecords[dr].render) this.drawerRecords[dr].render();
+    }
+    for (var cr = 0; cr < this.codeRecords.length; cr++) {
+      var codeRec = this.codeRecords[cr];
+      var liveText = this.adapter.getValue(codeRec.path);
+      if (typeof liveText === "string" && liveText !== codeRec.text && document.activeElement !== codeRec.area && !codeRec.dirty) {
+        codeRec.text = liveText;
+        codeRec.area.value = liveText;
+        codeRec.setHighlight(liveText);
+        codeRec.setStatus("Updated from host.", false);
+      }
+    }
+    this.refreshConditions();
+  };
+
+  Renderer.prototype.fieldStatus = function (rec) {
+    var live = this.adapter.getFieldStatus(rec.path, rec.block) || {};
+    var block = rec.block;
+    var status = live.status !== undefined ? live.status : block.status;
+    if (isObject(status)) {
+      return {
+        state: String(status.state || status.kind || ""),
+        text: String(status.text || status.message || ""),
+        stale: !!(live.stale !== undefined ? live.stale : block.stale),
+        invalid: !!(live.invalid !== undefined ? live.invalid : (block.a11y && block.a11y.invalid)),
+        busy: !!live.busy,
+        reason: String(live.disabled_reason || block.disabled_reason || "")
+      };
+    }
+    return {
+      state: status ? String(status) : "",
+      text: String(live.error || block.error || ""),
+      stale: !!(live.stale !== undefined ? live.stale : block.stale),
+      invalid: !!(live.invalid !== undefined ? live.invalid : (block.a11y && block.a11y.invalid)),
+      busy: !!live.busy,
+      reason: String(live.disabled_reason || block.disabled_reason || "")
+    };
+  };
+
+  Renderer.prototype.applyStatus = function (rec) {
+    if (!rec.statusEl) return;
+    var status = this.fieldStatus(rec);
+    var text = status.text || status.reason || "";
+    if (status.busy && !text) text = "Working…";
+    if (status.stale && !text) text = "Stale value";
+    if (!text && status.state) text = status.state;
+    rec.statusEl.hidden = !text;
+    rec.statusEl.textContent = text;
+    rec.statusEl.className = "pui-status" +
+      (status.invalid || status.state === "error" || status.state === "invalid" ? " pui-status-error" :
+        status.busy ? " pui-status-busy" : status.stale || status.state === "offline" || status.state === "warning" ? " pui-status-warn" : "");
+    if (rec.control) {
+      var invalid = !!(status.invalid || status.state === "error" || status.state === "invalid");
+      if (invalid) rec.control.setAttribute("aria-invalid", "true");
+      else rec.control.removeAttribute("aria-invalid");
+      if (status.busy) rec.control.setAttribute("aria-busy", "true");
+      else rec.control.removeAttribute("aria-busy");
+      var described = rec.control.getAttribute("aria-describedby") || "";
+      if (text) {
+        if (!rec.statusEl.id) rec.statusEl.id = this.id("status");
+        if (described.indexOf(rec.statusEl.id) < 0) {
+          rec.control.setAttribute("aria-describedby", (described ? described + " " : "") + rec.statusEl.id);
+        }
+      } else if (rec.statusEl.id) {
+        var remaining = described.split(/\s+/).filter(function (id) { return id && id !== rec.statusEl.id; });
+        if (remaining.length) rec.control.setAttribute("aria-describedby", remaining.join(" "));
+        else rec.control.removeAttribute("aria-describedby");
+      }
+    }
+  };
+
+  Renderer.prototype.applyRecord = function (rec) {
+    var value = this.value(rec);
+    if (value === undefined) return;
+    var active = document.activeElement;
+    if (rec.widget === "range") {
+      if (rec.dragging || active === rec.range || active === rec.number) return;
+      if (isMixedValue(value)) {
+        rec.root.classList.add("is-mixed");
+        rec.range.value = rec.range.min;
+        rec.number.value = "";
+        rec.number.placeholder = "—";
+        rec.control.setAttribute("aria-valuetext", "mixed");
+        return;
+      }
+      rec.root.classList.remove("is-mixed");
+      rec.number.placeholder = "";
+      rec.range.value = String(Number(value));
+      rec.number.value = formatNumeric(value, rec.block);
+      rec.control.setAttribute("aria-valuetext", valueText(value, rec.block));
+      return;
+    }
+    if (rec.widget === "number") {
+      if (active !== rec.control) rec.control.value = String(Number(value));
+      return;
+    }
+    if (rec.widget === "select") {
+      var opts = this.optionsFor(rec.block);
+      for (var i = 0; i < opts.length; i++) if (equal(opts[i].value, value)) { rec.control.selectedIndex = i; break; }
+      return;
+    }
+    if (rec.widget === "radio") {
+      var radioOptions = optionList(rec.block);
+      rec.inputs.forEach(function (input, index) {
+        input.checked = equal(radioOptions[index] ? radioOptions[index].value : input.value, value);
+      });
+      return;
+    }
+    if (rec.widget === "text" || rec.widget === "textarea" || rec.widget === "json") {
+      if (active !== rec.control && active !== rec.edit) rec.control.value = valueText(value, rec.block);
+      return;
+    }
+    if (rec.widget === "color") {
+      if (active !== rec.control) {
+        var colorInput = rec.control && rec.control.tagName && rec.control.tagName.toLowerCase() === "input" ? rec.control : rec.inputs[0];
+        if (colorInput) colorInput.value = this.colorValue(value);
+      }
+      if (rec.alphaInput && active !== rec.alphaInput) rec.alphaInput.value = String(Math.round(this.colorAlphaValue(value) * 100));
+      return;
+    }
+    if (rec.widget === "xy-pad") {
+      var xy = components(value, 2);
+      var min = rec.block.min !== undefined ? Number(rec.block.min) : 0;
+      var max = rec.block.max !== undefined ? Number(rec.block.max) : 1;
+      if (rec.xyInputs) {
+        if (active !== rec.xyInputs[0]) rec.xyInputs[0].value = formatNumeric(xy[0], rec.block);
+        if (active !== rec.xyInputs[1]) rec.xyInputs[1].value = formatNumeric(xy[1], rec.block);
+      }
+      if (rec.xyDot) {
+        rec.xyDot.style.left = (max === min ? 0 : (Number(xy[0]) - min) / (max - min) * 100) + "%";
+        rec.xyDot.style.top = (max === min ? 0 : (1 - (Number(xy[1]) - min) / (max - min)) * 100) + "%";
+      }
+      rec.xyValue = xy;
+      return;
+    }
+    if (rec.widget === "vector") {
+      var vals = isArray(value) ? value : components(value, rec.inputs.length);
+      for (var j = 0; j < rec.inputs.length; j++) if (active !== rec.inputs[j]) rec.inputs[j].value = String(vals[j] !== undefined ? vals[j] : 0);
+      return;
+    }
+    if (rec.widget === "flags") {
+      var mask = Number(value || 0);
+      rec.inputs.forEach(function (input) { input.checked = (mask & Number(input.getAttribute("data-pui-bit"))) !== 0; });
+      return;
+    }
+    if (rec.widget === "switch" || rec.widget === "checkbox") {
+      rec.control.checked = !!value;
+      rec.control.setAttribute("aria-checked", rec.control.checked ? "true" : "false");
+      return;
+    }
+    if (rec.readout) rec.readout.textContent = valueText(value, rec.block);
+  };
+
+  Renderer.prototype.updateModified = function (rec) {
+    if (!rec || !rec.root) return;
+    var value = this.value(rec);
+    var mixed = isMixedValue(value);
+    var def = defaultValueOf(rec.block);
+    var modified = !mixed && def !== undefined && !equal(value, def);
+    rec.root.classList.toggle("is-modified", modified);
+    rec.root.classList.toggle("is-mixed", mixed);
+    if (rec.resetEl) {
+      rec.resetEl.style.visibility = modified ? "visible" : "hidden";
+      rec.resetEl.setAttribute("aria-hidden", modified ? "false" : "true");
+      rec.resetEl.tabIndex = modified ? 0 : -1;
+    }
+  };
+
+  Renderer.prototype.conditionOk = function (cond) {
+    if (!isObject(cond)) return true;
+    if (Object.prototype.hasOwnProperty.call(cond, "all")) return (cond.all || []).every(this.conditionOk.bind(this));
+    if (Object.prototype.hasOwnProperty.call(cond, "any")) return (cond.any || []).some(this.conditionOk.bind(this));
+    if (Object.prototype.hasOwnProperty.call(cond, "not")) return !this.conditionOk(cond.not);
+    if (!cond.bind) return true;
+    var value = this.adapter.getValue(cond.bind);
+    if (Object.prototype.hasOwnProperty.call(cond, "equals")) return equal(value, cond.equals);
+    if (Object.prototype.hasOwnProperty.call(cond, "not_equals")) return !equal(value, cond.not_equals);
+    if (Object.prototype.hasOwnProperty.call(cond, "in")) return (cond["in"] || []).some(function (x) { return equal(value, x); });
+    if (Object.prototype.hasOwnProperty.call(cond, "not_in")) return !(cond.not_in || []).some(function (x) { return equal(value, x); });
+    if (Object.prototype.hasOwnProperty.call(cond, "truthy")) return !!value === !!cond.truthy;
+    if (Object.prototype.hasOwnProperty.call(cond, "falsy")) return !!value !== !!cond.falsy;
+    return !!value;
+  };
+
+  Renderer.prototype.refreshConditions = function () {
+    function groupEnabled(records, index) {
+      return index < 0 || !records[index] || records[index].enabled !== false;
+    }
+    for (var p = 0; p < this.pageRecords.length; p++) {
+      var page = this.pageRecords[p];
+      page.visible = this.conditionOk(page.page.visible_when);
+      page.enabled = this.conditionOk(page.page.enabled_when);
+      if (page.tab) page.tab.hidden = !page.visible;
+    }
+    for (var s = 0; s < this.sectionRecords.length; s++) {
+      var section = this.sectionRecords[s];
+      section.visible = this.conditionOk(section.block.visible_when);
+      section.enabled = this.conditionOk(section.block.enabled_when) &&
+        groupEnabled(this.pageRecords, section.pageRecordIndex);
+      section.element.hidden = !section.visible;
+    }
+    for (var c = 0; c < this.collectionRecords.length; c++) {
+      var collection = this.collectionRecords[c];
+      collection.visible = this.conditionOk(collection.block.visible_when);
+      collection.enabled = this.conditionOk(collection.block.enabled_when) &&
+        groupEnabled(this.pageRecords, collection.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, collection.sectionRecordIndex);
+      collection.element.hidden = !collection.visible;
+      if (collection.enabled) collection.element.removeAttribute("aria-disabled");
+      else collection.element.setAttribute("aria-disabled", "true");
+      collection.options.forEach(function (option) { option.disabled = !collection.enabled; });
+    }
+    for (var i = 0; i < this.records.length; i++) {
+      var rec = this.records[i];
+      var matches = this.matchesSearch([this.labelText(rec.block), rec.path, rec.block.help]);
+      rec.root.hidden = !matches || (rec.conditional ? !this.conditionOk(rec.block.visible_when) : false);
+      var enabled = (!rec.conditional || this.conditionOk(rec.block.enabled_when)) &&
+        !rec.readonly && !rec.disabled &&
+        groupEnabled(this.pageRecords, rec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, rec.sectionRecordIndex) &&
+        groupEnabled(this.collectionRecords, rec.collectionRecordIndex);
+      rec.inputs.forEach(function (input) { input.disabled = !enabled; });
+    }
+    for (var j = 0; j < this.actions.length; j++) {
+      var action = this.actions[j];
+      var actionMatches = this.matchesSearch([action.block.label, action.block.id, action.block.call, action.block.help]);
+      action.control.hidden = !actionMatches || !this.conditionOk(action.block.visible_when);
+      action.control.disabled = !!action.block.disabled || !this.conditionOk(action.block.enabled_when) ||
+        !groupEnabled(this.pageRecords, action.pageRecordIndex) ||
+        !groupEnabled(this.sectionRecords, action.sectionRecordIndex) ||
+        !groupEnabled(this.collectionRecords, action.collectionRecordIndex);
+    }
+    for (var c2 = 0; c2 < this.customRecords.length; c2++) {
+      var custom = this.customRecords[c2];
+      var customMatches = this.matchesSearch([custom.block.slot, custom.block.label, custom.block.help]);
+      custom.visible = customMatches && this.conditionOk(custom.block.visible_when);
+      custom.enabled = this.conditionOk(custom.block.enabled_when) &&
+        groupEnabled(this.pageRecords, custom.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, custom.sectionRecordIndex) &&
+        groupEnabled(this.collectionRecords, custom.collectionRecordIndex);
+      custom.container.hidden = !custom.visible;
+      if (custom.enabled) {
+        custom.container.removeAttribute("inert");
+        custom.container.removeAttribute("aria-disabled");
+      } else {
+        custom.container.setAttribute("inert", "");
+        custom.container.setAttribute("aria-disabled", "true");
+      }
+    }
+    for (var pi = 0; pi < this.panelRecords.length; pi++) {
+      var panel = this.panelRecords[pi];
+      var chosen = panel.active;
+      if (!panel.pages[chosen] || !panel.pages[chosen].visible) {
+        chosen = -1;
+        for (var li = 0; li < panel.pages.length; li++) {
+          if (panel.pages[li].visible) { chosen = li; break; }
+        }
+      }
+      this.activatePage(panel, chosen);
+    }
+  };
+
+  Renderer.prototype.commands = function () {
+    var self = this;
+    var out = [];
+    this.pageRecords.forEach(function (rec) {
+      out.push({kind: "page", label: String(rec.page.title || rec.page.id || "Page"), path: "#page=" + String(rec.page.id || ""), run: function () { self.navigate(rec.page.id); }});
+    });
+    this.records.forEach(function (rec) {
+      out.push({kind: "field", label: self.labelText(rec.block), path: rec.path, run: function () { self.focusPath(rec.path); }});
+    });
+    this.actions.forEach(function (rec) {
+      out.push({kind: "action", label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
+    });
+    return out;
+  };
+
+  Renderer.prototype.openPalette = function () {
+    var self = this;
+    if (this._palette) { this._palette.close(); return 0; }
+    var dialog = el("dialog", {class: "pui-dialog pui-palette", "aria-label": this.t("palette.title", "Commands")});
+    var form = el("form", {method: "dialog"});
+    var input = el("input", {type: "search", "aria-label": this.t("palette.title", "Commands"), placeholder: this.t("search.filter", "Filter parameters")});
+    var list = el("div", {class: "pui-palette-list", role: "listbox", "aria-label": this.t("palette.title", "Commands")});
+    form.appendChild(input);
+    form.appendChild(list);
+    dialog.appendChild(form);
+    var commands = this.commands();
+    var rows = [];
+    var active = 0;
+    function close() {
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      self._palette = null;
+    }
+    function choose(index) {
+      var row = rows[index];
+      if (!row) return;
+      close();
+      row.command.run();
+    }
+    function paint(query) {
+      list.textContent = "";
+      rows = [];
+      active = 0;
+      var needle = String(query || "").trim().toLowerCase();
+      commands.filter(function (command) {
+        return !needle || (command.label + " " + command.path + " " + command.kind).toLowerCase().indexOf(needle) >= 0;
+      }).slice(0, 80).forEach(function (command, index) {
+        var option = el("button", {type: "button", role: "option", class: "pui-palette-option", id: self.id("command")});
+        option.textContent = command.label + " · " + command.kind;
+        option.setAttribute("aria-selected", index === active ? "true" : "false");
+        option.addEventListener("click", function () { choose(index); });
+        list.appendChild(option);
+        rows.push({button: option, command: command});
+      });
+      if (!rows.length) list.appendChild(el("p", {class: "pui-palette-empty", text: this.t("palette.empty", "No matching commands.")}));
+      if (rows[active]) input.setAttribute("aria-activedescendant", rows[active].button.id);
+      else input.removeAttribute("aria-activedescendant");
+    }
+    function select(index) {
+      active = Math.max(0, Math.min(rows.length - 1, index));
+      rows.forEach(function (row, i) { row.button.setAttribute("aria-selected", i === active ? "true" : "false"); });
+      if (rows[active]) input.setAttribute("aria-activedescendant", rows[active].button.id);
+    }
+    input.addEventListener("input", function () { paint(input.value); });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown") { event.preventDefault(); select(active + 1); }
+      else if (event.key === "ArrowUp") { event.preventDefault(); select(active - 1); }
+      else if (event.key === "Enter") { event.preventDefault(); choose(active); }
+      else if (event.key === "Escape") { event.preventDefault(); close(); }
+    });
+    form.addEventListener("submit", function (event) { event.preventDefault(); choose(active); });
+    dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
+    this._palette = {dialog: dialog, input: input, list: list, close: close};
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    paint("");
+    input.focus();
+    return commands.length;
+  };
+
+  Renderer.prototype.bindPaletteShortcut = function () {
+    if (!this.paletteEnabled || this._paletteKeyHandler) return;
+    var self = this;
+    this._paletteKeyHandler = function (event) {
+      if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === "k") {
+        event.preventDefault();
+        self.openPalette();
+      }
+    };
+    document.addEventListener("keydown", this._paletteKeyHandler);
+  };
+
+  Renderer.prototype.unbindPaletteShortcut = function () {
+    if (this._paletteKeyHandler) document.removeEventListener("keydown", this._paletteKeyHandler);
+    this._paletteKeyHandler = null;
+  };
+
+  Renderer.prototype.matchesSearch = function (parts) {
+    if (!this.searchQuery) return true;
+    return parts.filter(Boolean).join(" ").toLowerCase().indexOf(this.searchQuery) >= 0;
+  };
+
+  Renderer.prototype.search = function (query) {
+    query = query === undefined || query === null ? "" : String(query);
+    this.searchQuery = query.trim().toLowerCase();
+    if (this.searchInput && this.searchInput.value !== query) this.searchInput.value = query;
+    if (this.root) this.refreshConditions();
+    return this.dumpAccessibility().filter(function (row) { return row.visible; }).length;
+  };
+
+  Renderer.prototype.outline = function () {
+    var doc = this.doc || {};
+    return (doc.panels || []).map(function (panel) {
+      return {
+        id: panel.id || null,
+        title: panel.title || null,
+        pages: (panel.pages || []).map(function (page) {
+          return {
+            id: page.id || null,
+            title: page.title || null,
+            sections: (page.sections || []).map(function (section) {
+              return {
+                id: section.id || null,
+                title: section.title || null,
+                fields: (section.blocks || []).filter(function (block) {
+                  return block && (block.kind === "field" || block.kind === "readout") && block.bind;
+                }).map(function (block) {
+                  return {bind: String(block.bind), label: String(block.label || block.bind)};
+                })
+              };
+            })
+          };
+        })
+      };
+    });
+  };
+
+  Renderer.prototype.diagnostics = function () {
+    var doc = this.doc || {};
+    var activePages = this.panelRecords.map(function (panel) {
+      var page = panel.pages[panel.active];
+      return {id: page && page.page ? page.page.id : null, active: panel.active};
+    });
+    return {
+      host: doc.host || null,
+      rev: doc.rev === undefined ? null : doc.rev,
+      lang: doc.lang || null,
+      dir: doc.dir || null,
+      theme: isObject(doc.theme) ? doc.theme.mode || null : null,
+      density: this.density,
+      search: this.searchQuery || null,
+      panels: (doc.panels || []).length,
+      pages: this.pageRecords.length,
+      sections: this.sectionRecords.length,
+      fields: this.records.length,
+      actions: this.actions.length,
+      collections: this.collectionRecords.length,
+      custom: this.customRecords.length,
+      slots: this.slotInstances.length,
+      shortcuts: this.shortcuts.length,
+      a11y: this.dumpAccessibility().length,
+      activePages: activePages
+    };
+  };
+
+  Renderer.prototype.dumpAccessibility = function () {
+    var self = this;
+    var out = [];
+    function visible(element, pageIndex, sectionIndex, collectionIndex) {
+      if (!element || element.hidden) return false;
+      var page = self.pageRecords[pageIndex];
+      var section = self.sectionRecords[sectionIndex];
+      var collection = self.collectionRecords[collectionIndex];
+      if (page && !page.visible) return false;
+      if (section && !section.visible) return false;
+      if (collection && !collection.visible) return false;
+      return true;
+    }
+    for (var i = 0; i < this.records.length; i++) {
+      var rec = this.records[i];
+      var control = rec.control;
+      if (!control) continue;
+      var a11y = isObject(rec.block.a11y) ? rec.block.a11y : {};
+      var label = rec.label && rec.label.textContent ? rec.label.textContent : "";
+      var name = String(a11y.name || control.getAttribute("aria-label") || label || this.labelText(rec.block));
+      if (rec.block.unit && name.indexOf("(" + rec.block.unit + ")") < 0) name += " (" + rec.block.unit + ")";
+      out.push({
+        path: rec.path,
+        role: a11y.role || control.getAttribute("role") || implicitRole(control),
+        name: name,
+        description: a11y.description || rec.block.help || "",
+        live: a11y.live || "off",
+        order: rec.order,
+        visible: visible(rec.root, rec.pageRecordIndex, rec.sectionRecordIndex, rec.collectionRecordIndex)
+      });
+    }
+    for (var j = 0; j < this.actions.length; j++) {
+      var action = this.actions[j];
+      var block = action.block;
+      var aa = isObject(block.a11y) ? block.a11y : {};
+      out.push({
+        path: block.bind || "action:" + String(block.id || block.label || "action"),
+        role: aa.role || implicitRole(action.control),
+        name: aa.name || action.control.textContent,
+        description: aa.description || block.help || "",
+        live: aa.live || "off",
+        order: Number(block.order || 0),
+        visible: visible(action.control, action.pageRecordIndex, action.sectionRecordIndex, action.collectionRecordIndex)
+      });
+    }
+    out.sort(function (a, b) { return String(a.path) < String(b.path) ? -1 : String(a.path) > String(b.path) ? 1 : 0; });
+    return out;
+  };
+
+  Renderer.prototype.id = function (prefix) {
+    return this.uid + "-" + prefix + "-" + (++this.uidCounter);
+  };
+
+  function ease(name, t) {
+    switch (String(name || "linear")) {
+      case "ease_in": return t * t;
+      case "ease_out": return 1 - (1 - t) * (1 - t);
+      case "ease_in_out": return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      case "smoothstep": return t * t * (3 - 2 * t);
+      case "step": return t < 1 ? 0 : 1;
+      default: return t;
+    }
+  }
+
+  function lerpValue(from, to, t) {
+    if (typeof from === "number" && typeof to === "number") return from + (to - from) * t;
+    if (isArray(from) && isArray(to)) {
+      var out = [];
+      for (var i = 0; i < Math.max(from.length, to.length); i++) {
+        out.push(lerpValue(Number(from[i] || 0), Number(to[i] || 0), t));
+      }
+      return out;
+    }
+    return t < 1 ? from : to;
+  }
+
+  /** Host helper: animate a set-map through an adapter. Hosts that own their
+   * transport (e.g. gd-hyperhdr) can call this from their action handler.
+   * Returns a Promise resolving after the final exact values are written. */
+  function morph(adapter, set, duration, easing) {
+    duration = Math.max(0, Number(duration) || 0);
+    var paths = Object.keys(set || {});
+    if (!paths.length) return Promise.resolve();
+    if (duration <= 0 || typeof adapter.setValue !== "function") {
+      paths.forEach(function (path) { adapter.setValue(path, set[path]); });
+      return Promise.resolve();
+    }
+    var from = {};
+    paths.forEach(function (path) { from[path] = adapter.getValue ? adapter.getValue(path) : undefined; });
+    var start = Date.now();
+    return new Promise(function (resolve) {
+      function frame() {
+        var elapsed = (Date.now() - start);
+        var t = Math.min(1, elapsed / (duration * 1000));
+        var eased = ease(easing, t);
+        paths.forEach(function (path) {
+          adapter.setValue(path, t >= 1 ? set[path] : lerpValue(from[path], set[path], eased));
+        });
+        if (t >= 1) resolve();
+        else setTimeout(frame, 16);
+      }
+      frame();
+    });
+  }
+
+  function str(value) { return value === undefined || value === null ? "" : String(value); }
+
+  function collectBlocks(doc, out) {
+    (doc.panels || []).forEach(function (panel) {
+      (panel.pages || []).forEach(function (page) {
+        (page.sections || []).forEach(function (section) {
+          (section.blocks || []).forEach(function (block) {
+            if (block && block.bind) out[String(block.bind)] = block;
+          });
+        });
+      });
+    });
+  }
+
+  function findAction(doc, id) {
+    var found = null;
+    (doc.panels || []).forEach(function (panel) {
+      (panel.actions || []).forEach(function (item) { if (!found && str(item.id) === id) found = item; });
+      (panel.pages || []).forEach(function (page) {
+        (page.sections || []).forEach(function (section) {
+          (section.actions || []).forEach(function (item) { if (!found && str(item.id) === id) found = item; });
+          (section.blocks || []).forEach(function (block) {
+            (block.items || []).forEach(function (item) { if (!found && str(item.id) === id) found = item; });
+          });
+        });
+      });
+    });
+    return found;
+  }
+
+  function actionShape(item) {
+    return [str(item.id), str(item.label), str(item.call), str(item.custom), str(item.bind),
+      item.set && typeof item.set === "object" ? Object.keys(item.set).sort() : null,
+      item.inputs ? item.inputs.length : 0, !!item.confirm];
+  }
+
+  function blockShape(block) {
+    var out = [str(block.kind), str(block.id), str(block.bind), str(block.widget), str(block.type),
+      str(block.slot), str(block.selected), str(block.item_key), !!block.readonly, !!block.disabled, !!block.help];
+    if (Array.isArray(block.options)) out.push(block.options.map(function (o) { return isObject(o) ? o.value : o; }));
+    if (block.item && Array.isArray(block.item.template)) out.push(block.item.template.map(blockShape));
+    if (Array.isArray(block.template)) out.push(block.template.map(blockShape));
+    if (Array.isArray(block.actions)) out.push(block.actions.map(actionShape));
+    if (Array.isArray(block.items)) out.push(block.items.map(actionShape));
+    return out;
+  }
+
+  function ariaShortcut(spec) {
+    return String(spec).split("+").map(function (part) {
+      var key = part.trim();
+      if (/^(ctrl|control)$/i.test(key)) return "Control";
+      if (/^(cmd|meta)$/i.test(key)) return "Meta";
+      if (/^alt$/i.test(key)) return "Alt";
+      if (/^shift$/i.test(key)) return "Shift";
+      if (/^(esc|escape)$/i.test(key)) return "Escape";
+      if (/^space$/i.test(key)) return "Space";
+      return key.length === 1 ? key.toUpperCase() : key;
+    }).join("+");
+  }
+
+  function shortcutMatches(spec, event) {
+    var parts = String(spec).split("+").map(function (part) { return part.trim(); }).filter(Boolean);
+    if (!parts.length) return false;
+    var key = parts[parts.length - 1];
+    var needsCtrl = false, needsMeta = false, needsAlt = false, needsShift = false;
+    for (var i = 0; i < parts.length - 1; i++) {
+      var mod = parts[i].toLowerCase();
+      if (mod === "ctrl" || mod === "control" || mod === "mod") needsCtrl = true;
+      else if (mod === "cmd" || mod === "meta") needsMeta = true;
+      else if (mod === "alt" || mod === "option") needsAlt = true;
+      else if (mod === "shift") needsShift = true;
+    }
+    if (!!event.ctrlKey !== needsCtrl) return false;
+    if (!!event.metaKey !== needsMeta) return false;
+    if (!!event.altKey !== needsAlt) return false;
+    if (!!event.shiftKey !== needsShift) return false;
+    var actual = String(event.key || "");
+    var wanted = String(key);
+    if (/^(esc|escape)$/i.test(wanted)) return actual.toLowerCase() === "escape";
+    if (/^space$/i.test(wanted)) return actual === " ";
+    if (wanted.length === 1) return actual.toLowerCase() === wanted.toLowerCase();
+    return actual.toLowerCase() === wanted.toLowerCase();
+  }
+
+  function deepClone(value) {
+    if (Array.isArray(value)) return value.map(deepClone);
+    if (isObject(value)) {
+      var out = {};
+      Object.keys(value).forEach(function (key) { out[key] = deepClone(value[key]); });
+      return out;
+    }
+    return value;
+  }
+
+  function substitute(value, args) {
+    if (typeof value === "string") {
+      return value.replace(/\{\{([\w.-]+)\}\}/g, function (_match, key) {
+        return args && Object.prototype.hasOwnProperty.call(args, key) ? String(args[key]) : "{{" + key + "}}";
+      });
+    }
+    if (Array.isArray(value)) return value.map(function (entry) { return substitute(entry, args); });
+    if (isObject(value)) {
+      var out = {};
+      Object.keys(value).forEach(function (key) { out[key] = substitute(value[key], args); });
+      return out;
+    }
+    return value;
+  }
+
+  /** Expand additive template/use composition. Template bodies are ordinary
+   * blocks; `{{arg}}` placeholders are substituted from use.args. No
+   * expressions are evaluated and recursion is depth-limited. */
+  function expandTemplates(doc) {
+    if (!isObject(doc) || !isObject(doc.templates)) return doc;
+    var templates = doc.templates;
+    var out = deepClone(doc);
+    delete out.templates;
+    var limit = 16;
+    function expandBlock(block, depth) {
+      if (!isObject(block) || block.kind !== "use") return [block];
+      var id = String(block.ref || block.template || "");
+      var template = templates[id];
+      if (!isObject(template) || depth >= limit) {
+        return [{kind: "note", text: "(template '" + id + "' is unavailable or recursive)"}];
+      }
+      var body = substitute(deepClone(template), isObject(block.args) ? block.args : {});
+      var blocks = Array.isArray(body.blocks) ? body.blocks : [body];
+      var result = [];
+      blocks.forEach(function (entry) { result = result.concat(expandBlock(entry, depth + 1)); });
+      return result;
+    }
+    (out.panels || []).forEach(function (panel) {
+      (panel.pages || []).forEach(function (page) {
+        (page.sections || []).forEach(function (section) {
+          var blocks = [];
+          (section.blocks || []).forEach(function (block) { blocks = blocks.concat(expandBlock(block, 0)); });
+          section.blocks = blocks;
+        });
+      });
+    });
+    return out;
+  }
+
+  function structureKey(doc) {
+    return JSON.stringify((doc.panels || []).map(function (panel) {
+      return [str(panel.id), str(panel.title), str(panel.default_page), (panel.actions || []).map(actionShape),
+        (panel.pages || []).map(function (page) {
+          return [str(page.id), str(page.title), (page.sections || []).map(function (section) {
+            return [str(section.id), str(section.title), !!section.help, (section.actions || []).map(actionShape),
+              (section.blocks || []).map(blockShape)];
+          })];
+        })];
+    }));
+  }
+
+  function hasCollection(doc) {
+    var found = false;
+    (doc.panels || []).forEach(function (panel) {
+      (panel.pages || []).forEach(function (page) {
+        (page.sections || []).forEach(function (section) {
+          (section.blocks || []).forEach(function (block) { if (block && block.kind === "collection") found = true; });
+        });
+      });
+    });
+    return found;
+  }
+
+  function validate(doc) {
+    var errors = [];
+    if (!isObject(doc)) return ["document is not an object"];
+    if (doc.format !== "pupitre-ui") errors.push("format is not pupitre-ui");
+    if (Number(doc.version) !== 1) errors.push("version is not 1");
+    if (!isArray(doc.panels)) errors.push("panels is not an array");
+    return errors;
+  }
+
+  function create(options) {
+    return new Renderer(options);
+  }
+
+  global.PupitreUI = {
+    version: "1.5.1",
+    create: create,
+    validate: validate,
+    expandTemplates: expandTemplates,
+    morph: morph,
+    ease: ease,
+    render: function (doc, options) { return create(options).render(doc); }
+  };
+})(typeof window !== "undefined" ? window : this);

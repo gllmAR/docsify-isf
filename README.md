@@ -15,7 +15,8 @@ still opens the `.fs` file.
 becomes, on a Docsify page, a viewer with:
 
 - a realtime WebGL render of the shader,
-- auto-generated controls for every `INPUTS` entry (float, bool, long, event,
+- auto-generated controls for every `INPUTS` entry, rendered by the shared
+  Pupitre UI toolkit (float, bool, long, event,
   color, point2D, image, audio, audioFFT, plus the MadMapper `floatRange`
   min/max pair and the animator/shaper/incrementer/damper/pass_thru/
   linear_filter/adsr controllers as sliders; `generate_as_define` inputs are
@@ -206,6 +207,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
+| `ui` | `"pui"` | Parameter panel renderer: `"pui"` uses the shared [Pupitre UI](https://codeberg.org/gllm/pupitre-ui) toolkit, `"legacy"` keeps the built-in rows. PUI falls back to the legacy rows if it cannot mount. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |
@@ -230,7 +232,10 @@ All keys are optional and live under `window.$docsify.isf`:
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
-(`parseISF`, `buildShader`, `highlightGLSL`, …).
+(`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, `PupitreUI`,
+`PupitreISF`, …). The parameter drawer is a PUI document generated from the
+normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
+as the other Pupitre hosts, embedded in the drawer with the viewer theme.
 
 ## OBS / fullscreen link
 
@@ -435,9 +440,17 @@ steps for feedback/multi-pass shaders; `--strict` exits non-zero above
 node tools/build.mjs          # writes docsify-isf.js
 node tools/build.mjs --check  # CI: fails when the artifact is out of date
 
+# the parameter panel is the shared Pupitre UI toolkit (vendor/pupitre-ui):
+# sync it from a pupitre-ui checkout and verify the pinned snapshot
+node tools/sync-pupitre-ui.mjs          # PUPITRE_UI_DIR=... when not a sibling
+node tools/sync-pupitre-ui.mjs --check  # CI: vendored files match SOURCE.json
+
 # unit tests: header parser, expression evaluator, IMG_* rewriting, URL
 # resolution, highlighting, shader assembly and every sample in samples/
 node tests/run.js
+
+# PUI parameter document, adapter round-trip and vendor integrity
+node tests/pui-params.test.js
 
 # also parse and assemble the whole bundled OBS ISF corpus (when checked out
 # inside obs-lua-projection-mapping)

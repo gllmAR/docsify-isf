@@ -389,27 +389,41 @@ the rails are hidden.
 
 ### 7.2 Controls
 
-| ISF type | Control |
+The parameter rows are a **Pupitre UI (PUI)** document generated from the
+normalised `INPUTS` by the vendored ISF adapter (`vendor/pupitre-ui/isf.js`)
+and rendered by the shared `vendor/pupitre-ui/pupitre-ui.js` renderer. The
+drawer is an **embedded** PUI panel (`embedded: true`): it carries no panel
+header or implicit titles, uses the viewer's `--isf-*` theme tokens through a
+small CSS bridge, and stacks labels above controls when the drawer is narrow
+(a container query, not a viewport breakpoint). PUI owns the widget
+behaviour, reset affordance, a11y and focus handling; the plugin owns values,
+clamping, media and events. `ui: "legacy"` (or a PUI mount failure) keeps the
+built-in rows described below.
+
+The PUI document maps every normalised ISF input:
+
+| ISF type | PUI control |
 |---|---|
-| `float` | range + exact number field |
-| `bool` | checkbox |
-| `long`/`int` | `<select>` for `VALUES`/`LABELS`, number field otherwise |
-| `event` | momentary “Trigger” button |
-| `color` | colour input + alpha slider (RGBA uniform) |
-| `point2D` | two axis sliders with min/max arrays |
-| `image` | “Choose image…” file picker + drag & drop |
-| `audio`/`audioFFT` | synthetic-source indicator |
+| `float`, controller types | `range` (range + exact number field) |
+| `bool` | `switch` |
+| `long`/`int` | `select` for numeric/label `VALUES`, `number` otherwise |
+| `event` | momentary `button` |
+| `color` | `color` + alpha percent (RGBA, edited as `#RRGGBBAA`) |
+| `point2D` | two per-axis ranges (`…/x`, `…/y`) |
+| `floatRange` | two per-axis ranges (`…/min`, `…/max`) |
+| `image` | “Choose image…” action + drag & drop on the stage |
+| `audio`/`audioFFT` | source readout + microphone action |
 
-Double-clicking a parameter row resets it to the metadata default. Every
-value path (`setParameter`, controls, API callers, restored state) goes
-through `clampInputValue()`, so `MIN`/`MAX` are respected for `float`,
-`long`/`int` and both `point2D` axes, `color` stays in 0…1, `long` values snap
-to the declared `VALUES`, and the number field reports invalid input with
-`aria-invalid` while the user is still typing.
+Reset is PUI's per-field reset button (shown when the value differs from the
+metadata default) and double-clicking a row still resets it. Every value path
+(`setParameter`, controls, API callers, restored state) goes through
+`clampInputValue()`, so `MIN`/`MAX` are respected for `float`, `long`/`int`
+and both `point2D` axes, `color` stays in 0…1, and `long` values snap to the
+declared `VALUES`.
 
-The parameters panel also carries the view row: a **View** selector for pass
-targets, a **Quality** selector (persisted with the layout) and **Export
-PNG**.
+The parameters panel also carries the plugin-owned view row (not PUI): a
+**View** selector for pass targets, a **Quality** selector (persisted with the
+layout) and **Export PNG**.
 
 ### 7.3 Editor
 
@@ -546,7 +560,14 @@ docsify-plugins/docsify-isf/
 ├── README.md             feature gallery / self-test / configuration
 ├── SDD.md                this document
 ├── samples/*.fs|.vs|.png self-test shaders, covers every feature
+├── src/plugin.src.js     Docsify/WebGL/UI layer (the artifact source)
+├── src/kernel-adapter.js compiler adapter over the vendored ISF core
+├── vendor/isf-core/      vendored ISF compiler kernel + SOURCE.json
+├── vendor/pupitre-ui/    vendored PUI renderer, ISF adapter, CSS + SOURCE.json
+├── tools/build.mjs       injects both vendors into docsify-isf.js (--check)
+├── tools/sync-pupitre-ui.mjs sync/verify the PUI snapshot
 ├── tests/run.js          Node unit + sample tests
+├── tests/pui-params.test.js PUI document/adapter/vendor checks
 ├── tests/browser-smoke.mjs headless Chrome end-to-end test
 ├── package.json          npm test scripts + puppeteer-core dev dependency
 └── LICENSE               MIT
