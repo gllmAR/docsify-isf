@@ -248,6 +248,7 @@
     this.shellRecords = [];
     this.statusRecords = [];
     this.menuRecords = [];
+    this.toastRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -309,6 +310,7 @@
     this.shellRecords = [];
     this.statusRecords = [];
     this.menuRecords = [];
+    this.toastRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -1049,6 +1051,7 @@
     if (kind === "toolbar") return this.buildToolbar(block);
     if (kind === "statusbar") return this.buildStatusbar(block);
     if (kind === "menu") return this.buildMenu(block);
+    if (kind === "toast") return this.buildToast(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
     if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
@@ -5503,6 +5506,54 @@
     return root;
   };
 
+  Renderer.prototype.toastItems = function (block) {
+    var path = String(block.bind || "");
+    if (!path) return [];
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, block)
+      : this.adapter.getValue(path);
+    return isArray(value) ? value : [];
+  };
+
+  Renderer.prototype.toastRender = function (rec) {
+    var self = this;
+    var items = this.toastItems(rec.block);
+    while (rec.root.firstChild) rec.root.removeChild(rec.root.firstChild);
+    rec.root.hidden = items.length === 0;
+    for (var i = 0; i < items.length; i++) {
+      (function (item) {
+        if (!isObject(item)) return;
+        var level = String(item.level || "info");
+        var toast = el("div", {class: "pui-toast is-" + level, role: level === "error" ? "alert" : "status"});
+        toast.appendChild(el("span", {class: "pui-toast-text", text: String(item.text || item.label || "")}));
+        var dismiss = isObject(rec.block.dismiss) ? rec.block.dismiss : null;
+        if (dismiss) {
+          var close = el("button", {type: "button", class: "pui-toast-close", "aria-label": "Dismiss notification", text: "×"});
+          close.addEventListener("click", function () {
+            var action = Object.assign({}, dismiss, {
+              args: Object.assign({}, isObject(dismiss.args) ? dismiss.args : {}, {id: item.id, notice: item})
+            });
+            self.performAction(action, close, {id: item.id, notice: item});
+          });
+          toast.appendChild(close);
+        }
+        rec.root.appendChild(toast);
+      })(items[i]);
+    }
+  };
+
+  Renderer.prototype.buildToast = function (block) {
+    var placement = String(block.placement || "bottom-end");
+    var root = el("div", {class: "pui-toast-region", "data-placement": placement, "aria-live": "polite", "aria-atomic": "false"});
+    var rec = {root: root, block: block,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true};
+    this.toastRecords.push(rec);
+    this.toastRender(rec);
+    this.shellCondition(block, root);
+    return root;
+  };
+
   /* ---------------------------------------------------------------- form */
 
   Renderer.prototype.formFields = function (block) {
@@ -6507,6 +6558,9 @@
       this.applyRecord(this.records[i]);
       this.applyStatus(this.records[i]);
       this.updateModified(this.records[i]);
+    }
+    for (var tr = 0; tr < this.toastRecords.length; tr++) {
+      this.toastRender(this.toastRecords[tr]);
     }
     for (var sb = 0; sb < this.statusRecords.length; sb++) {
       var statusRec = this.statusRecords[sb];
