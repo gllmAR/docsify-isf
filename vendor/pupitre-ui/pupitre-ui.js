@@ -245,6 +245,8 @@
     this.collectionRecords = [];
     this.tableRecords = [];
     this.formRecords = [];
+    this.shellRecords = [];
+    this.statusRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -297,6 +299,8 @@
     this.collectionRecords = [];
     this.tableRecords = [];
     this.formRecords = [];
+    this.shellRecords = [];
+    this.statusRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -366,6 +370,16 @@
     this.applyDocumentRoot(doc);
     var blocks = {};
     collectBlocks(doc, blocks);
+    for (var sh = 0; sh < this.shellRecords.length; sh++) {
+      var shellRec = this.shellRecords[sh];
+      shellRec.visible = this.conditionOk(shellRec.block.visible_when);
+      shellRec.enabled = this.conditionOk(shellRec.block.enabled_when) &&
+        groupEnabled(this.pageRecords, shellRec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, shellRec.sectionRecordIndex);
+      shellRec.root.hidden = !shellRec.visible;
+      if (shellRec.enabled) shellRec.root.removeAttribute("aria-disabled");
+      else shellRec.root.setAttribute("aria-disabled", "true");
+    }
     for (var fm = 0; fm < this.formRecords.length; fm++) {
       var formRec = this.formRecords[fm];
       formRec.visible = this.conditionOk(formRec.block.visible_when);
@@ -1015,6 +1029,8 @@
     if (kind === "collection") return this.buildCollection(block);
     if (kind === "table") return this.buildTable(block);
     if (kind === "form") return this.buildForm(block);
+    if (kind === "toolbar") return this.buildToolbar(block);
+    if (kind === "statusbar") return this.buildStatusbar(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
     if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
@@ -5302,6 +5318,90 @@
     return line;
   };
 
+  /* -------------------------------------------------------------- shell */
+
+  Renderer.prototype.shellCondition = function (block, root) {
+    var rec = {
+      root: root, block: block,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true
+    };
+    this.shellRecords.push(rec);
+    return rec;
+  };
+
+  Renderer.prototype.buildToolbar = function (block) {
+    var self = this;
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("div", {class: "pui-toolbar", "data-pui-toolbar": String(block.id || ""), role: "toolbar"});
+    if (block.label) root.setAttribute("aria-label", String(block.label));
+    else if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
+    if (block.align) root.setAttribute("data-align", String(block.align));
+    var items = isArray(block.items) ? block.items : [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!isObject(item)) continue;
+      if (item.kind === "separator") {
+        root.appendChild(el("span", {class: "pui-toolbar-separator", role: "separator"}));
+      } else if (item.kind === "label") {
+        root.appendChild(el("span", {class: "pui-toolbar-label", text: String(item.text || item.label || "")}));
+      } else if (item.kind === "spacer") {
+        root.appendChild(el("span", {class: "pui-toolbar-spacer"}));
+      } else {
+        this.addActionButton(root, item);
+      }
+    }
+    this.shellCondition(block, root);
+    return root;
+  };
+
+  Renderer.prototype.statusValue = function (item) {
+    var path = String(item.bind || "");
+    if (!path) return "";
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, item)
+      : this.adapter.getValue(path);
+    if (typeof item.format === "function") return String(item.format(value));
+    if (value === undefined || value === null) return "";
+    if (typeof value === "object") {
+      try { return JSON.stringify(value); } catch (error) { return String(value); }
+    }
+    return String(value);
+  };
+
+  Renderer.prototype.buildStatusbar = function (block) {
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("div", {class: "pui-statusbar", "data-pui-statusbar": String(block.id || ""), role: "status", "aria-live": String(a11y.live || "polite")});
+    if (block.label) root.setAttribute("aria-label", String(block.label));
+    var items = isArray(block.items) ? block.items : [];
+    var values = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!isObject(item)) continue;
+      var cell = el("span", {class: "pui-statusbar-item"});
+      var label = el("span", {class: "pui-statusbar-label", text: String(item.label || item.bind || "")});
+      var value = el("output", {class: "pui-statusbar-value", "data-pui-bind": String(item.bind || "")});
+      value.textContent = this.statusValue(item);
+      cell.appendChild(label);
+      cell.appendChild(value);
+      root.appendChild(cell);
+      values.push({item: item, value: value});
+    }
+    if (!values.length && block.bind) {
+      var only = {bind: block.bind, label: block.label || ""};
+      var single = el("span", {class: "pui-statusbar-item"});
+      single.appendChild(el("span", {class: "pui-statusbar-label", text: String(only.label)}));
+      var out = el("output", {class: "pui-statusbar-value", "data-pui-bind": String(only.bind)});
+      out.textContent = this.statusValue(only);
+      single.appendChild(out);
+      root.appendChild(single);
+      values.push({item: only, value: out});
+    }
+    this.statusRecords.push({root: root, block: block, values: values});
+    this.shellCondition(block, root);
+    return root;
+  };
+
   /* ---------------------------------------------------------------- form */
 
   Renderer.prototype.formFields = function (block) {
@@ -6307,6 +6407,12 @@
       this.applyStatus(this.records[i]);
       this.updateModified(this.records[i]);
     }
+    for (var sb = 0; sb < this.statusRecords.length; sb++) {
+      var statusRec = this.statusRecords[sb];
+      for (var sv = 0; sv < statusRec.values.length; sv++) {
+        statusRec.values[sv].value.textContent = this.statusValue(statusRec.values[sv].item);
+      }
+    }
     for (var t = 0; t < this.tableRecords.length; t++) {
       this.tableRefresh(this.tableRecords[t]);
     }
@@ -6903,6 +7009,10 @@
       return [str(column.key), str(column.label), str(column.width), str(column.cell)];
     }));
     if (Array.isArray(block.fields)) out.push(block.fields.map(blockShape));
+    if (Array.isArray(block.items)) out.push(block.items.map(function (item) {
+      return [str(item.kind), str(item.bind), str(item.label), str(item.call), str(item.text)];
+    }));
+    out.push(str(block.align), str(block.bind));
     out.push(str(block.submit && block.submit.call), str(block.cancel && block.cancel.call), Number(block.columns) || 1);
     out.push(str(block.row_key), str(block.selection_bind), block.multi !== false, str(block.empty_text));
     return out;

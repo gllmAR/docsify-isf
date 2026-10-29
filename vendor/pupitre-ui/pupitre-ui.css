@@ -187,6 +187,17 @@
 .pui-status-busy { color: var(--pui-accent); }
 
 /* Workflow extensions: collection, dialogs, slots, status */
+.pui-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: var(--pui-touch); padding: 4px 6px; border-bottom: 1px solid var(--pui-border); background: var(--pui-surface); }
+.pui-toolbar[data-align="end"] { justify-content: flex-end; }
+.pui-toolbar[data-align="between"] { justify-content: space-between; }
+.pui-toolbar .pui-actions { display: contents; }
+.pui-toolbar-separator { width: 1px; height: 20px; background: var(--pui-border); margin: 0 3px; }
+.pui-toolbar-spacer { flex: 1 1 auto; }
+.pui-toolbar-label { color: var(--pui-muted); font-size: 0.72rem; font-weight: 600; padding: 0 4px; }
+.pui-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: var(--pui-touch); padding: 4px 8px; border-top: 1px solid var(--pui-border); background: var(--pui-surface); color: var(--pui-muted); font-size: 0.72rem; }
+.pui-statusbar-item { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.pui-statusbar-label { color: var(--pui-muted); }
+.pui-statusbar-value { color: var(--pui-text); font-variant-numeric: tabular-nums; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pui-form { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
 .pui-form-title { margin: 0; font-size: 0.95rem; }
 .pui-form-fields { display: grid; grid-template-columns: repeat(var(--pui-form-columns, 1), minmax(0, 1fr)); gap: 8px 12px; align-items: start; }
