@@ -789,10 +789,9 @@ export function createRenderer(opts) {
   }
 
   /**
-   * PNG data URL of the current frame. `flipY` is for consumers that compare
-   * against OBS's **raw** source screenshot (a source texture is bottom-up).
-   * The cover tool flips that screenshot to the upright scene frame, so the
-   * comparison harness asks for the canvas as it is displayed (`flipY: false`).
+   * PNG data URL of the current frame. `flipY` is for hosts that store the
+   * frame bottom-up; the ISF comparison uses the canvas as displayed (both
+   * OBS's compiled effect and this kernel render ISF's bottom-left space).
    */
   function capture(opts) {
     // A frozen capture has already rendered its target frame: `render: false`
