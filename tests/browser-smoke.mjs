@@ -955,6 +955,10 @@ try {
             buffer: buffer(),
             storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
         };
+        if (toolbarPanel && toolbarPanel.hidden) {
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+            await sleep(300);
+        }
         if (toolbarPanel) toolbarPanel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(300);
         const escapeClosed = !!toolbarPanel && toolbarPanel.hidden;

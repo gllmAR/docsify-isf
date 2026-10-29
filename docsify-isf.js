@@ -5476,7 +5476,9 @@
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-header,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-header{display:none}",
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-pui-toolbar,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-pui-toolbar{display:block}",
             ".isf-pui-toolbar .pui{padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(8px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:2147483001;min-height:30px;padding:.3rem .65rem;border:1px solid var(--isf-border);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.72rem;font-weight:600;letter-spacing:.02em;-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%)}",
+            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;right:auto;transform:translateX(-50%);z-index:2147483001;min-height:30px;padding:.3rem .65rem;border:1px solid var(--isf-border);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.72rem;font-weight:600;letter-spacing:.02em;-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%)}",
+            ".isf-pui-toolbar .pui-drawer.is-open .pui-drawer-trigger{display:none}",
+            "@media (max-width:760px){.isf-block.isf-drawer-open .isf-pui-toolbar .pui-drawer-trigger{display:none}}",
             ".isf-pui-toolbar .pui-drawer-panel{background:var(--isf-drawer-bg);color:var(--isf-text);border-color:var(--isf-border);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%)}",
             ".isf-pui-toolbar .pui-drawer-head{border-color:var(--isf-border);padding:.45rem .7rem}",
             ".isf-pui-toolbar .pui-drawer-head h4{font-size:.8rem;color:var(--isf-text)}",
@@ -7920,6 +7922,7 @@
                 if (!isDrawerClosed(other)) other.classList.add("isf-drawer-closed");
             }
             drawer.classList.toggle("isf-drawer-closed", !open);
+            block.classList.toggle("isf-drawer-open", !isDrawerClosed(leftDrawer) || !isDrawerClosed(rightDrawer));
             clampDrawerWidths();
             updateDrawerButtons();
         };
@@ -8347,8 +8350,10 @@
                     return true;
                 },
                 callAction: function (name) {
-                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
-                    if (name === "isf.params") { viewer.toggleParams(); return true; }
+                    // Opening a side drawer closes the top toolbar so the drawer
+                    // header/close is never covered by the top panel.
+                    if (name === "isf.editor") { viewer.toggleEditor(); viewer.setToolbarOpen(false); return true; }
+                    if (name === "isf.params") { viewer.toggleParams(); viewer.setToolbarOpen(false); return true; }
                     if (name === "isf.play") { viewer.togglePlay(); return true; }
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
