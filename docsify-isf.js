@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.20.0
+ * docsify-isf v1.21.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.20.0";
+    var VERSION = "1.21.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3893,6 +3893,24 @@
     /* ==================================================================
      * Configuration
      * ================================================================== */
+
+    // Render-buffer presets: the canvas is capped to fit these dimensions
+    // while preserving the stage aspect ratio, then the browser scales it to
+    // the CSS size. `native` means "CSS size × DPR" (no cap).
+    var RESOLUTION_PRESETS = {
+        sd: {width: 854, height: 480, label: "SD 480p"},
+        hd: {width: 1280, height: 720, label: "HD 720p"},
+        fhd: {width: 1920, height: 1080, label: "FHD 1080p"},
+        native: null
+    };
+    function resolutionPreset(name) {
+        var key = String(name || "").toLowerCase();
+        return Object.prototype.hasOwnProperty.call(RESOLUTION_PRESETS, key) ? key : "";
+    }
+    function resolutionLabel(name) {
+        var preset = RESOLUTION_PRESETS[resolutionPreset(name)];
+        return preset ? preset.label : "Native";
+    }
 
     var DEFAULTS = {
         enabled: true,
@@ -3910,6 +3928,7 @@
         transitionDuration: 4.0,
         resolution: "auto",             // "auto" | 2 | 1 | 0.5
         maxPixelRatio: 2,
+        maxResolution: "sd",        // "sd" | "hd" | "fhd" | "native"
         maxFps: 0,                  // 0 = unlimited, otherwise cap the render loop
         includePaths: [],           // extra directories for #include "file.glsl"
         maxContexts: 8,
@@ -3951,6 +3970,7 @@
         if (typeof config.autoplay !== "boolean") config.autoplay = DEFAULTS.autoplay;
         if (typeof config.showStats !== "boolean") config.showStats = DEFAULTS.showStats;
         if (typeof config.showSource !== "boolean") config.showSource = DEFAULTS.showSource;
+        if (!resolutionPreset(config.maxResolution)) config.maxResolution = DEFAULTS.maxResolution;
         return config;
     }
 
@@ -4064,11 +4084,15 @@
     }
 
     function readUrlFlags() {
-        var flags = { editor: false, controls: false, values: null, fullscreen: false, shader: null };
+        var flags = { editor: false, controls: false, values: null, fullscreen: false, shader: null, resolution: null, quality: null };
         try {
             var params = new URLSearchParams(window.location.search);
             flags.editor = params.get("isf-editor") === "1";
             flags.controls = params.get("isf-controls") === "1";
+            var resolution = resolutionPreset(params.get("isf-res") || params.get("isf-resolution") || "");
+            if (resolution) flags.resolution = resolution;
+            var quality = params.get("isf-quality");
+            if (/^(auto|2|1|0\.5|0\.25)$/.test(quality || "")) flags.quality = quality;
             // `isf-shader` + `isf-fullscreen=1`: a self-contained viewer the
             // share button produces for OBS browser sources.
             flags.fullscreen = params.get("isf-fullscreen") === "1";
@@ -5448,6 +5472,19 @@
             ".isf-block:fullscreen .isf-drawer{top:0;bottom:0;width:min(480px,44vw)}",
             ".isf-block:fullscreen .isf-editor{min-height:220px}",
             ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
+            ".isf-pui-toolbar{display:none}",
+            ".isf-block:fullscreen.isf-has-pui-toolbar .isf-header,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-header{display:none}",
+            ".isf-block:fullscreen.isf-has-pui-toolbar .isf-pui-toolbar,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-pui-toolbar{display:block}",
+            ".isf-pui-toolbar .pui{padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
+            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(8px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:2147483001;min-height:30px;padding:.3rem .65rem;border:1px solid var(--isf-border);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.72rem;font-weight:600;letter-spacing:.02em;-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%)}",
+            ".isf-pui-toolbar .pui-drawer-panel{background:var(--isf-drawer-bg);color:var(--isf-text);border-color:var(--isf-border);-webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%)}",
+            ".isf-pui-toolbar .pui-drawer-head{border-color:var(--isf-border);padding:.45rem .7rem}",
+            ".isf-pui-toolbar .pui-drawer-head h4{font-size:.8rem;color:var(--isf-text)}",
+            ".isf-pui-toolbar .pui-drawer-close{color:var(--isf-muted);font-size:1rem}",
+            ".isf-pui-toolbar .pui-drawer-body{padding:.55rem .7rem}",
+            ".isf-pui-toolbar .pui-actions{gap:.4rem}",
+            ".isf-pui-toolbar .pui-button{font-size:.75rem;background:var(--isf-surface);border-color:var(--isf-border);color:var(--isf-text)}",
+
 
             "/* bare mode: a self-contained fullscreen viewer for OBS browser sources */",
             ".isf-block.isf-bare{position:fixed;inset:0;margin:0;border:0;border-radius:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;contain:none;box-shadow:none}",
@@ -6846,6 +6883,7 @@
         this._lastDrawAt = 0;
         this.previewTarget = null;
         this.qualityScale = null;
+        this.maxResolution = viewer.resolutionChoice || this.config.maxResolution || "sd";
         this.mouse = [0, 0, 0, 0];
         this.pointerDown = false;
         this.fixedDate = null;
@@ -7221,6 +7259,11 @@
         if (resolution === "auto") scale = Math.min(dpr, Number(this.config.maxPixelRatio) || 2);
         else scale = Number(resolution) || 1;
         if (!isFinite(scale) || scale <= 0) scale = 1;
+        // Cap the drawing buffer to the configured max resolution, preserving
+        // the CSS aspect ratio (SD by default: large/high-DPR viewers render
+        // at ~480p and are upscaled by the browser).
+        var preset = RESOLUTION_PRESETS[resolutionPreset(this.maxResolution)];
+        if (preset) scale = Math.min(scale, preset.width / cssWidth, preset.height / cssHeight);
         var maxSize = 0;
         try { maxSize = this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) || 4096; } catch (err) { maxSize = 4096; }
         var width = clamp(Math.round(cssWidth * scale), 1, Math.min(maxSize, 8192));
@@ -7353,8 +7396,11 @@
         viewer.lastErrorText = "";
         viewer.audioState = null;
         viewer.layout = loadLayout();
-        viewer.qualityChoice = (viewer.layout && viewer.layout.quality) || config.resolution || "auto";
         viewer.urlFlags = readUrlFlags();
+        viewer.resolutionChoice = (viewer.urlFlags && viewer.urlFlags.resolution) ||
+            (viewer.layout && resolutionPreset(viewer.layout.resolutionCap)) || "";
+        viewer.qualityChoice = (viewer.urlFlags && viewer.urlFlags.quality) ||
+            (viewer.layout && viewer.layout.quality) || config.resolution || "auto";
         viewer.includes = {};
         VIEWERS.push(viewer);
         viewer.saveLayout = function (patch) {
@@ -7761,6 +7807,8 @@
             url.search = "";
             url.searchParams.set("isf-shader", shaderUrl);
             url.searchParams.set("isf-fullscreen", "1");
+            url.searchParams.set("isf-res", viewer.resolutionChoice || config.maxResolution || "sd");
+            url.searchParams.set("isf-quality", String(viewer.qualityChoice != null ? viewer.qualityChoice : "auto"));
             var values = {};
             if (viewer.built) {
                 for (var i = 0; i < viewer.built.inputs.length; i++) {
@@ -7907,6 +7955,7 @@
             viewer.dom.playButton.innerHTML = playing ? ICONS.pause : ICONS.play;
             viewer.dom.playButton.title = playing ? "Pause" : "Play";
             viewer.updateBadge(playing ? "" : "paused");
+            if (viewer.refreshPUIFullscreenToolbar) viewer.refreshPUIFullscreenToolbar();
         };
         viewer.resetAll = function () {
             viewer.resetParameters();
@@ -7934,6 +7983,7 @@
             applyStageLayout();
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) viewer.setState("");
+            else if (viewer.toolbarOpen) viewer.setToolbarOpen(false);
         };
 
         paramsButton.addEventListener("click", viewer.toggleParams);
@@ -7942,6 +7992,22 @@
         resetButton.addEventListener("click", viewer.resetAll);
         fullscreenButton.addEventListener("click", viewer.toggleFullscreen);
         var fullscreenHandler = function () { viewer.syncFullscreen(); };
+        var fullscreenKeyHandler = function (event) {
+            if (!isFullscreenActive() || !viewer.puiToolbar) return;
+            if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+            var target = event.target;
+            if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" ||
+                target.tagName === "SELECT" || target.isContentEditable)) return;
+            if (event.key === "h" || event.key === "H") {
+                event.preventDefault();
+                viewer.setToolbarOpen(!viewer.toolbarOpen);
+            } else if (event.key === "Escape" && viewer.toolbarOpen) {
+                event.preventDefault();
+                viewer.setToolbarOpen(false);
+            }
+        };
+        document.addEventListener("keydown", fullscreenKeyHandler);
+        viewer.listeners.push(function () { document.removeEventListener("keydown", fullscreenKeyHandler); });
         document.addEventListener("fullscreenchange", fullscreenHandler);
         document.addEventListener("webkitfullscreenchange", fullscreenHandler);
         viewer.listeners.push(function () {
@@ -8151,8 +8217,8 @@
                 viewer.dom.passSelect = null;
             }
             var qualityRow = h("label", "isf-view-row");
-            qualityRow.appendChild(h("span", "isf-view-label", { text: "Quality" }));
-            var qualitySelect = h("select", null, { "aria-label": "Render quality" });
+            qualityRow.appendChild(h("span", "isf-view-label", { text: "Scale" }));
+            var qualitySelect = h("select", null, { "aria-label": "Render scale" });
             [["auto", "Auto"], ["1", "1×"], ["0.5", "0.5×"], ["0.25", "0.25×"], ["2", "2×"]].forEach(function (entry) {
                 qualitySelect.appendChild(h("option", null, { value: entry[0], text: entry[1] }));
             });
@@ -8168,6 +8234,26 @@
             });
             qualityRow.appendChild(qualitySelect);
             section.appendChild(qualityRow);
+            var resolutionRow = h("label", "isf-view-row");
+            resolutionRow.appendChild(h("span", "isf-view-label", { text: "Resolution" }));
+            var resolutionSelect = h("select", null, { "aria-label": "Render resolution" });
+            [["default", "Default (" + resolutionLabel(config.maxResolution) + ")"],
+                ["sd", "SD 480p"], ["hd", "HD 720p"], ["fhd", "FHD 1080p"], ["native", "Native"]].forEach(function (entry) {
+                resolutionSelect.appendChild(h("option", null, { value: entry[0], text: entry[1] }));
+            });
+            resolutionSelect.value = viewer.resolutionChoice || "default";
+            resolutionSelect.addEventListener("change", function () {
+                var value = resolutionSelect.value;
+                viewer.resolutionChoice = value === "default" ? "" : resolutionPreset(value);
+                viewer.saveLayout({ resolutionCap: viewer.resolutionChoice || null });
+                if (viewer.runtime) {
+                    viewer.runtime.maxResolution = viewer.resolutionChoice || config.maxResolution || "sd";
+                    viewer.runtime.resize(true);
+                    viewer.runtime.needsRender = true;
+                }
+            });
+            resolutionRow.appendChild(resolutionSelect);
+            section.appendChild(resolutionRow);
             var timeRow = h("label", "isf-view-row isf-time-row");
             timeRow.appendChild(h("span", "isf-view-label", { text: "Time" }));
             var timeRange = h("input", "isf-time-range", {
@@ -8198,6 +8284,109 @@
             return section;
         };
 
+        /* -------------------------------------- PUI fullscreen toolbar */
+
+        // In native fullscreen the header would take layout space; PUI owns a
+        // non-modal top drawer instead so the shader gets the whole viewport.
+        viewer.buildPUIFullscreenToolbarDocument = function () {
+            var items = [];
+            if (config.editor) items.push({id: "editor", label: "Source editor", call: "isf.editor"});
+            if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
+                items.push({id: "params", label: "Parameters", call: "isf.params"});
+            }
+            items.push({id: "play", label: viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause", call: "isf.play"});
+            items.push({id: "reset", label: "Reset parameters", call: "isf.reset", result: "Reset"});
+            items.push({id: "fullscreen", label: "Exit fullscreen", call: "isf.fullscreen"});
+            items.push({id: "source", label: "Open source", call: "isf.source"});
+            if (config.share) items.push({id: "share", label: "Copy OBS link", call: "isf.share", result: "Link copied"});
+            return {
+                format: "pupitre-ui",
+                version: 1,
+                host: "docsify-isf",
+                panels: [{
+                    id: "isf-toolbar",
+                    title: String(viewer.title || "Controls"),
+                    embedded: true,
+                    pages: [{id: "toolbar", title: "Controls", sections: [{
+                        id: "toolbar",
+                        title: "Controls",
+                        blocks: [{
+                            kind: "drawer",
+                            id: "isf-toolbar",
+                            label: String(viewer.title || "Controls"),
+                            trigger: "Controls",
+                            side: "top",
+                            modal: false,
+                            height: 320,
+                            open_bind: "/isf/ui/toolbarOpen",
+                            blocks: [{kind: "actions", items: items}]
+                        }]
+                    }]}]
+                }]
+            };
+        };
+        viewer.refreshPUIFullscreenToolbar = function () {
+            if (!viewer.puiToolbar) return;
+            try { viewer.puiToolbar.ui.render(viewer.buildPUIFullscreenToolbarDocument()); } catch (error) { /* ignore */ }
+        };
+        viewer.setToolbarOpen = function (open, fromPUI) {
+            viewer.toolbarOpen = !!open;
+            if (!fromPUI && viewer.puiToolbar) viewer.puiToolbar.ui.apply();
+        };
+        viewer.mountPUIFullscreenToolbar = function () {
+            if (viewer.puiToolbar || viewer.disposed || !block || !puiAvailable()) return;
+            var host = h("div", "isf-pui isf-pui-toolbar");
+            block.appendChild(host);
+            var adapter = {
+                getValue: function (path) {
+                    return path === "/isf/ui/toolbarOpen" ? !!viewer.toolbarOpen : undefined;
+                },
+                setValue: function (path, value) {
+                    if (path !== "/isf/ui/toolbarOpen") return false;
+                    viewer.setToolbarOpen(!!value, true);
+                    return true;
+                },
+                callAction: function (name) {
+                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
+                    if (name === "isf.params") { viewer.toggleParams(); return true; }
+                    if (name === "isf.play") { viewer.togglePlay(); return true; }
+                    if (name === "isf.reset") { viewer.resetAll(); return true; }
+                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
+                    if (name === "isf.source") {
+                        try { window.open(viewer.url, "_blank", "noopener"); } catch (error) { /* ignore */ }
+                        return true;
+                    }
+                    if (name === "isf.share") { viewer.copyLink(); return true; }
+                    return false;
+                },
+                getPathMeta: function () { return {}; },
+                announce: function (level, message) {
+                    if (level === "error") viewer.warn(message);
+                    else viewer.setState(message, level === "success" ? "ok" : "");
+                }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            try {
+                ui.render(viewer.buildPUIFullscreenToolbarDocument());
+            } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                if (host.parentNode) host.parentNode.removeChild(host);
+                viewer.warn("Fullscreen toolbar unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiToolbar = {ui: ui, host: host};
+            block.classList.add("isf-has-pui-toolbar");
+        };
+
         viewer.rebuildParams = function () {
             var inputs = viewer.built ? viewer.built.inputs : [];
             viewer.inputByName = {};
@@ -8206,6 +8395,7 @@
             var controlsHost = h("div", "isf-params-controls");
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
+            if (puiAvailable()) viewer.mountPUIFullscreenToolbar();
             // PUI renders the view row as an `isf.view` host block inside the
             // panel; while the assets load (or if they fail) it stays a sibling
             // so pass/quality/time remain usable.
@@ -8560,6 +8750,11 @@
             if (viewer.pui) {
                 try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.pui = null;
+            }
+            if (viewer.puiToolbar) {
+                try { viewer.puiToolbar.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.puiToolbar = null;
+                block.classList.remove("isf-has-pui-toolbar");
             }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);

@@ -2909,12 +2909,19 @@
 
   Renderer.prototype.buildDrawer = function (block) {
     var self = this;
+    var modal = block.modal !== false;
+    var side = String(block.side || "right").toLowerCase();
+    if (side !== "left" && side !== "right" && side !== "top" && side !== "bottom") side = "right";
     var root = el("section", {class: "pui-drawer", "data-pui-drawer": String(block.id || "")});
     var trigger = el("button", {type: "button", class: "pui-drawer-trigger pui-button", text: String(block.trigger || block.label || "Open")});
     trigger.setAttribute("aria-expanded", "false");
     root.appendChild(trigger);
+    var panelId = this.id("drawer");
     var backdrop = el("div", {class: "pui-drawer-backdrop", hidden: true});
-    var panel = el("aside", {class: "pui-drawer-panel is-" + String(block.side || "right"), hidden: true, role: "dialog", "aria-modal": "true"});
+    var panel = el("aside", {class: "pui-drawer-panel is-" + side, id: panelId, hidden: true,
+      role: modal ? "dialog" : "region"});
+    if (modal) panel.setAttribute("aria-modal", "true");
+    trigger.setAttribute("aria-controls", panelId);
     var titleId = this.id("drawer-title");
     panel.setAttribute("aria-labelledby", titleId);
     var head = el("div", {class: "pui-drawer-head"});
@@ -2925,7 +2932,7 @@
     var body = el("div", {class: "pui-drawer-body"});
     (block.blocks || []).forEach(function (child) { body.appendChild(self.buildBlock(child)); });
     panel.appendChild(body);
-    root.appendChild(backdrop);
+    if (modal) root.appendChild(backdrop);
     root.appendChild(panel);
     var rec = {block: block, root: root, panel: panel, backdrop: backdrop, trigger: trigger, body: body, open: false, localOpen: block.open === true};
     var readOpen = function () {
@@ -2940,8 +2947,11 @@
       rec.open = open;
       trigger.setAttribute("aria-expanded", open ? "true" : "false");
       panel.hidden = !open;
-      backdrop.hidden = !open;
+      if (modal) backdrop.hidden = !open;
       panel.style.setProperty("--pui-drawer-width", String(block.width || 480) + "px");
+      if (side === "top" || side === "bottom") {
+        panel.style.setProperty("--pui-drawer-height", String(block.height || 260) + "px");
+      }
       root.classList.toggle("is-open", open);
     };
     var toggle = function (open) {
@@ -2960,7 +2970,7 @@
     };
     trigger.addEventListener("click", function () { toggle(!readOpen()); });
     close.addEventListener("click", function () { toggle(false); });
-    backdrop.addEventListener("click", function () { toggle(false); });
+    if (modal) backdrop.addEventListener("click", function () { toggle(false); });
     panel.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); toggle(false); } });
     rec.render = render;
     this.drawerRecords.push(rec);

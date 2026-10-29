@@ -109,6 +109,15 @@ const consoleErrors = [];
 try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 1000, deviceScaleFactor: 1 });
+    await page.evaluateOnNewDocument(() => {
+        window.__copied = null;
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+                writeText: (text) => { window.__copied = String(text); return Promise.resolve(); }
+            }
+        });
+    });
     page.on("console", (message) => {
         if (message.type() !== "error") return;
         // Expected probes (sibling .vs files, favicons) are reported by the
@@ -447,7 +456,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
         const share = plasma.querySelector('.isf-btn[title="Copy a fullscreen link for OBS (current parameters)"]');
-        const quality = plasma.querySelector('select[aria-label="Render quality"]');
+        const quality = plasma.querySelector('select[aria-label="Render scale"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
         quality.value = "0.5";
@@ -867,6 +876,249 @@ try {
         problems.push("the editor did not follow the taller stage: " + JSON.stringify(editorFill));
     }
 
+    // ── resolution: SD by default, fullscreen is truly fullscreen ──
+    const resolution = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /Plasma/i.test(title.textContent);
+        });
+        if (!block) return { missing: true };
+        block.scrollIntoView({ block: "center" });
+        await sleep(600);
+        const canvas = () => block.querySelector(".isf-canvas");
+        const buffer = () => [canvas().width, canvas().height];
+        const rect = (el) => {
+            const r = el.getBoundingClientRect();
+            return { width: Math.round(r.width), height: Math.round(r.height) };
+        };
+        const aspectOk = (b) => {
+            const css = rect(canvas());
+            return css.width > 0 && css.height > 0 && Math.abs(b[0] / b[1] - css.width / css.height) < 0.03;
+        };
+        const initial = {
+            buffer: buffer(),
+            stage: rect(block.querySelector(".isf-stage")),
+            storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
+        };
+        const initialAspect = aspectOk(initial.buffer);
+        const fullscreenButton = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Fullscreen");
+        if (fullscreenButton) fullscreenButton.click();
+        await sleep(900);
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const viewport = { width: innerWidth, height: innerHeight };
+        const fullscreen = {
+            active: fsElement === block,
+            block: rect(block),
+            stage: rect(block.querySelector(".isf-stage")),
+            canvas: rect(canvas()),
+            buffer: buffer(),
+            viewport: viewport
+        };
+        const fullscreenAspect = aspectOk(fullscreen.buffer);
+        const header = block.querySelector(".isf-header");
+        const headerHidden = getComputedStyle(header).display === "none";
+        const toolbarTrigger = block.querySelector(".isf-pui-toolbar .pui-drawer-trigger");
+        const triggerVisible = !!toolbarTrigger && getComputedStyle(toolbarTrigger).display !== "none";
+        if (toolbarTrigger) toolbarTrigger.click();
+        await sleep(450);
+        const toolbarPanel = block.querySelector(".isf-pui-toolbar .pui-drawer-panel");
+        const toolbar = {
+            trigger: triggerVisible,
+            panel: !!toolbarPanel && !toolbarPanel.hidden,
+            top: !!toolbarPanel && toolbarPanel.classList.contains("is-top"),
+            modal: toolbarPanel ? toolbarPanel.getAttribute("aria-modal") : "missing",
+            backdrop: !!block.querySelector(".isf-pui-toolbar .pui-drawer-backdrop"),
+            actions: toolbarPanel ? Array.from(toolbarPanel.querySelectorAll(".pui-button")).map((b) => b.textContent.trim()) : []
+        };
+        const rightDrawer = block.querySelector(".isf-drawer-right");
+        const paramsAction = toolbarPanel && Array.from(toolbarPanel.querySelectorAll(".pui-button")).find((b) => b.textContent.trim() === "Parameters");
+        if (paramsAction && rightDrawer.classList.contains("isf-drawer-closed")) paramsAction.click();
+        await sleep(500);
+        const paramsOpen = !rightDrawer.classList.contains("isf-drawer-closed");
+        const select = block.querySelector('select[aria-label="Render resolution"]');
+        const setResolution = async (value) => {
+            if (!select) return;
+            select.value = value;
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+            await sleep(700);
+        };
+        await setResolution("hd");
+        const hd = {
+            value: select && select.value,
+            buffer: buffer(),
+            storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
+        };
+        await setResolution("default");
+        const back = {
+            value: select && select.value,
+            buffer: buffer(),
+            storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
+        };
+        if (toolbarPanel) toolbarPanel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(300);
+        const escapeClosed = !!toolbarPanel && toolbarPanel.hidden;
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+        await sleep(300);
+        const hOpened = !!toolbarPanel && !toolbarPanel.hidden;
+        const exitAction = toolbarPanel && Array.from(toolbarPanel.querySelectorAll(".pui-button")).find((b) => b.textContent.trim() === "Exit fullscreen");
+        if (exitAction) exitAction.click();
+        else if (document.fullscreenElement || document.webkitFullscreenElement) {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) { try { await exit.call(document); } catch (error) { /* ignore */ } }
+        }
+        await sleep(700);
+        const afterExit = {
+            fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
+            headerDisplay: getComputedStyle(header).display,
+            toolbarDisplay: getComputedStyle(block.querySelector(".isf-pui-toolbar")).display
+        };
+        return {
+            missing: false,
+            initial: initial,
+            fullscreen: fullscreen,
+            hd: hd,
+            back: back,
+            initialAspect: initialAspect,
+            fullscreenAspect: fullscreenAspect,
+            headerHidden: headerHidden,
+            toolbar: toolbar,
+            paramsOpen: paramsOpen,
+            escapeClosed: escapeClosed,
+            hOpened: hOpened,
+            afterExit: afterExit
+        };
+    });
+    if (resolution.missing) {
+        problems.push("plasma viewer not found for the resolution/fullscreen test");
+    } else {
+        const fs = resolution.fullscreen;
+        if (!fs.active) problems.push("fullscreen did not activate on the viewer block");
+        if (Math.abs(fs.block.width - fs.viewport.width) > 4 || Math.abs(fs.block.height - fs.viewport.height) > 4) {
+            problems.push("fullscreen block does not fill the viewport: " + JSON.stringify(fs));
+        }
+        if (!resolution.headerHidden) problems.push("the fullscreen header is still visible");
+        if (!resolution.toolbar.trigger || !resolution.toolbar.panel || !resolution.toolbar.top) {
+            problems.push("the fullscreen PUI toolbar did not open: " + JSON.stringify(resolution.toolbar));
+        }
+        if (resolution.toolbar.modal !== null || resolution.toolbar.backdrop) {
+            problems.push("the fullscreen toolbar must be a non-modal top drawer: " + JSON.stringify(resolution.toolbar));
+        }
+        ["Source editor", "Parameters", "Reset parameters", "Exit fullscreen", "Open source", "Copy OBS link"].forEach((label) => {
+            if (resolution.toolbar.actions.indexOf(label) < 0) {
+                problems.push("the fullscreen toolbar is missing the " + label + " action");
+            }
+        });
+        if (!resolution.paramsOpen) problems.push("the fullscreen toolbar did not open the parameters drawer");
+        if (!resolution.escapeClosed) problems.push("Escape did not close the fullscreen toolbar");
+        if (!resolution.hOpened) problems.push("H did not reopen the fullscreen toolbar");
+        if (resolution.afterExit.fullscreen) problems.push("the toolbar Exit fullscreen action did not exit");
+        if (resolution.afterExit.headerDisplay === "none") problems.push("the header did not return after fullscreen");
+        if (resolution.afterExit.toolbarDisplay !== "none") problems.push("the fullscreen toolbar is still visible after exit");
+        if (fs.stage.width < fs.viewport.width * 0.9 || fs.stage.height < fs.viewport.height * 0.9) {
+            problems.push("fullscreen stage does not fill the block: " + JSON.stringify(fs.stage));
+        }
+        if (resolution.initial.buffer[0] > 854 || resolution.initial.buffer[1] > 480) {
+            problems.push("the default render buffer exceeds SD: " + JSON.stringify(resolution.initial.buffer));
+        }
+        if (!resolution.initialAspect) problems.push("the default buffer does not preserve the stage aspect ratio");
+        if (fs.buffer[0] > 854 || fs.buffer[1] > 480) {
+            problems.push("the fullscreen buffer exceeds the SD cap: " + JSON.stringify(fs.buffer));
+        }
+        if (!resolution.fullscreenAspect) problems.push("the fullscreen buffer does not preserve the stage aspect ratio");
+        if (resolution.hd.value !== "hd" || resolution.hd.storedCap !== "hd") {
+            problems.push("the HD preset was not selected/persisted: " + JSON.stringify(resolution.hd));
+        }
+        if (resolution.hd.buffer[0] <= 854 && resolution.hd.buffer[1] <= 480) {
+            problems.push("the HD preset did not raise the buffer: " + JSON.stringify(resolution.hd.buffer));
+        }
+        if (resolution.hd.buffer[0] > 1280 || resolution.hd.buffer[1] > 720) {
+            problems.push("the HD buffer exceeds its preset: " + JSON.stringify(resolution.hd.buffer));
+        }
+        if (resolution.back.value !== "default" || resolution.back.storedCap !== null) {
+            problems.push("Default did not clear the persisted cap: " + JSON.stringify(resolution.back));
+        }
+        if (resolution.back.buffer[0] > 854 || resolution.back.buffer[1] > 480) {
+            problems.push("Default did not return to SD: " + JSON.stringify(resolution.back.buffer));
+        }
+    }
+
+    // ── share: the copied URL carries values, resolution and quality ──
+    const shareLink = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /Plasma/i.test(title.textContent);
+        });
+        if (!block) return null;
+        block.scrollIntoView({ block: "center" });
+        await sleep(400);
+        const button = Array.from(block.querySelectorAll(".isf-btn")).find((b) => /Copy a fullscreen link/.test(b.title || ""));
+        if (!button) return null;
+        button.click();
+        await sleep(400);
+        return window.__copied;
+    });
+    if (!shareLink) {
+        problems.push("the share button did not copy a fullscreen URL");
+    } else {
+        const shared = new URL(shareLink);
+        if (shared.searchParams.get("isf-fullscreen") !== "1") problems.push("the share URL is not fullscreen");
+        if (shared.searchParams.get("isf-res") !== "sd") problems.push("the share URL lost the resolution: " + shared.searchParams.get("isf-res"));
+        if (shared.searchParams.get("isf-quality") !== "auto") problems.push("the share URL lost the quality: " + shared.searchParams.get("isf-quality"));
+        if (!shared.searchParams.get("isf-values")) problems.push("the share URL lost the parameter payload");
+        if (!shared.searchParams.get("isf-shader")) problems.push("the share URL lost the shader");
+    }
+
+    // ── persistence: a resolution choice survives a reload ──
+    await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /Plasma/i.test(title.textContent);
+        });
+        if (!block) return;
+        const params = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Parameters");
+        if (params) params.click();
+        await sleep(400);
+        const select = block.querySelector('select[aria-label="Render resolution"]');
+        if (select) {
+            select.value = "hd";
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        await sleep(500);
+    });
+    await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+    await page.waitForFunction(() => document.querySelectorAll(".isf-block").length >= 12, { timeout: 30000, polling: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const persisted = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector(".isf-title");
+            return title && /Plasma/i.test(title.textContent);
+        });
+        if (!block) return null;
+        block.scrollIntoView({ block: "center" });
+        await sleep(700);
+        const params = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Parameters");
+        if (params) params.click();
+        await sleep(500);
+        const select = block.querySelector('select[aria-label="Render resolution"]');
+        const value = select ? select.value : null;
+        if (select) {
+            select.value = "default";
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        await sleep(400);
+        return { value: value, storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null };
+    });
+    if (!persisted || persisted.value !== "hd") {
+        problems.push("the resolution choice did not survive a reload: " + JSON.stringify(persisted));
+    }
+    if (persisted && persisted.storedCap !== null) {
+        problems.push("resetting to Default did not clear the stored cap: " + JSON.stringify(persisted));
+    }
+
     // ── share: the OBS URL mounts a bare fullscreen viewer with values ──
     const shaderUrl = url + "samples/plasma.fs";
     const encodeValues = (values) => Buffer.from(JSON.stringify(values)).toString("base64")
@@ -880,11 +1132,15 @@ try {
         if (!block) return null;
         const rect = block.getBoundingClientRect();
         const canvas = block.querySelector(".isf-canvas");
+        const canvasRect = canvas ? canvas.getBoundingClientRect() : { width: 0, height: 0 };
         return {
             fills: Math.abs(rect.width - window.innerWidth) < 4 && Math.abs(rect.height - window.innerHeight) < 4,
             headerHidden: getComputedStyle(block.querySelector(".isf-header")).display === "none",
             statusHidden: getComputedStyle(block.querySelector(".isf-status")).display === "none",
             canvas: canvas ? canvas.width : 0,
+            canvasHeight: canvas ? canvas.height : 0,
+            canvasAspect: canvas && canvasRect.height ? canvas.width / canvas.height : 0,
+            cssAspect: canvasRect.height ? canvasRect.width / canvasRect.height : 0,
             status: block.querySelector(".isf-status").textContent,
             overlayVisible: block.querySelector(".isf-overlay").style.display !== "none"
         };
@@ -893,17 +1149,34 @@ try {
         !obsDefault.canvas || /error/i.test(obsDefault.status) || obsDefault.overlayVisible) {
         problems.push("the OBS fullscreen URL did not mount a bare viewer: " + JSON.stringify(obsDefault));
     }
-    const obsValues = obsBase + "&isf-values=" + encodeValues({ [shaderUrl]: { speed: 1.9, scale: 12 } });
+    if (obsDefault && (obsDefault.canvas > 854 || obsDefault.canvasHeight > 480)) {
+        problems.push("the OBS default buffer exceeds SD: " + obsDefault.canvas + "x" + obsDefault.canvasHeight);
+    }
+    if (obsDefault && Math.abs(obsDefault.canvasAspect - obsDefault.cssAspect) > 0.03) {
+        problems.push("the OBS buffer does not preserve the viewport aspect: " + JSON.stringify(obsDefault));
+    }
+    const obsValues = obsBase + "&isf-res=hd&isf-values=" + encodeValues({ [shaderUrl]: { speed: 1.9, scale: 12 } });
     await page.goto(obsValues, { waitUntil: "networkidle0", timeout: 60000 });
     await sleep(1800);
     const obsParameterized = await page.evaluate(() => {
         const block = document.querySelector(".isf-block.isf-bare");
         const row = block && block.querySelector('[data-isf-param="speed"]');
         const range = row && row.querySelector('input[type="range"]');
-        return range ? Number(range.value) : null;
+        const canvas = block && block.querySelector(".isf-canvas");
+        return {
+            speed: range ? Number(range.value) : null,
+            width: canvas ? canvas.width : 0,
+            height: canvas ? canvas.height : 0
+        };
     });
-    if (obsParameterized === null || Math.abs(obsParameterized - 1.9) > 0.05) {
-        problems.push("the OBS URL did not apply the encoded parameters: " + obsParameterized);
+    if (obsParameterized.speed === null || Math.abs(obsParameterized.speed - 1.9) > 0.05) {
+        problems.push("the OBS URL did not apply the encoded parameters: " + JSON.stringify(obsParameterized));
+    }
+    if (obsParameterized.width <= 854 && obsParameterized.height <= 480) {
+        problems.push("the OBS URL did not apply isf-res=hd: " + JSON.stringify(obsParameterized));
+    }
+    if (obsParameterized.width > 1280 || obsParameterized.height > 720) {
+        problems.push("the OBS HD buffer exceeds its preset: " + JSON.stringify(obsParameterized));
     }
 
     // The shared viewer hides every control by default but keeps the full
@@ -927,11 +1200,23 @@ try {
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
         await sleep(300);
         const keyboardReveal = getComputedStyle(header).display !== "none";
-        return { headerHidden: headerHidden, revealed: revealed, editorOpen: editorOpen, hiddenAgain: hiddenAgain, keyboardReveal: keyboardReveal };
+        const reset = block.querySelector('.isf-btn[title="Reset parameters and time"]');
+        if (reset) reset.click();
+        await sleep(400);
+        const speedRow = block.querySelector('[data-isf-param="speed"]');
+        const speedRange = speedRow && speedRow.querySelector('input[type="range"]');
+        const resetSpeed = speedRange ? Number(speedRange.value) : null;
+        return {
+            headerHidden: headerHidden, revealed: revealed, editorOpen: editorOpen,
+            hiddenAgain: hiddenAgain, keyboardReveal: keyboardReveal, resetSpeed: resetSpeed
+        };
     });
     if (!obsReveal.headerHidden || !obsReveal.revealed || !obsReveal.editorOpen ||
         !obsReveal.hiddenAgain || !obsReveal.keyboardReveal) {
         problems.push("the shared viewer's hidden controls did not reveal/hide: " + JSON.stringify(obsReveal));
+    }
+    if (obsReveal.resetSpeed === null || Math.abs(obsReveal.resetSpeed - 0.4) > 0.05) {
+        problems.push("the shared viewer did not return to the shader defaults: " + JSON.stringify(obsReveal));
     }
     await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
     await sleep(600);

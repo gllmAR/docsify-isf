@@ -219,17 +219,18 @@ All keys are optional and live under `window.$docsify.isf`:
 | `autoplay` | `true` | Start playing on load. |
 | `loopTransition` | `true` | Animate `progress` on transitions. |
 | `transitionDuration` | `4.0` | Seconds per transition sweep. |
-| `resolution` | `"auto"` | `"auto"` or a fixed multiplier (`0.5`, `1`, `2`). |
+| `resolution` | `"auto"` | Scale multiplier for the drawing buffer: `"auto"` (`min(devicePixelRatio, maxPixelRatio)`) or a fixed multiplier (`0.5`, `1`, `2`). Further capped by `maxResolution`. |
 | `maxPixelRatio` | `2` | Upper bound for `auto` rendering scale. |
+| `maxResolution` | `"sd"` | Render-buffer cap, preserving the stage aspect ratio: `"sd"` (≤854×480), `"hd"` (≤1280×720), `"fhd"` (≤1920×1080), `"native"` (no cap). The browser upscales the buffer to the CSS size. |
 | `maxContexts` | `8` | Live WebGL contexts; the least visible viewer is released past this. |
 | `editor` | `true` | Show the source-editor button. |
 | `editorOpen` | `false` | Open the editor on load. |
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
-| `persistLayout` | `true` | Remember editor height, folded toolbar and drawer widths across viewers and pages. |
+| `persistLayout` | `true` | Remember editor height, folded toolbar, drawer widths, Scale and Resolution across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
-| `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters). |
+| `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters + Resolution/Scale). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
@@ -254,22 +255,41 @@ editor, stage, header and status line are host surfaces.
 The share button copies a URL shaped like
 
 ```
-https://site/page/?isf-shader=<shader-url>&isf-fullscreen=1&isf-values=<base64url>
+https://site/page/?isf-shader=<shader-url>&isf-fullscreen=1
+  &isf-res=sd&isf-quality=auto&isf-values=<base64url>
 ```
 
-`isf-shader` names the shader, `isf-values` carries its current parameters
-(self-contained: no local storage or page links are needed) and
-`isf-fullscreen=1` mounts one bare viewer — no header, drawers or status —
-that fills the viewport and always plays. That is the capture an OBS
-**Browser** source wants: paste the URL, set the source size, done. The same
-flags work by hand (`isf-editor=1`, `isf-controls=1` still control the normal
-page viewer).
+`isf-shader` names the shader, `isf-values` carries its current parameters,
+`isf-res` carries the Resolution preset and `isf-quality` the Scale multiplier
+(self-contained: no local storage or page links are needed).
+`isf-fullscreen=1` mounts one bare viewer — no header, drawers or status — that
+fills the viewport and always plays. That is the capture an OBS **Browser**
+source wants: paste the URL, set the source size, done.
+
+The flags are hand-editable: `isf-res=sd|hd|fhd|native` and
+`isf-quality=auto|2|1|0.5|0.25` override the stored/cookie-free defaults for
+that load. SD is the performance default; use `isf-res=fhd` (or `native`) for
+a sharper OBS capture. The normal page viewer also accepts the same flags
+(`isf-editor=1`, `isf-controls=1` still work). The share button copies the
+source viewer's current Resolution/Scale, so set Resolution to FHD/Native
+before sharing when you want a high-resolution capture.
 
 The bare viewer keeps the whole editing experience one gesture away: hover
 the bottom-right corner and click the eye button (or press **H**) to reveal
 the toolbar, parameters and editor; **Escape** (or the same button/key) hides
 everything back to the clean capture. OBS's *Interact* window forwards both
-the mouse and the keyboard.
+the mouse and the keyboard. The revealed toolbar's reset button returns the
+parameters to the shader defaults; the Resolution menu's **Default** returns
+the cap to the site default. The bare viewer never writes local storage.
+
+The in-page fullscreen button (or double-clicking the canvas) makes the whole
+viewer block fill the display. The header is hidden: a PUI **Controls** drawer
+sits at the top edge (the pill trigger, or **H**). It carries Source editor,
+Parameters, Play/Pause, Reset, Exit fullscreen, Open source and Copy OBS link;
+**Escape** closes it. The shader gets the whole viewport, and the same
+Resolution/Scale cap applies, so a 4K fullscreen still renders at SD by default
+until you pick HD/FHD/Native. If the PUI assets cannot load, the normal header
+stays as the fallback.
 
 ## Editor
 
@@ -323,9 +343,11 @@ Converted `iMouse`/`mouse` uses the docsify-isf **`_isfMouse` pointer
 extension** (`vec4`: `xy` = pointer position in pixels with the origin at the
 bottom-left, `zw` = click position, `z` negative when the button is up) so
 imported shaders are interactive without any input control. The `View`
-selector in the parameters panel previews any render-pass target, `Quality`
-scales the render (0.25×–2× or auto), and **Export PNG** downloads the
-current frame.
+selector in the parameters panel previews any render-pass target; `Resolution`
+caps the render buffer (Default/SD/HD/FHD/Native), `Scale` multiplies it
+(0.25×–2× or auto), and **Export PNG** downloads the current frame. Both
+persist with the layout and can be overridden from the URL (`isf-res`,
+`isf-quality`).
 
 ## UI/UX notes
 
@@ -380,8 +402,11 @@ current frame.
   `maxContexts` viewers want a context, the least-recently-visible one is
   released (its GPU resources are deleted) and resumes automatically when
   scrolled back into view.
-- The canvas is rendered at the shader's native resolution, so ISF filters
-  that read `RENDERSIZE` stay resolution-independent.
+- The canvas is capped to the configured max resolution (SD by default) and
+  scaled to the CSS size, so large/high-DPI and fullscreen viewers stay cheap;
+  `RENDERSIZE` is the render-buffer size, so ISF filters that read it stay
+  resolution-independent. Raise it per viewer (Resolution menu), per site
+  (`maxResolution`), or per URL (`isf-res`).
 
 ## Limitations
 

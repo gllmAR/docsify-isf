@@ -279,8 +279,9 @@ filters, transitions and sources all at 100 %.
 
 ### 5.9 Live controls and media
 
-- **Quality** (0.25×–2×/auto, persisted), **time scrubber**, **Randomize**
-  (constraint-respecting) and **Export PNG** live in the parameters drawer.
+- **Resolution** (Default/SD/HD/FHD/Native) and **Scale** (0.25×–2×/auto),
+  both persisted, the **time scrubber**, **Randomize** (constraint-respecting)
+  and **Export PNG** live in the parameters drawer.
 - **Microphone** capture for `audio`/`audioFFT` inputs (`getUserMedia` +
   `AnalyserNode`, time-domain and FFT data resampled to the declared `MAX`),
   with the synthetic source as fallback.
@@ -344,8 +345,15 @@ One `requestAnimationFrame` loop per live viewer:
 
 The backing store is `cssSize × scale`, where `scale` is either the fixed
 `resolution` multiplier or `min(devicePixelRatio, maxPixelRatio)` in `auto`
-mode, clamped to `MAX_TEXTURE_SIZE`. The canvas resizes in `draw()`, so
-fullscreen and layout changes need no extra observer.
+mode. It is then capped to the `maxResolution` preset (`sd` 854×480,
+`hd` 1280×720, `fhd` 1920×1080, `native` no cap) by lowering `scale` uniformly,
+so the aspect ratio never changes; the browser upscales the buffer to the CSS
+size. The default is `sd`, which keeps retina and 4K fullscreen viewers cheap.
+The canvas resizes in `draw()`, so fullscreen and layout changes need no extra
+observer. `maxResolution` comes from the Resolution menu (stored in the layout),
+the URL `isf-res` flag, or the document config (in that precedence).
+`isf-quality` overrides the Scale multiplier the same way. The Resolution
+menu's **Default** clears the stored override and returns to the site config.
 
 ## 7. User interface
 
@@ -360,6 +368,16 @@ fullscreen and layout changes need no extra observer.
 │       └── .isf-drawer-right  parameters (overlay, translucent)
 └── .isf-status     warnings / errors / info
 ```
+
+The native fullscreen button (or a canvas double-click) puts the block in
+`requestFullscreen`; the `:fullscreen` rules make it fill the viewport. When
+the PUI assets are loaded the header is hidden and a PUI **non-modal top
+drawer** (`side:"top"`, `modal:false`, trigger "Controls", **H**) carries the
+toolbar actions (Source editor, Parameters, Play/Pause, Reset, Exit
+fullscreen, Open source, Copy OBS link); Escape closes it and the stage gets
+the whole height. Without PUI the header stays as the fallback. The
+Resolution/Scale cap still applies, so fullscreen does not silently quadruple
+the pixel cost.
 
 Below/over the canvas sit two **overlay drawers**: code on the left, the
 parameters on the right. They never resize the render — the canvas keeps its
@@ -433,13 +451,17 @@ and both `point2D` axes, `color` stays in 0…1, and `long` values snap to the
 declared `VALUES`.
 
 The parameters panel is one PUI surface. The plugin-owned view row (a
-**View** selector for pass targets, a **Quality** selector persisted with the
-layout, the **Time** scrub and **Randomize** / **Export PNG**) is mounted as a
+**View** selector for pass targets, a **Resolution** preset and a **Scale**
+multiplier persisted with the layout, the **Time** scrub and **Randomize** /
+**Export PNG**) is mounted as a
 PUI **host block** (`isf.view`, registered with `ui.registerBlock`): it keeps
 the viewer-specific runtime behaviour and DOM while sitting in the normal PUI
 section flow. While the on-demand assets load (or if they fail), the row stays
 a sibling of the panel.
-The view row therefore uses PUI's control target sizes and palette.
+The view row therefore uses PUI's control target sizes and palette. The
+fullscreen toolbar is a second PUI surface: a top, non-modal `drawer` block
+with ordinary `actions` whose `open_bind` maps to `viewer.toolbarOpen`; the
+host block boundary only applies to the editor/stage themselves.
 
 ### 7.3 Editor
 
@@ -536,7 +558,8 @@ back into view or on click.
 All options live under `window.$docsify.isf`; the reference table is in
 [README.md](README.md#configuration). The most important ones:
 `mode`, `lazy`, `params`, `editor`, `editorLive`, `maxContexts`,
-`maxPixelRatio`, `resolution`, `vertexShader`, `imports`.
+`maxPixelRatio`, `resolution`, `maxResolution`, `puiBase`, `vertexShader`,
+`imports`.
 
 ## 11. Testing strategy
 
@@ -546,7 +569,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, and the View/Quality/Export controls work, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, and reset returns to the shader defaults, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).
