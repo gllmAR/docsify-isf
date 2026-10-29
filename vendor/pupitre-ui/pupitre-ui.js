@@ -5438,7 +5438,13 @@
       else rec.button.removeAttribute("aria-label");
       if (title) rec.button.title = title;
       if (item.aria_controls) rec.button.setAttribute("aria-controls", String(item.aria_controls));
-      rec.button.setAttribute("aria-pressed", pressed ? "true" : "false");
+      // Only toggle items are pressed controls. Links and momentary actions
+      // (Reset, Share, …) must keep their native semantics.
+      if (item.pressed !== undefined || item.pressed_bind !== undefined) {
+        rec.button.setAttribute("aria-pressed", pressed ? "true" : "false");
+      } else {
+        rec.button.removeAttribute("aria-pressed");
+      }
       rec.button.classList.toggle("is-pressed", pressed);
     }
   };

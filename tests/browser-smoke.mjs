@@ -881,13 +881,17 @@ try {
     const badgeHome = await page.evaluate(() => {
         const stats = Array.from(document.querySelectorAll('[data-pui-item="stats"]'));
         const headerButtons = Array.from(document.querySelectorAll(".isf-block .isf-pui-header button.pui-button"));
+        const pressedItems = Array.from(document.querySelectorAll(".isf-block .isf-pui-header [aria-pressed]"))
+            .map((el) => el.getAttribute("data-pui-item"));
         return {
             count: stats.length,
             inStage: stats.filter((el) => !!el.closest(".isf-stage")).length,
             outsideHeader: stats.filter((el) => !el.closest(".isf-header")).length,
             headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar"),
             headerButtons: headerButtons.length,
-            nameless: headerButtons.filter((button) => !(button.getAttribute("aria-label") || "").trim()).length
+            nameless: headerButtons.filter((button) => !(button.getAttribute("aria-label") || "").trim()).length,
+            pressedItems: pressedItems,
+            unexpectedPressed: pressedItems.filter((id) => ["editor", "params", "fullscreen"].indexOf(id) < 0)
         };
     });
     if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
@@ -895,6 +899,9 @@ try {
     }
     if (!badgeHome.headerButtons || badgeHome.nameless) {
         problems.push("PUI header icon actions need an accessible name: " + JSON.stringify(badgeHome));
+    }
+    if (badgeHome.unexpectedPressed.length) {
+        problems.push("only the header toggles should expose aria-pressed: " + JSON.stringify(badgeHome));
     }
 
     // ── UI: the code editor fills the drawer and follows a taller stage ──
