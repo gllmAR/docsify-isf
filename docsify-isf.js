@@ -4092,6 +4092,7 @@
   function Renderer(options) {
     options = options || {};
     this.mount = options.mount;
+    this.blockFactories = Object.assign({}, options.blocks || {});
     this.adapter = {
       getValue: options.getValue || function () { return undefined; },
       setValue: options.setValue || function () { return false; },
@@ -4451,6 +4452,15 @@
     }
     this._shortcutHandler = null;
     this.shortcuts = [];
+  };
+
+  /** Register a host-specific block renderer for one kind. The factory
+   * receives (block, context, renderer) and returns a DOM node or null to
+   * fall back to the built-in renderer. This is additive: the document stays
+   * data-only and the host still owns values and writes. */
+  Renderer.prototype.registerBlock = function (kind, factory) {
+    if (typeof kind === "string" && typeof factory === "function") this.blockFactories[kind] = factory;
+    return this;
   };
 
   Renderer.prototype.buildPanel = function (panel) {
@@ -4847,7 +4857,7 @@
     body.style.setProperty("--pui-columns", String(columns));
     for (var i = 0; i < (section.blocks || []).length; i++) {
       var block = section.blocks[i];
-      var blockEl = this.buildBlock(block);
+      var blockEl = this.buildBlock(block, {section: section});
       if (blockEl && blockEl.setAttribute && block && typeof block.kind === "string") blockEl.setAttribute("data-pui-kind", block.kind);
       body.appendChild(blockEl);
     }
@@ -4861,6 +4871,11 @@
   Renderer.prototype.buildBlock = function (block, context) {
     if (!isObject(block)) return el("p", {class: "pui-missing", text: "(invalid PUI block)"});
     var kind = String(block.kind || "field");
+    var factory = this.blockFactories[kind];
+    if (typeof factory === "function") {
+      var custom = factory(block, context || {}, this);
+      if (custom) return custom;
+    }
     if (kind === "field") return this.buildField(block, context);
     if (kind === "readout") return this.buildReadout(block);
     if (kind === "collection") return this.buildCollection(block);
