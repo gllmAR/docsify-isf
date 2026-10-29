@@ -132,13 +132,23 @@ try {
 
     // Scroll every lazy viewer into view so the intersection observer starts it.
     await page.evaluate(async () => {
-        const blocks = Array.from(document.querySelectorAll(".isf-block"));
-        for (const block of blocks) {
-            block.scrollIntoView({ block: "center" });
-            await new Promise((resolve) => setTimeout(resolve, 200));
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        // Docsify mounts viewers while the page settles. Scroll every current
+        // block, then repeat until the count stops growing so viewers created
+        // during an earlier pass are observed too (otherwise lazy viewers at
+        // the tail stay unloaded and the terminal-state wait times out).
+        let seen = -1;
+        for (let pass = 0; pass < 4; pass++) {
+            const blocks = Array.from(document.querySelectorAll(".isf-block"));
+            for (const block of blocks) {
+                block.scrollIntoView({ block: "center" });
+                await wait(150);
+            }
+            if (blocks.length === seen) break;
+            seen = blocks.length;
         }
         window.scrollTo(0, 0);
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        await wait(400);
     });
 
     // Wait until every viewer reached a terminal state: parameter controls

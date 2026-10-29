@@ -13227,6 +13227,9 @@
             inputs: inputs,
             host: viewer.puiHost,
             rev: (viewer.puiRev = (viewer.puiRev || 0) + 1),
+            // Embedded panels keep only their accessible name; give every
+            // viewer's parameter region a unique one.
+            title: (viewer.title ? viewer.title + " inputs" : "Inputs"),
             sectionTitle: "Inputs"
         });
         var mount = h("div", "isf-pui");
