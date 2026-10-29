@@ -247,6 +247,7 @@
     this.formRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
+    this.menuRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -286,6 +287,12 @@
     doc = expandTemplates(doc);
     this.unbindPaletteShortcut();
     if (this._palette) this._palette.close();
+    for (var mr = 0; mr < this.menuRecords.length; mr++) {
+      if (typeof document !== "undefined" && document.removeEventListener) {
+        document.removeEventListener("mousedown", this.menuRecords[mr].outside, true);
+      }
+    }
+    this.menuRecords = [];
     this.destroySlots();
     this.doc = doc;
     this.lang = this.resolveLanguage(doc);
@@ -301,6 +308,7 @@
     this.formRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
+    this.menuRecords = [];
     this.graphRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
@@ -379,6 +387,15 @@
       shellRec.root.hidden = !shellRec.visible;
       if (shellRec.enabled) shellRec.root.removeAttribute("aria-disabled");
       else shellRec.root.setAttribute("aria-disabled", "true");
+    }
+    for (var mn = 0; mn < this.menuRecords.length; mn++) {
+      var menuRec = this.menuRecords[mn];
+      menuRec.visible = this.conditionOk(menuRec.block.visible_when);
+      menuRec.enabled = this.conditionOk(menuRec.block.enabled_when) &&
+        groupEnabled(this.pageRecords, menuRec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, menuRec.sectionRecordIndex);
+      menuRec.root.hidden = !menuRec.visible;
+      menuRec.trigger.disabled = !menuRec.enabled;
     }
     for (var fm = 0; fm < this.formRecords.length; fm++) {
       var formRec = this.formRecords[fm];
@@ -1031,6 +1048,7 @@
     if (kind === "form") return this.buildForm(block);
     if (kind === "toolbar") return this.buildToolbar(block);
     if (kind === "statusbar") return this.buildStatusbar(block);
+    if (kind === "menu") return this.buildMenu(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
     if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
@@ -5398,6 +5416,89 @@
       values.push({item: only, value: out});
     }
     this.statusRecords.push({root: root, block: block, values: values});
+    this.shellCondition(block, root);
+    return root;
+  };
+
+  Renderer.prototype.buildMenu = function (block) {
+    var self = this;
+    var root = el("div", {class: "pui-menu"});
+    var label = String(block.label || "Actions");
+    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", text: label});
+    var popup = el("div", {class: "pui-menu-popup", role: "menu", "aria-label": label});
+    popup.setAttribute("hidden", "");
+    var items = isArray(block.items) ? block.items : [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!isObject(item)) continue;
+      if (item.kind === "separator") {
+        popup.appendChild(el("div", {class: "pui-menu-separator", role: "separator"}));
+        continue;
+      }
+      var button = this.addActionButton(popup, item);
+      if (button) {
+        button.setAttribute("role", "menuitem");
+        button.tabIndex = -1;
+        button.addEventListener("click", function () { close(); });
+      }
+    }
+    function menuItems() {
+      return Array.prototype.slice.call(popup.querySelectorAll('[role="menuitem"]'));
+    }
+    function close() {
+      if (popup.hasAttribute("hidden")) return;
+      popup.setAttribute("hidden", "");
+      trigger.setAttribute("aria-expanded", "false");
+      if (typeof document !== "undefined" && document.removeEventListener) document.removeEventListener("mousedown", outside, true);
+    }
+    function open() {
+      if (!popup.hasAttribute("hidden")) return;
+      popup.removeAttribute("hidden");
+      trigger.setAttribute("aria-expanded", "true");
+      if (typeof document !== "undefined" && document.addEventListener) document.addEventListener("mousedown", outside, true);
+      var first = menuItems()[0];
+      if (first) first.focus();
+    }
+    function outside(event) {
+      if (!root.contains(event.target)) close();
+    }
+    function keydown(event) {
+      var list = menuItems();
+      var index = list.indexOf(document.activeElement);
+      if (event.key === "Escape") { close(); trigger.focus(); event.preventDefault(); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (popup.hasAttribute("hidden")) { open(); event.preventDefault(); return; }
+        if (!list.length) return;
+        var next = event.key === "ArrowDown" ? (index + 1) % list.length : (index - 1 + list.length) % list.length;
+        list[next].focus();
+        event.preventDefault();
+      } else if (event.key === "Home" || event.key === "End") {
+        if (!list.length) return;
+        list[event.key === "Home" ? 0 : list.length - 1].focus();
+        event.preventDefault();
+      } else if (event.key === "Tab") {
+        close();
+      }
+    }
+    trigger.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (popup.hasAttribute("hidden")) open(); else close();
+    });
+    trigger.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    });
+    popup.addEventListener("keydown", keydown);
+    root.appendChild(trigger);
+    root.appendChild(popup);
+    var rec = {
+      root: root, trigger: trigger, popup: popup, block: block, outside: outside,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true
+    };
+    this.menuRecords.push(rec);
     this.shellCondition(block, root);
     return root;
   };
