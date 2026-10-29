@@ -247,8 +247,9 @@ normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
 as the other Pupitre hosts, embedded in the drawer with the viewer theme. The
 pass/quality/time/export row is a PUI **host block** (`isf.view`), so the whole
 drawer is one renderer (while the assets load, or if they fail, the row stays
-a sibling of the panel). PUI owns every parameter/action surface; the code
-editor, stage, header and status line are host surfaces.
+a sibling of the panel). The fullscreen toolbox is a PUI toolbar in a
+non-modal top drawer, and the bottom status line is a PUI statusbar; the code
+editor, stage and main header remain host surfaces.
 
 ## OBS / fullscreen link
 

@@ -366,7 +366,7 @@ menu's **Default** clears the stored override and returns to the site config.
 │   └── .isf-stage  canvas, overlay (loading/error/released), fps badge
 │       ├── .isf-drawer-left   editor + import panel (overlay, translucent)
 │       └── .isf-drawer-right  parameters (overlay, translucent)
-└── .isf-status     warnings / errors / info
+└── .isf-status     PUI statusbar (host warnings / errors / info)
 ```
 
 The native fullscreen button (or a canvas double-click) puts the block in
@@ -428,8 +428,10 @@ small CSS bridge, and stacks labels above controls when the drawer is narrow
 (a container query, not a viewport breakpoint). PUI owns the widget
 behaviour, reset affordance, a11y and focus handling; the plugin owns values,
 clamping, media and events. PUI is the only parameter/actions renderer: the
-code editor, stage canvas, header toolbar and status line stay host surfaces
-(a code editor is engine-specific, like a canvas).
+code editor, stage canvas and header toolbar stay host surfaces (a code
+editor is engine-specific, like a canvas); the status line is a PUI
+`statusbar` block, with a plain-text fallback until the on-demand assets
+load.
 
 The PUI document maps every normalised ISF input:
 
@@ -462,7 +464,14 @@ the viewer-specific runtime behaviour and DOM while sitting in the normal PUI
 section flow. While the on-demand assets load (or if they fail), the row stays
 a sibling of the panel.
 The view row therefore uses PUI's control target sizes and palette. The
-fullscreen toolbar is a second PUI surface: a top, non-modal `drawer` block
+global status line is a third PUI surface: a `statusbar` block bound to
+`/isf/status`, kept live by `viewer.setState()` → `ui.apply()` (the outer
+`.isf-status` region announces; the PUI bar's own live region is off to avoid
+double announcements). The plain-text fallback keeps load/compile errors
+visible before the assets arrive. Docsify's theme styles `output` as a code
+block, so the PUI bridge resets `output` paddings/margins inside `.isf-pui`;
+that also fixes PUI readout values in the parameter drawer.
+The fullscreen toolbar is a second PUI surface: a top, non-modal `drawer` block
 with ordinary `actions` whose `open_bind` maps to `viewer.toolbarOpen`; the
 host block boundary only applies to the editor/stage themselves.
 
@@ -572,7 +581,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, and reset returns to the shader defaults, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, and the status line is a PUI statusbar with no docsify `output` box styling, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

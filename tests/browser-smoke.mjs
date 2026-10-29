@@ -201,6 +201,35 @@ try {
         problems.push("viewers never reached a terminal state: " + JSON.stringify(stuck));
     }
 
+    // The global status line is a PUI statusbar once the toolkit loads.
+    const statusPUI = await page.evaluate(() => {
+        const bars = Array.from(document.querySelectorAll(".isf-status .pui-statusbar"));
+        const bar = bars.find((b) => {
+            const value = b.querySelector(".pui-statusbar-value");
+            return value && value.textContent.trim();
+        });
+        if (!bar) return null;
+        const value = bar.querySelector(".pui-statusbar-value");
+        const style = value ? getComputedStyle(value) : null;
+        const rect = bar.getBoundingClientRect();
+        return {
+            role: bar.getAttribute("role"),
+            live: bar.getAttribute("aria-live"),
+            value: value ? value.textContent : "",
+            height: Math.round(rect.height),
+            padTop: style ? style.paddingTop : "",
+            marginTop: style ? style.marginTop : ""
+        };
+    });
+    if (!statusPUI || statusPUI.role !== "status" || !statusPUI.value) {
+        problems.push("the status line is not a PUI statusbar: " + JSON.stringify(statusPUI));
+    } else {
+        if (statusPUI.height > 60) problems.push("the PUI statusbar is too tall: " + JSON.stringify(statusPUI));
+        if (statusPUI.padTop !== "0px" || statusPUI.marginTop !== "0px") {
+            problems.push("PUI outputs inherit docsify's code-block styling: " + JSON.stringify(statusPUI));
+        }
+    }
+
     const summary = await page.evaluate(() => {
         return Array.from(document.querySelectorAll(".isf-block")).map((block) => {
             const status = block.querySelector(".isf-status");

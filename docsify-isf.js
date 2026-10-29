@@ -5427,6 +5427,15 @@
             ".isf-status{padding:.3rem .65rem;font-size:.74rem;color:var(--isf-muted);border-top:1px solid var(--isf-border);background:var(--isf-surface);white-space:pre-wrap}",
             ".isf-status.is-error{color:var(--isf-danger)}",
             ".isf-status.is-warn{color:#b7791f}",
+            ".isf-status.is-pui{padding:0;border:0;background:transparent;white-space:normal}",
+            ".isf-pui-statusbar{background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
+            ".isf-pui-statusbar .pui{width:100%;padding:0;background:transparent;border-radius:0;font-size:.74rem;color:var(--isf-muted)}",
+            ".isf-pui-statusbar .pui-panel,.isf-pui-statusbar .pui-page,.isf-pui-statusbar .pui-section,.isf-pui-statusbar .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
+            ".isf-pui-statusbar .pui-statusbar{border:0;background:transparent;padding:.3rem .65rem;min-height:0;gap:.5rem;font-size:.74rem;color:var(--isf-muted)}",
+            ".isf-pui-statusbar .pui-statusbar-label{display:none}",
+            ".isf-pui-statusbar .pui-statusbar-value{white-space:pre-wrap;font-weight:400;text-align:start;color:inherit}",
+            ".isf-status.is-error .isf-pui-statusbar .pui-statusbar-value{color:var(--isf-danger)}",
+            ".isf-status.is-warn .isf-pui-statusbar .pui-statusbar-value{color:#b7791f}",
             ".isf-editor-wrap{display:flex;flex-direction:column;min-height:0;height:100%}",
             ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -5472,6 +5481,8 @@
             ".isf-block:fullscreen .isf-drawer{top:0;bottom:0;width:min(480px,44vw)}",
             ".isf-block:fullscreen .isf-editor{min-height:220px}",
             ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
+            ".isf-block:fullscreen .isf-pui-statusbar,.isf-block.isf-fullscreen .isf-pui-statusbar{background:rgba(20,22,26,.92);border-top-color:rgba(255,255,255,.1)}",
+            ".isf-block:fullscreen .isf-pui-statusbar .pui-statusbar-value,.isf-block.isf-fullscreen .isf-pui-statusbar .pui-statusbar-value{color:var(--isf-muted)}",
             ".isf-pui-toolbar{display:none}",
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-header,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-header{display:none}",
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-pui-toolbar,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-pui-toolbar{display:block}",
@@ -5552,6 +5563,7 @@
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
             ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-warning:var(--isf-muted);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
+            ".isf-pui .pui output{display:inline;padding:0;margin:0;border:0;border-radius:0;position:static;background:none}",
             ".isf-pui .pui-caption{color:var(--isf-muted)}",
             ".isf-pui .pui-caption:hover{color:var(--isf-text)}",
             ".isf-pui .pui-number-input{max-width:4.2em}",
@@ -7533,6 +7545,10 @@
         updateDrawerButtons();
         body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
+        var statusText = h("span", "isf-status-text");
+        status.appendChild(statusText);
+        var statusPUIHost = h("div", "isf-pui isf-pui-statusbar");
+        status.appendChild(statusPUIHost);
         block.appendChild(header);
         block.appendChild(body);
         block.appendChild(status);
@@ -7564,7 +7580,9 @@
             fullscreenButton: fullscreenButton,
             sourceButton: sourceButton,
             shareButton: shareButton,
-            status: status
+            status: status,
+            statusText: statusText,
+            statusPUIHost: statusPUIHost
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -7762,8 +7780,16 @@
         /* ---------------------------------------------------------- UI */
 
         viewer.setState = function (message, kind) {
-            status.textContent = message || "";
-            status.className = "isf-status" + (message ? "" : " isf-hidden") + (kind ? " is-" + kind : "");
+            viewer.statusText = message ? String(message) : "";
+            viewer.statusKind = kind ? String(kind) : "";
+            status.className = "isf-status" + (viewer.statusText ? "" : " isf-hidden") +
+                (kind ? " is-" + kind : "") + (viewer.puiStatus ? " is-pui" : "");
+            if (viewer.puiStatus) {
+                statusText.textContent = "";
+                try { viewer.puiStatus.ui.apply(); } catch (error) { /* ignore */ }
+            } else {
+                statusText.textContent = viewer.statusText;
+            }
         };
         viewer.warn = function (message) {
             debugLog(config, message);
@@ -8339,6 +8365,46 @@
             viewer.toolbarOpen = !!open;
             if (!fromPUI && viewer.puiToolbar) viewer.puiToolbar.ui.apply();
         };
+        viewer.mountPUIStatusbar = function () {
+            if (viewer.puiStatus || viewer.disposed || !puiAvailable()) return;
+            var host = viewer.dom.statusPUIHost;
+            if (!host) return;
+            var adapter = {
+                getValue: function (path) {
+                    return path === "/isf/status" ? (viewer.statusText || "") : undefined;
+                },
+                setValue: function () { return false; },
+                getPathMeta: function () { return {}; }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                getPathMeta: adapter.getPathMeta,
+                translate: function (key, fallback) { return fallback; }
+            });
+            var document = {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-status", title: "Status", embedded: true, pages: [{id: "status", title: "Status", sections: [{
+                    id: "status", title: "Status", blocks: [{
+                        kind: "statusbar", label: "Status", bind: "/isf/status",
+                        a11y: {name: "Status", live: "off"}
+                    }]
+                }]}]}]
+            };
+            try {
+                ui.render(document);
+            } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                if (host.parentNode) host.parentNode.removeChild(host);
+                viewer.warn("Status bar unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiStatus = {ui: ui, host: host};
+            viewer.setState(viewer.statusText, viewer.statusKind);
+        };
+
         viewer.mountPUIFullscreenToolbar = function () {
             if (viewer.puiToolbar || viewer.disposed || !block || !puiAvailable()) return;
             var host = h("div", "isf-pui isf-pui-toolbar");
@@ -8403,7 +8469,10 @@
             var controlsHost = h("div", "isf-params-controls");
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
-            if (puiAvailable()) viewer.mountPUIFullscreenToolbar();
+            if (puiAvailable()) {
+                viewer.mountPUIFullscreenToolbar();
+                viewer.mountPUIStatusbar();
+            }
             // PUI renders the view row as an `isf.view` host block inside the
             // panel; while the assets load (or if they fail) it stays a sibling
             // so pass/quality/time remain usable.
@@ -8763,6 +8832,10 @@
                 try { viewer.puiToolbar.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.puiToolbar = null;
                 block.classList.remove("isf-has-pui-toolbar");
+            }
+            if (viewer.puiStatus) {
+                try { viewer.puiStatus.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.puiStatus = null;
             }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
