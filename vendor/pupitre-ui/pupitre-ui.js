@@ -290,6 +290,31 @@
 
   Renderer.prototype.render = function (doc) {
     doc = expandTemplates(doc);
+    // Structural re-renders replace every control. Remember the focused item
+    // by its public hook so keyboard context survives a host refresh.
+    var focusSnapshot = null;
+    var focusInside = function (parent, node) {
+      for (var walk = node; walk; walk = walk.parentNode) if (walk === parent) return true;
+      return false;
+    };
+    if (typeof document !== "undefined" && this.mount && document.activeElement && focusInside(this.mount, document.activeElement)) {
+      var focused = document.activeElement;
+      var openMenu = focused.closest ? focused.closest(".pui-menu-popup") : null;
+      if (openMenu) {
+        var menuRoot = openMenu.closest ? openMenu.closest(".pui-menu") : null;
+        var menuTrigger = menuRoot ? menuRoot.querySelector(".pui-menu-trigger") : null;
+        if (menuTrigger) focused = menuTrigger;
+      }
+      var focusItem = focused.closest ? focused.closest("[data-pui-item]") : null;
+      var focusField = focused.closest ? focused.closest("[data-pui-path]") : null;
+      if (focusItem && focusItem.getAttribute("data-pui-item")) {
+        focusSnapshot = {attr: "data-pui-item", value: focusItem.getAttribute("data-pui-item")};
+      } else if (focusField && focusField.getAttribute("data-pui-path")) {
+        focusSnapshot = {attr: "data-pui-path", value: focusField.getAttribute("data-pui-path")};
+      } else if (focused.id) {
+        focusSnapshot = {attr: "id", value: focused.id};
+      }
+    }
     this.unbindPaletteShortcut();
     if (this._palette) this._palette.close();
     for (var mr = 0; mr < this.menuRecords.length; mr++) {
@@ -363,6 +388,25 @@
     this.bindShortcuts();
     this.bindPaletteShortcut();
     this.applyRoute();
+    if (focusSnapshot) {
+      var candidates = this.mount.querySelectorAll("[" + focusSnapshot.attr + "]");
+      var focusTarget = null;
+      for (var fc = 0; fc < candidates.length; fc++) {
+        if (candidates[fc].getAttribute(focusSnapshot.attr) !== focusSnapshot.value) continue;
+        focusTarget = candidates[fc];
+        break;
+      }
+      if (focusTarget && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(focusTarget.tagName) && !focusTarget.hasAttribute("tabindex")) {
+        focusTarget = focusTarget.querySelector("button, a[href], input, select, textarea, [tabindex]");
+      }
+      if (!focusTarget) {
+        var toolbarFallback = this.mount.querySelector(".pui-toolbar");
+        if (toolbarFallback) focusTarget = toolbarFallback.querySelector("a[href], button, input, select, textarea, [tabindex]");
+      }
+      if (focusTarget && typeof focusTarget.focus === "function") {
+        try { focusTarget.focus({preventScroll: true}); } catch (error) { try { focusTarget.focus(); } catch (error2) { /* ignore */ } }
+      }
+    }
     if (typeof window !== "undefined" && window.addEventListener && !this._hashHandler) {
       this._hashHandler = function () { this.applyRoute(); }.bind(this);
       window.addEventListener("hashchange", this._hashHandler);

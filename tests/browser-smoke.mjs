@@ -922,6 +922,30 @@ try {
     if (badgeHome.count && badgeHome.statsNamed !== badgeHome.count) {
         problems.push("the stats readout needs its accessible name: " + JSON.stringify(badgeHome));
     }
+
+    // Structural PUI renders (source reloads, input-set changes) must restore
+    // focus to the same public item hook.
+    const puiFocus = await page.evaluate(() => {
+        const UI = window.PupitreUI;
+        if (!UI) return {missing: true};
+        const mount = document.createElement("div");
+        document.body.appendChild(mount);
+        const doc = {format: "pupitre-ui", version: 1, panels: [{id: "focus", pages: [{id: "p", sections: [{id: "s", blocks: [
+            {kind: "toolbar", items: [{id: "one", label: "One", call: "one"}, {id: "two", label: "Two", call: "two"}]}
+        ]}]}]}]};
+        const ui = UI.create({mount, getValue: () => undefined, setValue: () => true, callAction: () => true, getPathMeta: () => ({})});
+        ui.render(doc);
+        const first = mount.querySelector('[data-pui-item="one"]');
+        first.focus();
+        ui.render(doc);
+        const after = mount.querySelector('[data-pui-item="one"]');
+        const ok = document.activeElement === after && after !== first;
+        ui.destroy();
+        mount.remove();
+        return {missing: false, ok: ok};
+    });
+    if (puiFocus.missing) problems.push("PupitreUI is not exposed for the focus contract check");
+    else if (!puiFocus.ok) problems.push("PUI render() did not restore focus to the same item");
     if (!badgeHome.headerButtons || badgeHome.nameless) {
         problems.push("PUI header icon actions need an accessible name: " + JSON.stringify(badgeHome));
     }
