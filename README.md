@@ -284,9 +284,12 @@ the cap to the site default. The bare viewer never writes local storage.
 
 The in-page fullscreen button (or double-clicking the canvas) makes the whole
 viewer block fill the display. The header is hidden: a PUI **Controls** drawer
-sits at the top edge (the pill trigger, or **H**). It carries Source editor,
-Parameters, Play/Pause, Reset, Exit fullscreen, Open source and Copy OBS link;
-**Escape** closes it. The shader gets the whole viewport, and the same
+is revealed by the pill at the top centre (or **H**), clear of the side
+drawers. It carries Source editor, Parameters, Play/Pause, Reset, Exit
+fullscreen, Open source and Copy OBS link; **Escape** closes it, and choosing
+Source editor/Parameters closes it so the side drawer's own header is fully
+accessible. On narrow fullscreens the pill steps aside while a side drawer is
+open. The shader gets the whole viewport, and the same
 Resolution/Scale cap applies, so a 4K fullscreen still renders at SD by default
 until you pick HD/FHD/Native. If the PUI assets cannot load, the normal header
 stays as the fallback.

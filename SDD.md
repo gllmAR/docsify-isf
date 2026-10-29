@@ -374,8 +374,11 @@ The native fullscreen button (or a canvas double-click) puts the block in
 the PUI assets are loaded the header is hidden and a PUI **non-modal top
 drawer** (`side:"top"`, `modal:false`, trigger "Controls", **H**) carries the
 toolbar actions (Source editor, Parameters, Play/Pause, Reset, Exit
-fullscreen, Open source, Copy OBS link); Escape closes it and the stage gets
-the whole height. Without PUI the header stays as the fallback. The
+fullscreen, Open source, Copy OBS link). The trigger sits at the top centre,
+hides while its panel is open and, on narrow fullscreens, while a side drawer
+covers the top edge; the Editor/Parameters actions close the top drawer so the
+side drawer header stays accessible. Escape closes it and the stage gets the
+whole height. Without PUI the header stays as the fallback. The
 Resolution/Scale cap still applies, so fullscreen does not silently quadruple
 the pixel cost.
 

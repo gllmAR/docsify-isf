@@ -156,6 +156,13 @@ try {
             if (blocks.length === seen) break;
             seen = blocks.length;
         }
+        // One final sweep after the page has settled: late-mounted lazy viewers
+        // under a slow CI GPU would otherwise never be observed.
+        await wait(500);
+        for (const block of Array.from(document.querySelectorAll(".isf-block"))) {
+            block.scrollIntoView({ block: "center" });
+            await wait(180);
+        }
         window.scrollTo(0, 0);
         await wait(400);
     });
