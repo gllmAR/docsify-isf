@@ -571,7 +571,7 @@ layer (skips with a message when Chrome or puppeteer-core is unavailable).
 
 ```
 docsify-plugins/docsify-isf/
-├── docsify-isf.js        single-file plugin (UMD, no dependencies)
+├── docsify-isf.js        single-file plugin core (UMD, no dependencies)
 ├── index.html            Docsify self-test host
 ├── README.md             feature gallery / self-test / configuration
 ├── SDD.md                this document
@@ -579,7 +579,8 @@ docsify-plugins/docsify-isf/
 ├── src/plugin.src.js     Docsify/WebGL/UI layer (the artifact source)
 ├── src/kernel-adapter.js compiler adapter over the vendored ISF core
 ├── vendor/isf-core/      vendored ISF compiler kernel + SOURCE.json
-├── vendor/pupitre-ui/    vendored PUI renderer, ISF adapter, CSS + SOURCE.json
+├── vendor/pupitre-ui/    PUI renderer, ISF adapter, CSS + SOURCE.json
+│                         (loaded on demand next to the artifact, not bundled)
 ├── tools/build.mjs       injects both vendors into docsify-isf.js (--check)
 ├── tools/sync-pupitre-ui.mjs sync/verify the PUI snapshot
 ├── tests/run.js          Node unit + sample tests

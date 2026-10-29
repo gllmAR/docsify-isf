@@ -74,6 +74,18 @@ test("the artifact exposes the shared renderer and ISF adapter", () => {
     equal(PupitreUI.version, JSON.parse(fs.readFileSync(path.join(puiDir, "SOURCE.json"), "utf8")).version);
 });
 
+test("the artifact reads the on-demand toolkit at call time", () => {
+    // The tools load from vendor/pupitre-ui/ after the plugin script; the
+    // exported properties must therefore be getters, not load-time nulls.
+    assert(typeof isf.loadPUI === "function", "loadPUI");
+    assert(isf.PupitreUI && typeof isf.PupitreUI.create === "function", "getter PupitreUI");
+    assert(isf.PupitreISF && typeof isf.PupitreISF.createDocument === "function", "getter PupitreISF");
+    const generated = isf.createParamsDocument([
+        {name: "speed", label: "Speed", type: "float", min: 0, max: 1, default: 0.5}
+    ], {});
+    assert(generated && generated.document.format === "pupitre-ui", "createParamsDocument uses the loaded adapter");
+});
+
 test("PUI is the default parameter panel and legacy stays selectable", () => {
     const config = isf.getConfig();
     equal(config.ui, "pui");

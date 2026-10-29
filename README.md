@@ -166,6 +166,12 @@ Load**. Move the pointer over the preview to move the ripple (click for the
 <script src="https://gllmar.github.io/docsify-isf/docsify-isf.js"></script>
 ```
 
+Keep `docsify-isf.js` next to its `vendor/pupitre-ui/` folder: the parameter
+drawer loads the shared toolkit on demand from that sibling directory. Both
+are in the npm package and the Pages build. If you host the script elsewhere,
+point `isf.puiBase` at the folder; without it the plugin falls back to the
+built-in legacy parameter rows.
+
 Then write ordinary Markdown:
 
 ```md
@@ -208,6 +214,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
 | `ui` | `"pui"` | Parameter panel renderer: `"pui"` uses the shared [Pupitre UI](https://codeberg.org/gllm/pupitre-ui) toolkit, `"legacy"` keeps the built-in rows (`false` is an alias). PUI falls back to the legacy rows if it cannot mount. |
+| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the legacy rows are used. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |
@@ -232,8 +239,10 @@ All keys are optional and live under `window.$docsify.isf`:
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
-(`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, `PupitreUI`,
-`PupitreISF`, …). The parameter drawer is a PUI document generated from the
+(`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, …).
+`PupitreUI`/`PupitreISF` become available once the first parameter drawer loads
+them; `await DocsifyISF.loadPUI()` loads the toolkit explicitly. The parameter
+drawer is a PUI document generated from the
 normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
 as the other Pupitre hosts, embedded in the drawer with the viewer theme. The
 pass/quality/time/export row is a PUI **host block** (`isf.view`), so the whole

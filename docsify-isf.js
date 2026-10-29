@@ -9161,15 +9161,14 @@
         });
     }
 
-    return {
+    var api = {
         VERSION: VERSION,
         plugin: plugin,
         DEFAULTS: DEFAULTS,
         getConfig: getConfig,
-        // The shared UI toolkit (vendored): exposed for hosts, tests and
-        // conformance, not required by the Docsify plugin itself.
-        PupitreUI: typeof PupitreUI !== "undefined" ? PupitreUI : null,
-        PupitreISF: typeof PupitreISF !== "undefined" ? PupitreISF : null,
+        // The shared UI toolkit (vendor/pupitre-ui) loads on demand: expose
+        // the loader and read the instances at call time, not at script load.
+        loadPUI: loadPUI,
         createParamsDocument: function (inputs, options) {
             return typeof PupitreISF !== "undefined" && PupitreISF
                 ? PupitreISF.createDocument(inputs, options)
@@ -9198,4 +9197,13 @@
         setMaxContexts: function (max) { BUDGET.setMax(max); },
         createTestPattern: typeof document !== "undefined" ? createTestPattern : null
     };
+    Object.defineProperty(api, "PupitreUI", {
+        enumerable: true,
+        get: function () { return typeof PupitreUI !== "undefined" ? PupitreUI : null; }
+    });
+    Object.defineProperty(api, "PupitreISF", {
+        enumerable: true,
+        get: function () { return typeof PupitreISF !== "undefined" ? PupitreISF : null; }
+    });
+    return api;
 });

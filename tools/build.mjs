@@ -2,15 +2,18 @@
 /* ============================================================================
  * docsify-isf — K4 build
  *
- * Builds the single-file UMD artifact from four sources:
+ * Builds the single-file UMD artifact from three sources:
  *   1. the vendored canonical kernel (`vendor/isf-core/`, synced from the
  *      parent repo with `scripts/isf-plugin-sync.mjs`), bundled as `ISFCore`;
- *   2. the vendored shared UI toolkit (`vendor/pupitre-ui/`: the PUI renderer,
- *      the ISF→PUI adapter and its CSS, synced with
- *      `tools/sync-pupitre-ui.mjs`);
- *   3. `src/kernel-adapter.js` — the plugin's kernel API over the core;
- *   4. `src/plugin.src.js` — the Docsify/WebGL/UI layer with the old copies of
+ *   2. `src/kernel-adapter.js` — the plugin's kernel API over the core;
+ *   3. `src/plugin.src.js` — the Docsify/WebGL/UI layer with the old copies of
  *      the compiler functions removed.
+ *
+ * The shared UI toolkit (`vendor/pupitre-ui/`, synced with
+ * `tools/sync-pupitre-ui.mjs`) is deliberately NOT bundled: the plugin loads
+ * it on demand from the sibling directory, so a page without shader viewers
+ * does not pay for the renderer. Keep `vendor/pupitre-ui/` next to the
+ * artifact (the npm package and the Pages build do).
  *
  *   node tools/build.mjs            # write docsify-isf.js
  *   node tools/build.mjs --check    # fail when the artifact is out of date
