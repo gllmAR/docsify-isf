@@ -5484,6 +5484,7 @@
             ".isf-pui-toolbar .pui-drawer-head h4{font-size:.8rem;color:var(--isf-text)}",
             ".isf-pui-toolbar .pui-drawer-close{color:var(--isf-muted);font-size:1rem}",
             ".isf-pui-toolbar .pui-drawer-body{padding:.55rem .7rem}",
+            ".isf-pui-toolbar .pui-toolbar{border-bottom:0;background:transparent;padding:0;min-height:0}",
             ".isf-pui-toolbar .pui-actions{gap:.4rem}",
             ".isf-pui-toolbar .pui-button{font-size:.75rem;background:var(--isf-surface);border-color:var(--isf-border);color:var(--isf-text)}",
 
@@ -8297,8 +8298,10 @@
             if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
                 items.push({id: "params", label: "Parameters", call: "isf.params"});
             }
+            items.push({kind: "separator", label: ""});
             items.push({id: "play", label: viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause", call: "isf.play"});
             items.push({id: "reset", label: "Reset parameters", call: "isf.reset", result: "Reset"});
+            items.push({kind: "separator", label: ""});
             items.push({id: "fullscreen", label: "Exit fullscreen", call: "isf.fullscreen"});
             items.push({id: "source", label: "Open source", call: "isf.source"});
             if (config.share) items.push({id: "share", label: "Copy OBS link", call: "isf.share", result: "Link copied"});
@@ -8322,7 +8325,7 @@
                             modal: false,
                             height: 320,
                             open_bind: "/isf/ui/toolbarOpen",
-                            blocks: [{kind: "actions", items: items}]
+                            blocks: [{kind: "toolbar", label: "Fullscreen controls", align: "start", items: items}]
                         }]
                     }]}]
                 }]

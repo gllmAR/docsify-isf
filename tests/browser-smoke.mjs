@@ -936,6 +936,7 @@ try {
             top: !!toolbarPanel && toolbarPanel.classList.contains("is-top"),
             modal: toolbarPanel ? toolbarPanel.getAttribute("aria-modal") : "missing",
             backdrop: !!block.querySelector(".isf-pui-toolbar .pui-drawer-backdrop"),
+            role: !!(toolbarPanel && toolbarPanel.querySelector('.pui-toolbar[role="toolbar"]')),
             actions: toolbarPanel ? Array.from(toolbarPanel.querySelectorAll(".pui-button")).map((b) => b.textContent.trim()) : []
         };
         const rightDrawer = block.querySelector(".isf-drawer-right");
@@ -1015,6 +1016,8 @@ try {
         if (resolution.toolbar.modal !== null || resolution.toolbar.backdrop) {
             problems.push("the fullscreen toolbar must be a non-modal top drawer: " + JSON.stringify(resolution.toolbar));
         }
+        if (!resolution.toolbar.role) problems.push("the fullscreen controls are not a PUI toolbar");
+
         ["Source editor", "Parameters", "Reset parameters", "Exit fullscreen", "Open source", "Copy OBS link"].forEach((label) => {
             if (resolution.toolbar.actions.indexOf(label) < 0) {
                 problems.push("the fullscreen toolbar is missing the " + label + " action");
