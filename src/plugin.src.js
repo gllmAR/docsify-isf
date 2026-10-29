@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.21.0
+ * docsify-isf v1.22.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.21.0";
+    var VERSION = "1.22.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3520,6 +3520,22 @@
             ".isf-actions::-webkit-scrollbar{display:none}",
             ".isf-btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .12s ease,border-color .12s ease}",
             ".isf-btn:hover{background:var(--isf-surface-2)}",
+            ".isf-pui-header{flex:1 1 auto;min-width:0;display:flex}",
+            ".isf-pui-header .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.92rem;color:var(--isf-text)}",
+            ".isf-pui-header .pui-panel,.isf-pui-header .pui-page,.isf-pui-header .pui-section,.isf-pui-header .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
+            ".isf-pui-header .pui-toolbar{border:0;background:transparent;padding:0;min-height:0;gap:.3rem;flex-wrap:nowrap;align-items:center;width:100%}",
+            ".isf-pui-header .pui-toolbar-link[data-pui-item=title]{display:flex;align-items:center;justify-content:flex-start;text-align:left;flex:1 1 auto;min-width:0;background:transparent;border-color:transparent;color:var(--isf-text);font-weight:600;font-size:.92rem;padding:0;min-height:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}",
+            ".isf-pui-header .pui-toolbar-link[data-pui-item=title]:hover{color:var(--isf-accent);text-decoration:underline}",
+            ".isf-pui-header .pui-toolbar .pui-button{min-width:28px;min-height:28px;padding:.15rem .25rem;background:transparent;border-color:transparent;color:var(--isf-text);box-shadow:none;font-size:.75rem}",
+            ".isf-pui-header .pui-toolbar .pui-button:hover{background:var(--isf-surface-2);border-color:var(--isf-border)}",
+            ".isf-pui-header .pui-toolbar .pui-button[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-pui-header .pui-toolbar-icon{min-width:16px}",
+            ".isf-pui-header .pui-toolbar-icon svg{width:16px;height:16px;display:block}",
+            ".isf-pui-header .pui-toolbar-badge{min-width:1.1em;padding:0 4px;border-radius:999px;background:var(--isf-accent);color:var(--isf-accent-contrast);font-size:.6rem;line-height:1.5;text-align:center}",
+            ".isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{display:inline-flex;padding:.12rem .5rem;border:1px solid var(--isf-border);border-radius:999px;background:var(--isf-surface-2);color:var(--isf-muted);font-size:.68rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
+            ".isf-pui-header .pui-toolbar-readout-label{display:none}",
+            ".isf-pui-header .pui-toolbar-readout-value{color:inherit;font-weight:400}",
+            "@media (pointer:coarse){.isf-pui-header .pui-toolbar .pui-button{min-width:36px;min-height:36px}}",
             ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-count{font-variant-numeric:tabular-nums;font-size:.68rem;opacity:.75}",
@@ -3685,7 +3701,7 @@
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
             "@media (pointer:coarse){.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}",
+            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:wrap;row-gap:.3rem}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 100%;order:-1;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{order:2;margin-inline-start:auto}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}}",
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
@@ -3742,12 +3758,24 @@
         chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'
     };
 
+    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share"];
+    var HEADER_ICONS = {};
+    HEADER_ICON_NAMES.forEach(function (name) {
+        HEADER_ICONS[name] = function () {
+            var markup = ICONS[name];
+            if (!markup) return null;
+            var wrap = document.createElement("span");
+            wrap.innerHTML = markup;   // host-owned constants, never document data
+            return wrap.firstChild || null;
+        };
+    });
+
     function iconButton(action, icon, title, extraClass) {
         var button = h("button", "isf-btn" + (extraClass ? " " + extraClass : ""), {
             type: "button",
             title: title,
             "aria-label": title,
-            dataset: { isfAction: action }
+            dataset: { isfAction: action, puiItem: action }
         });
         button.innerHTML = ICONS[icon] || "";
         return button;
@@ -5644,14 +5672,15 @@
         ensureStyle();
 
         // Header + stage + overlay drawers
-        var block = h("div", "isf-block", { dataset: { isfUrl: viewer.url } });
+        var block = h("div", "isf-block", { dataset: { isfUrl: viewer.url, isfTitle: viewer.title } });
         var header = h("div", "isf-header");
         var titleEl = h("a", "isf-title", {
             href: viewer.url,
             target: "_blank",
             rel: "noopener",
             title: "Open " + viewer.title + " source",
-            text: viewer.title
+            text: viewer.title,
+            dataset: { puiItem: "title" }
         });
         var uid = "isf-" + (++VIEWER_SEQ);
         var actions = h("div", "isf-actions");
@@ -5671,7 +5700,10 @@
             title: "Open source file",
             "aria-label": "Open source file"
         }) : null;
-        if (sourceButton) sourceButton.innerHTML = ICONS.source;
+        if (sourceButton) {
+            sourceButton.innerHTML = ICONS.source;
+            sourceButton.setAttribute("data-pui-item", "source");
+        }
         var shareButton = config.share !== false ? iconButton("share", "share", "Copy a fullscreen link for OBS (current parameters)") : null;
         if (editorButton) actions.appendChild(editorButton);
         actions.appendChild(paramsButton);
@@ -5682,6 +5714,8 @@
         if (shareButton) actions.appendChild(shareButton);
         header.appendChild(titleEl);
         header.appendChild(actions);
+        var headerPUIHost = h("div", "isf-pui isf-pui-header isf-hidden");
+        header.appendChild(headerPUIHost);
 
         var body = h("div", "isf-body");
         var stage = h("div", "isf-stage");
@@ -5795,7 +5829,8 @@
             shareButton: shareButton,
             status: status,
             statusText: statusText,
-            statusPUIHost: statusPUIHost
+            statusPUIHost: statusPUIHost,
+            headerPUIHost: headerPUIHost
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -6015,8 +6050,10 @@
         };
         viewer.updateBadge = function (text) {
             if (!config.showStats) return;
-            badge.textContent = text || "";
-            badge.classList.toggle("isf-hidden", !text);
+            viewer.badgeText = text ? String(text) : "";
+            badge.textContent = viewer.badgeText;
+            badge.classList.toggle("isf-hidden", !viewer.badgeText);
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
         };
         viewer.showOverlay = function (html, show) {
             overlayInner.innerHTML = html || "";
@@ -6157,6 +6194,7 @@
                 editorButton.setAttribute("aria-expanded", leftOpen ? "true" : "false");
                 editorButton.classList.toggle("is-active", leftOpen);
             }
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
         }
         viewer.updateDrawerButtons = updateDrawerButtons;
 
@@ -6203,6 +6241,7 @@
             viewer.dom.playButton.innerHTML = playing ? ICONS.pause : ICONS.play;
             viewer.dom.playButton.title = playing ? "Pause" : "Play";
             viewer.updateBadge(playing ? "" : "paused");
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
             if (viewer.refreshPUIFullscreenToolbar) viewer.refreshPUIFullscreenToolbar();
         };
         viewer.resetAll = function () {
@@ -6233,6 +6272,7 @@
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) viewer.setState("");
             else if (viewer.toolbarOpen) viewer.setToolbarOpen(false);
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
         };
 
         paramsButton.addEventListener("click", viewer.toggleParams);
@@ -6689,6 +6729,133 @@
             block.classList.add("isf-has-pui-toolbar");
         };
 
+        /* --------------------------------------- PUI header toolbar */
+
+        viewer.buildPUIHeaderDocument = function () {
+            var items = [{
+                kind: "link",
+                id: "title",
+                href: viewer.url || "#",
+                target: "_blank",
+                rel: "noopener",
+                label: String(viewer.title || "ISF viewer"),
+                title: "Open " + String(viewer.title || "shader") + " source"
+            }, {kind: "spacer"}, {
+                kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true
+            }];
+            if (config.editor) {
+                items.push({
+                    id: "editor", label: "Source editor", icon: "editor", icon_only: true,
+                    title: "Source editor", call: "isf.editor", pressed_bind: "/isf/ui/editorOpen",
+                    aria_controls: uid + "-editor"
+                });
+            }
+            if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
+                items.push({
+                    id: "params", label: "Parameters", icon: "params", icon_only: true,
+                    title: "Parameters", call: "isf.params", pressed_bind: "/isf/ui/paramsOpen",
+                    badge_bind: "/isf/ui/inputCount", aria_controls: uid + "-params"
+                });
+            }
+            items.push({
+                id: "play", label_bind: "/isf/ui/playLabel", icon_bind: "/isf/ui/playIcon",
+                title_bind: "/isf/ui/playLabel", icon_only: true, call: "isf.play"
+            });
+            items.push({
+                id: "reset", label: "Reset parameters and time", icon: "reset", icon_only: true,
+                title: "Reset parameters and time", call: "isf.reset"
+            });
+            items.push({
+                id: "fullscreen", label: "Fullscreen", icon: "fullscreen", icon_only: true,
+                title: "Fullscreen", call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen"
+            });
+            if (config.showSource) {
+                items.push({
+                    kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener",
+                    label: "Open source file", icon: "source", icon_only: true, title: "Open source file"
+                });
+            }
+            if (config.share !== false) {
+                items.push({
+                    id: "share", label: "Copy a fullscreen link for OBS (current parameters)",
+                    icon: "share", icon_only: true,
+                    title: "Copy a fullscreen link for OBS (current parameters)", call: "isf.share"
+                });
+            }
+            return {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-header", title: String(viewer.title || "ISF viewer"), embedded: true, pages: [{id: "header", title: "Header", sections: [{
+                    id: "header", title: "Header", blocks: [{
+                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start", items: items
+                    }]
+                }]}]}]
+            };
+        };
+        viewer.applyPUIHeader = function () {
+            if (!viewer.puiHeader) return;
+            try { viewer.puiHeader.ui.apply(); } catch (error) { /* ignore */ }
+        };
+        viewer.refreshPUIHeader = function () {
+            if (!viewer.puiHeader) return;
+            try { viewer.puiHeader.ui.render(viewer.buildPUIHeaderDocument()); } catch (error) { /* ignore */ }
+        };
+        viewer.mountPUIHeader = function () {
+            if (viewer.puiHeader || viewer.disposed || !puiAvailable()) return;
+            var host = viewer.dom.headerPUIHost;
+            if (!host) return;
+            var adapter = {
+                getValue: function (path) {
+                    if (path === "/isf/ui/editorOpen") return viewer.isDrawerOpen(leftDrawer);
+                    if (path === "/isf/ui/paramsOpen") return viewer.isDrawerOpen(rightDrawer);
+                    if (path === "/isf/ui/fullscreen") return isFullscreenActive();
+                    if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
+                    if (path === "/isf/ui/playLabel") return viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause";
+                    if (path === "/isf/ui/playIcon") return viewer.runtime && !viewer.runtime.playing ? "play" : "pause";
+                    if (path === "/isf/ui/badge") return viewer.badgeText || "";
+                    return undefined;
+                },
+                setValue: function () { return false; },
+                callAction: function (name) {
+                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
+                    if (name === "isf.params") { viewer.toggleParams(); return true; }
+                    if (name === "isf.play") { viewer.togglePlay(); return true; }
+                    if (name === "isf.reset") { viewer.resetAll(); return true; }
+                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
+                    if (name === "isf.share") { viewer.copyLink(); return true; }
+                    return false;
+                },
+                getPathMeta: function () { return {}; },
+                announce: function (level, message) {
+                    if (level === "error") viewer.warn(message);
+                    else viewer.setState(message, level === "success" ? "ok" : "");
+                }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                icons: HEADER_ICONS,
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            try {
+                ui.render(viewer.buildPUIHeaderDocument());
+            } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                viewer.warn("PUI header unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiHeader = {ui: ui, host: host};
+            host.classList.remove("isf-hidden");
+            if (viewer.dom.title && viewer.dom.title.parentNode) viewer.dom.title.parentNode.removeChild(viewer.dom.title);
+            if (viewer.dom.badge && viewer.dom.badge.parentNode) viewer.dom.badge.parentNode.removeChild(viewer.dom.badge);
+            if (viewer.dom.actions && viewer.dom.actions.parentNode) viewer.dom.actions.parentNode.removeChild(viewer.dom.actions);
+            viewer.applyPUIHeader();
+        };
+
         viewer.rebuildParams = function () {
             var inputs = viewer.built ? viewer.built.inputs : [];
             viewer.inputByName = {};
@@ -6700,12 +6867,14 @@
             if (puiAvailable()) {
                 viewer.mountPUIFullscreenToolbar();
                 viewer.mountPUIStatusbar();
+                viewer.mountPUIHeader();
             }
             // PUI renders the view row as an `isf.view` host block inside the
             // panel; while the assets load (or if they fail) it stays a sibling
             // so pass/quality/time remain usable.
             if (!viewer.pui) paramsList.insertBefore(viewer.buildViewControls(inputs), controlsHost);
             viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
+            if (viewer.puiHeader) viewer.refreshPUIHeader();
             var open;
             if (!config.controls) open = false;
             else if (config.params === "open") open = true;
@@ -7064,6 +7233,10 @@
             if (viewer.puiStatus) {
                 try { viewer.puiStatus.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.puiStatus = null;
+            }
+            if (viewer.puiHeader) {
+                try { viewer.puiHeader.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.puiHeader = null;
             }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);

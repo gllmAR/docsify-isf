@@ -361,7 +361,9 @@ menu's **Default** clears the stored override and returns to the site config.
 
 ```
 .isf-block
-├── .isf-header    title (source link) + params/editor/play/reset/fullscreen/source
+├── .isf-header    host fallback (title + actions, removed after PUI mounts)
+│   └── .isf-pui-header  PUI toolbar: source-link title, stats readout,
+│                        editor/params/play/reset/fullscreen/source/share
 ├── .isf-body
 │   └── .isf-stage  canvas, overlay (loading/error/released), fps badge
 │       ├── .isf-drawer-left   editor + import panel (overlay, translucent)
@@ -428,8 +430,9 @@ small CSS bridge, and stacks labels above controls when the drawer is narrow
 (a container query, not a viewport breakpoint). PUI owns the widget
 behaviour, reset affordance, a11y and focus handling; the plugin owns values,
 clamping, media and events. PUI is the only parameter/actions renderer: the
-code editor, stage canvas and header toolbar stay host surfaces (a code
-editor is engine-specific, like a canvas); the status line is a PUI
+code editor and stage canvas stay host surfaces (a code editor is
+engine-specific, like a canvas); the main header is a PUI `toolbar` (the host
+title/actions are its fallback until it mounts); the status line is a PUI
 `statusbar` block, with a plain-text fallback until the on-demand assets
 load.
 
@@ -480,7 +483,17 @@ removes them through the dismiss action; the stack is shared by all viewers and
 cleared with the page instances. When PUI is unavailable the message falls
 back to the status line.
 
-The fullscreen toolbar is a second PUI surface: a top, non-modal `drawer` block
+The main header is another PUI surface: a `toolbar` block built once the
+normalised inputs are known. It carries the source-link title, the live
+FPS/size `readout`, and icon-only editor/parameters/play/reset/fullscreen/
+source/share actions. Drawer and fullscreen `pressed_bind`s reflect the host
+state, the parameters action carries the input-count badge, and play swaps its
+label and icon through the adapter. Every action calls back into the viewer.
+The host title/actions/stats badge are removed after a successful mount and
+remain as the fallback before the assets arrive or if the toolbar fails; the
+toolbar is refreshed when a source reload changes the available inputs.
+
+The fullscreen toolbox is another PUI surface: a top, non-modal `drawer` block
 holding a native PUI `toolbar` block, whose `open_bind` maps to
 `viewer.toolbarOpen`; the host block boundary only applies to the
 editor/stage themselves.
@@ -591,7 +604,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), the main header is a PUI toolbar whose icon actions open the drawers/editor, expose pressed states and the input-count badge, and drive play/reset/fullscreen/share; fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

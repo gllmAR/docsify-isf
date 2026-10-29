@@ -189,7 +189,7 @@ try {
         }, { timeout: 45000, polling: 250 });
     } catch (error) {
         const stuck = await page.evaluate(() => Array.from(document.querySelectorAll(".isf-block")).map((block) => ({
-            title: (block.querySelector(".isf-title") || {}).textContent,
+            title: (block.querySelector('.isf-header [data-pui-item="title"]') || {}).textContent,
             status: (block.querySelector(".isf-status") || {}).textContent,
             params: block.querySelectorAll("[data-isf-param]").length,
             released: (() => {
@@ -240,9 +240,9 @@ try {
             const status = block.querySelector(".isf-status");
             const canvas = block.querySelector("canvas");
             const overlay = block.querySelector(".isf-overlay");
-            const title = block.querySelector(".isf-title");
+            const title = block.querySelector('.isf-header [data-pui-item="title"]');
             const editors = block.querySelectorAll(".isf-editor");
-            const badge = block.querySelector(".isf-badge");
+            const badge = block.querySelector('.isf-header [data-pui-item="stats"] .pui-toolbar-readout-value');
             return {
                 title: title ? title.textContent.trim() : "",
                 status: status ? status.textContent.trim() : "",
@@ -269,7 +269,7 @@ try {
     const blocks = await page.$$(".isf-block");
     for (const block of blocks) {
         const title = await block.evaluate((element) => {
-            const node = element.querySelector(".isf-title");
+            const node = element.querySelector('.isf-header [data-pui-item="title"]');
             return node ? node.textContent.trim() : "viewer";
         });
         const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -337,7 +337,7 @@ try {
         const blocks = Array.from(document.querySelectorAll(".isf-block"));
         const block = blocks.find((b) => /Plasma/i.test(b.textContent));
         if (!block) return null;
-        const editorButton = Array.from(block.querySelectorAll(".isf-btn")).find((button) => button.title === "Source editor");
+        const editorButton = block.querySelector('.isf-header [data-pui-item="editor"]');
         if (editorButton) editorButton.click();
         return true;
     });
@@ -426,7 +426,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) byTitle(block, "Source editor").click();
+        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await wait(300);
         const textarea = block.querySelector(".isf-input");
         Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Vertex/i.test(t.textContent)).click();
@@ -462,7 +462,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) byTitle(block, "Source editor").click();
+        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await wait(250);
         byText(block, "Import").click();
         await wait(250);
@@ -496,7 +496,7 @@ try {
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-        const share = plasma.querySelector('.isf-btn[title="Copy a fullscreen link for OBS (current parameters)"]');
+        const share = plasma.querySelector('.isf-header [data-pui-item="share"]');
         const quality = plasma.querySelector('select[aria-label="Render scale"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
@@ -509,7 +509,7 @@ try {
         await wait(300);
         const exportLength = canvas.toDataURL("image/png").length;
         const multipass = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /Multi-pass/i.test(title.textContent);
         });
         const passSelect = multipass.querySelector('select[aria-label="Preview a render pass"]');
@@ -538,7 +538,7 @@ try {
     // compatibility mode (headless Chrome has WebGL2).
     const es3 = await page.evaluate(() => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /ES3 fallback/i.test(title.textContent);
         });
         if (!block) return { missing: true };
@@ -603,7 +603,7 @@ try {
     const liveControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        const titleOf = (block) => (block.querySelector(".isf-title") || {}).textContent || "";
+        const titleOf = (block) => (block.querySelector('.isf-header [data-pui-item="title"]') || {}).textContent || "";
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(titleOf(b)));
         const speedValue = () => {
             const row = Array.from(plasma.querySelectorAll("[data-isf-param]")).find((r) => r.dataset.isfParam === "speed");
@@ -667,26 +667,26 @@ try {
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         b.scrollIntoView({ block: "center" });
-        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Source editor"]').click();
-        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Parameters"]').click();
+        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="editor"]').click();
+        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="params"]').click();
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
     const lateralTabs = await page.$$eval(".isf-block .isf-edge-tab", (elements) => elements.length);
     if (lateralTabs !== 0) problems.push("lateral edge tabs should be gone, found " + lateralTabs);
 
-    await page.click('.isf-block .isf-btn[title="Source editor"]');
+    await page.click('.isf-block .isf-header [data-pui-item="editor"]');
     await new Promise((resolve) => setTimeout(resolve, 350));
     const toolbarToggle = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
-        const button = b.querySelector('.isf-btn[title="Source editor"]');
+        const button = b.querySelector('.isf-header [data-pui-item="editor"]');
         return {
             drawerOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
-            pressed: button.getAttribute("aria-pressed") === "true" && button.classList.contains("is-active")
+            pressed: button.getAttribute("aria-pressed") === "true"
         };
     });
     if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed) problems.push("toolbar editor button did not open the code drawer");
 
-    await page.click('.isf-block .isf-btn[title="Parameters"]');
+    await page.click('.isf-block .isf-header [data-pui-item="params"]');
     await new Promise((resolve) => setTimeout(resolve, 350));
     const slider = await page.$('.isf-block [data-isf-param="scale"] input[type="range"]');
     if (slider) {
@@ -773,14 +773,14 @@ try {
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         b.scrollIntoView({ block: "center" });
-        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Source editor"]').click();
-        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-btn[title="Parameters"]').click();
+        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="editor"]').click();
+        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="params"]').click();
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const phone = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
-        const actions = b.querySelector(".isf-actions");
-        const buttons = Array.from(actions.querySelectorAll(".isf-btn"));
+        const actions = b.querySelector(".isf-pui-header .pui-toolbar");
+        const buttons = Array.from(actions.querySelectorAll("button.pui-button"));
         const heights = buttons.map((button) => button.getBoundingClientRect().height);
         return {
             viewport: window.innerWidth,
@@ -812,13 +812,13 @@ try {
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
         if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) {
-            b.querySelector('.isf-btn[title="Parameters"]').click();
+            b.querySelector('.isf-header [data-pui-item="params"]').click();
         }
         if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) {
-            b.querySelector('.isf-btn[title="Source editor"]').click();
+            b.querySelector('.isf-header [data-pui-item="editor"]').click();
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const button = b.querySelector('.isf-btn[title="Parameters"]');
+        const button = b.querySelector('.isf-header [data-pui-item="params"]');
         button.click();
         await new Promise((resolve) => setTimeout(resolve, 350));
         const drawer = b.querySelector(".isf-drawer-right");
@@ -827,7 +827,7 @@ try {
             open: !drawer.classList.contains("isf-drawer-closed"),
             drawerWidth: drawer.getBoundingClientRect().width,
             stageWidth: stage.getBoundingClientRect().width,
-            title: (b.querySelector(".isf-title") || {}).textContent || "",
+            title: (b.querySelector('.isf-header [data-pui-item="title"]') || {}).textContent || "",
             pressed: button.getAttribute("aria-pressed")
         };
     });
@@ -841,7 +841,7 @@ try {
         const b = Array.from(document.querySelectorAll(".isf-block"))
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
-        b.querySelector('.isf-btn[title="Source editor"]').click();
+        b.querySelector('.isf-header [data-pui-item="editor"]').click();
         await new Promise((resolve) => setTimeout(resolve, 350));
         return {
             editorOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
@@ -870,26 +870,32 @@ try {
     if (phoneFold.grew < 24) problems.push("mobile: folding the toolbar freed only " + phoneFold.grew + "px");
     await page.screenshot({ path: path.join(here, "artifacts", "mobile-folded.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
+    // A viewport change can rebuild a lazy viewer; wait for its PUI header
+    // before asserting where the stats readout lives.
+    await page.waitForFunction(() => {
+        const host = document.querySelector(".isf-block .isf-pui-header");
+        return host && !host.classList.contains("isf-hidden") && !!host.querySelector(".pui-toolbar");
+    }, { timeout: 10000, polling: 100 });
 
     // ── UI: the stats pill belongs to the top bar, never over the shader ──
     const badgeHome = await page.evaluate(() => {
-        const block = document.querySelector(".isf-block");
-        const badge = block && block.querySelector(".isf-badge");
-        return badge ? {
-            inHeader: badge.parentElement.classList.contains("isf-header"),
-            inStage: !!badge.closest(".isf-stage"),
-            position: getComputedStyle(badge).position
-        } : null;
+        const stats = Array.from(document.querySelectorAll('[data-pui-item="stats"]'));
+        return {
+            count: stats.length,
+            inStage: stats.filter((el) => !!el.closest(".isf-stage")).length,
+            outsideHeader: stats.filter((el) => !el.closest(".isf-header")).length,
+            headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar")
+        };
     });
-    if (!badgeHome || !badgeHome.inHeader || badgeHome.inStage || badgeHome.position === "absolute") {
-        problems.push("the stats badge should live in the top bar, not over the shader: " + JSON.stringify(badgeHome));
+    if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
+        problems.push("the stats readout should live in the PUI header, never over the shader: " + JSON.stringify(badgeHome));
     }
 
     // ── UI: the code editor fills the drawer and follows a taller stage ──
     const editorFill = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = document.querySelector(".isf-block");
-        block.querySelector('.isf-btn[title="Source editor"]').click();
+        block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await sleep(400);
         // a stored manual height would pin the editor; reset to the flex fill
         block.querySelector(".isf-resize-y").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
@@ -921,7 +927,7 @@ try {
     const resolution = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /Plasma/i.test(title.textContent);
         });
         if (!block) return { missing: true };
@@ -943,7 +949,7 @@ try {
             storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
         };
         const initialAspect = aspectOk(initial.buffer);
-        const fullscreenButton = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Fullscreen");
+        const fullscreenButton = block.querySelector('.isf-header [data-pui-item="fullscreen"]');
         if (fullscreenButton) fullscreenButton.click();
         await sleep(900);
         const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
@@ -1095,20 +1101,20 @@ try {
     const shareLink = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /Plasma/i.test(title.textContent);
         });
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(400);
-        const button = Array.from(block.querySelectorAll(".isf-btn")).find((b) => /Copy a fullscreen link/.test(b.title || ""));
+        const button = block.querySelector('.isf-header [data-pui-item="share"]');
         if (!button) return null;
         button.click();
         await sleep(400);
         return window.__copied;
     });
     if (!shareLink) {
-        problems.push("the share button did not copy a fullscreen URL");
+        problems.push("the header share action did not copy a fullscreen URL");
     } else {
         const shared = new URL(shareLink);
         if (shared.searchParams.get("isf-fullscreen") !== "1") problems.push("the share URL is not fullscreen");
@@ -1142,11 +1148,11 @@ try {
     await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /Plasma/i.test(title.textContent);
         });
         if (!block) return;
-        const params = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Parameters");
+        const params = block.querySelector('.isf-header [data-pui-item="params"]');
         if (params) params.click();
         await sleep(400);
         const select = block.querySelector('select[aria-label="Render resolution"]');
@@ -1162,13 +1168,13 @@ try {
     const persisted = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
-            const title = b.querySelector(".isf-title");
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
             return title && /Plasma/i.test(title.textContent);
         });
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(700);
-        const params = Array.from(block.querySelectorAll(".isf-btn")).find((b) => b.title === "Parameters");
+        const params = block.querySelector('.isf-header [data-pui-item="params"]');
         if (params) params.click();
         await sleep(500);
         const select = block.querySelector('select[aria-label="Render resolution"]');
@@ -1258,7 +1264,7 @@ try {
         reveal.click();
         await sleep(300);
         const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
-        block.querySelector('.isf-btn[title="Source editor"]').click();
+        block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await sleep(400);
         const editorOpen = !block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") &&
             getComputedStyle(block.querySelector(".isf-drawer-left")).display !== "none";
@@ -1268,7 +1274,7 @@ try {
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
         await sleep(300);
         const keyboardReveal = getComputedStyle(header).display !== "none";
-        const reset = block.querySelector('.isf-btn[title="Reset parameters and time"]');
+        const reset = block.querySelector('.isf-header [data-pui-item="reset"]');
         if (reset) reset.click();
         await sleep(400);
         const speedRow = block.querySelector('[data-isf-param="speed"]');

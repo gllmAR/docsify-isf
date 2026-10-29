@@ -250,8 +250,12 @@ drawer is one renderer (while the assets load, or if they fail, the row stays
 a sibling of the panel). The fullscreen toolbox is a PUI toolbar in a
 non-modal top drawer, the bottom status line is a PUI statusbar with a tone,
 and transient action feedback (copy link, reset, export, microphone) uses a
-dismissible PUI toast stack; the code editor, stage and main header remain
-host surfaces.
+dismissible PUI toast stack. The main header is also a PUI `toolbar`: the
+source-link title, the live FPS/size readout, and icon-only
+editor/parameters/play/reset/fullscreen/source/share actions (pressed states
+and the input-count badge come from bindings). The host title/actions stay as
+the pre-load/failure fallback and are removed once the PUI toolbar mounts; the
+code editor and stage remain host surfaces.
 
 ## OBS / fullscreen link
 
