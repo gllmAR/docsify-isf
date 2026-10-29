@@ -469,9 +469,17 @@ try {
             passSelect.dispatchEvent(new Event("change", { bubbles: true }));
         }
         await wait(300);
-        return { share: !!share, qualityShrunk: after < before, passOptions: passOptions, exportLength: exportLength };
+        return {
+            share: !!share,
+            qualityShrunk: after < before,
+            passOptions: passOptions,
+            exportLength: exportLength,
+            // The whole drawer is one PUI surface; the view row is a host block.
+            viewInPui: !!plasma.querySelector(".isf-pui .isf-view")
+        };
     });
     if (!viewControls.share) problems.push("share button missing");
+    if (!viewControls.viewInPui) problems.push("the view row is not inside the PUI drawer");
     if (!viewControls.qualityShrunk) problems.push("quality selector did not resize the canvas: " + JSON.stringify(viewControls));
     if (viewControls.passOptions.indexOf("halfImage") === -1) problems.push("pass preview selector missing halfImage: " + JSON.stringify(viewControls.passOptions));
     if (viewControls.exportLength < 100) problems.push("PNG export produced no data");

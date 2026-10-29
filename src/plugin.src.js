@@ -4167,6 +4167,20 @@
         var ui = PupitreUI.create({
             mount: mount,
             density: "compact",
+            // The pass/quality/time/export row is docsify chrome, not an ISF
+            // input. It runs as a host block inside the normal PUI flow, so
+            // the whole drawer is one renderer without inventing a portable
+            // block kind or moving host state into the document.
+            blocks: {
+                "isf.view": function () {
+                    try {
+                        return viewer.buildViewControls(inputs);
+                    } catch (error) {
+                        viewer.warn("View controls unavailable: " + (error && error.message ? error.message : error));
+                        return null;
+                    }
+                }
+            },
             getValue: function (path) { return adapter.getValue(path); },
             setValue: function (path, value) { return adapter.setValue(path, value); },
             callAction: function (name, args) { return adapter.callAction(name, args); },
@@ -4178,7 +4192,13 @@
             }
         });
         viewer.pui = { ui: ui, adapter: adapter, mount: mount, host: viewer.puiHost };
-        ui.render(adapter.document());
+        var document = adapter.document();
+        document.panels[0].pages[0].sections.unshift({
+            id: "view",
+            title: "View",
+            blocks: [{kind: "isf.view", id: "view", label: "View"}]
+        });
+        ui.render(document);
         return markPUIParams(container, viewer);
     }
 
@@ -6388,10 +6408,12 @@
             viewer.inputByName = {};
             for (var ii = 0; ii < inputs.length; ii++) viewer.inputByName[inputs[ii].name] = inputs[ii];
             paramsList.innerHTML = "";
-            paramsList.appendChild(viewer.buildViewControls(inputs));
             var controlsHost = h("div", "isf-params-controls");
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
+            // PUI renders the view row as an `isf.view` host block inside the
+            // panel; the legacy renderer keeps it as a sibling.
+            if (!viewer.pui) paramsList.insertBefore(viewer.buildViewControls(inputs), controlsHost);
             viewer.controls = {};
             for (var ci = 0; ci < viewer.controlsList.length; ci++) {
                 var controlEntry = viewer.controlsList[ci];

@@ -235,7 +235,9 @@ Every viewer also exposes `DocsifyISF` on `window` for scripting
 (`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, `PupitreUI`,
 `PupitreISF`, …). The parameter drawer is a PUI document generated from the
 normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
-as the other Pupitre hosts, embedded in the drawer with the viewer theme.
+as the other Pupitre hosts, embedded in the drawer with the viewer theme. The
+pass/quality/time/export row is a PUI **host block** (`isf.view`), so the whole
+drawer is one renderer; only the legacy fallback keeps it separate.
 
 ## OBS / fullscreen link
 

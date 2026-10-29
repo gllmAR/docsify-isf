@@ -422,9 +422,13 @@ metadata default) and double-clicking a row still resets it. Every value path
 and both `point2D` axes, `color` stays in 0…1, and `long` values snap to the
 declared `VALUES`.
 
-The parameters panel also carries the plugin-owned view row (not PUI): a
-**View** selector for pass targets, a **Quality** selector (persisted with the
-layout) and **Export PNG**.
+The parameters panel is one PUI surface. The plugin-owned view row (a
+**View** selector for pass targets, a **Quality** selector persisted with the
+layout, the **Time** scrub and **Randomize** / **Export PNG**) is mounted as a
+PUI **host block** (`isf.view`, registered with `ui.registerBlock`): it keeps
+the viewer-specific runtime behaviour and DOM while sitting in the normal PUI
+section flow. The legacy renderer keeps the same row as a sibling of its rows.
+The view row therefore uses PUI's control target sizes and palette.
 
 ### 7.3 Editor
 
@@ -548,6 +552,9 @@ layer (skips with a message when Chrome or puppeteer-core is unavailable).
 - **Vertex attributes.** Only `isf_position` exists; shaders needing more
   attributes cannot run.
 - **Cross-origin assets** need CORS.
+- **The legacy parameter rows are fallback-only.** The default drawer is PUI;
+  `ui: "legacy"` and a PUI mount failure keep the old rows working. They are
+  frozen and can be removed once the PUI path has shipped for a release.
 - Future: WebGL2 GLSL ES 3.00 transpilation for the dynamic-indexing family,
   `requestVideoFrameCallback` video inputs, `<input type=range>` keyboard
   accessibility pass, per-link option overrides, CodeMirror adapter.
