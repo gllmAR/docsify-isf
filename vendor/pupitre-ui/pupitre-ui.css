@@ -221,10 +221,21 @@
 .pui-toolbar-separator { width: 1px; height: 20px; background: var(--pui-border); margin: 0 3px; }
 .pui-toolbar-spacer { flex: 1 1 auto; }
 .pui-toolbar-label { color: var(--pui-muted); font-size: 0.72rem; font-weight: 600; padding: 0 4px; }
+.pui-toolbar-icon { display: inline-block; min-width: 1em; font-size: 0.95rem; line-height: 1; }
+.pui-toolbar-badge { min-width: 1.1em; padding: 0 4px; border-radius: 999px; background: var(--pui-accent); color: var(--pui-accent-text); font-size: 0.62rem; line-height: 1.5; text-align: center; }
+.pui-toolbar .pui-button[aria-pressed="true"] { border-color: var(--pui-accent); color: var(--pui-accent); }
+.pui-toolbar .pui-button.is-pressed { box-shadow: inset 0 0 0 1px var(--pui-accent); }
+.pui-toolbar-link { text-decoration: none; }
+.pui-toolbar-readout { display: inline-flex; align-items: baseline; gap: 4px; font-size: 0.72rem; }
+.pui-toolbar-readout-label { color: var(--pui-muted); }
+.pui-toolbar-readout-value { color: var(--pui-text); font-variant-numeric: tabular-nums; font-weight: 600; }
 .pui-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: var(--pui-touch); padding: 4px 8px; border-top: 1px solid var(--pui-border); background: var(--pui-surface); color: var(--pui-muted); font-size: 0.72rem; }
 .pui-statusbar-item { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
 .pui-statusbar-label { color: var(--pui-muted); }
 .pui-statusbar-value { color: var(--pui-text); font-variant-numeric: tabular-nums; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-statusbar-item[data-tone="success"] .pui-statusbar-value { color: var(--pui-success, #56c596); }
+.pui-statusbar-item[data-tone="warning"] .pui-statusbar-value { color: var(--pui-warning); }
+.pui-statusbar-item[data-tone="error"] .pui-statusbar-value { color: var(--pui-danger); }
 .pui-form { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
 .pui-form-title { margin: 0; font-size: 0.95rem; }
 .pui-form-fields { display: grid; grid-template-columns: repeat(var(--pui-form-columns, 1), minmax(0, 1fr)); gap: 8px 12px; align-items: start; }

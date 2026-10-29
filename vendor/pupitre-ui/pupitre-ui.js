@@ -203,6 +203,7 @@
     options = options || {};
     this.mount = options.mount;
     this.blockFactories = Object.assign({}, options.blocks || {});
+    this.icons = Object.assign({}, options.icons || {});
     this.adapter = {
       getValue: options.getValue || function () { return undefined; },
       setValue: options.setValue || function () { return false; },
@@ -247,6 +248,7 @@
     this.formRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
+    this.toolbarRecords = [];
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
@@ -309,6 +311,7 @@
     this.formRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
+    this.toolbarRecords = [];
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
@@ -5351,12 +5354,100 @@
     return rec;
   };
 
+  Renderer.prototype.toolbarText = function (item, key) {
+    var bind = String(item[key + "_bind"] || "");
+    if (bind) {
+      var value = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(bind, item)
+        : this.adapter.getValue(bind);
+      if (value !== undefined && value !== null) return String(value);
+    }
+    var value = item[key];
+    return value === undefined || value === null ? "" : String(value);
+  };
+
+  Renderer.prototype.toolbarIcon = function (item) {
+    var name = this.toolbarText(item, "icon");
+    if (!name) return "";
+    var icon = this.icons[name];
+    if (icon === undefined && typeof this.adapter.getIcon === "function") icon = this.adapter.getIcon(name, item);
+    if (icon === undefined || icon === null) return String(name);
+    return String(icon);
+  };
+
+  Renderer.prototype.toolbarPressed = function (item) {
+    var value = this.toolbarText(item, "pressed");
+    return value === "true" || value === "1" || value === "on";
+  };
+
+  Renderer.prototype.toolbarReadoutValue = function (item) {
+    var bind = String(item.bind || item.value_bind || "");
+    if (!bind) return this.toolbarText(item, "value");
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(bind, item)
+      : this.adapter.getValue(bind);
+    if (typeof item.format === "function") return String(item.format(value));
+    return value === undefined || value === null ? "" : String(value);
+  };
+
+  Renderer.prototype.toolbarRefresh = function (rec) {
+    var item = rec.item;
+    var label = this.toolbarText(item, "label");
+    var title = this.toolbarText(item, "title") || label;
+    if (rec.kind === "readout") {
+      var readoutValue = this.toolbarReadoutValue(item);
+      rec.value.textContent = readoutValue;
+      rec.readoutLabel.textContent = label;
+      rec.root.hidden = !!item.hide_empty && readoutValue === "";
+      rec.root.setAttribute("data-tone", this.toolbarText(item, "tone") || "info");
+      return;
+    }
+    var icon = this.toolbarIcon(item);
+    var pressed = this.toolbarPressed(item);
+    var badge = this.toolbarText(item, "badge");
+    if (rec.iconEl) {
+      rec.iconEl.textContent = icon;
+      rec.iconEl.hidden = !icon;
+    }
+    if (rec.labelEl) {
+      rec.labelEl.textContent = label;
+      rec.labelEl.hidden = !label || (item.icon_only && !!icon);
+    }
+    if (rec.badgeEl) {
+      rec.badgeEl.textContent = badge;
+      rec.badgeEl.hidden = !badge;
+    }
+    if (rec.button) {
+      if (item.icon_only && !icon) rec.button.setAttribute("aria-label", label);
+      else rec.button.removeAttribute("aria-label");
+      if (title) rec.button.title = title;
+      if (item.aria_controls) rec.button.setAttribute("aria-controls", String(item.aria_controls));
+      rec.button.setAttribute("aria-pressed", pressed ? "true" : "false");
+      rec.button.classList.toggle("is-pressed", pressed);
+    }
+  };
+
+  Renderer.prototype.toolbarContent = function (item, root) {
+    var icon = this.toolbarIcon(item);
+    var label = this.toolbarText(item, "label");
+    var iconEl = el("span", {class: "pui-toolbar-icon", "aria-hidden": "true", text: icon});
+    iconEl.hidden = !icon;
+    var labelEl = el("span", {class: "pui-toolbar-label", text: label});
+    labelEl.hidden = !label || (item.icon_only && !!icon);
+    var badge = this.toolbarText(item, "badge");
+    var badgeEl = el("span", {class: "pui-toolbar-badge", text: badge});
+    badgeEl.hidden = !badge;
+    root.appendChild(iconEl);
+    root.appendChild(labelEl);
+    root.appendChild(badgeEl);
+    return {iconEl: iconEl, labelEl: labelEl, badgeEl: badgeEl};
+  };
+
   Renderer.prototype.buildToolbar = function (block) {
     var self = this;
-    var a11y = isObject(block.a11y) ? block.a11y : {};
     var root = el("div", {class: "pui-toolbar", "data-pui-toolbar": String(block.id || ""), role: "toolbar"});
     if (block.label) root.setAttribute("aria-label", String(block.label));
-    else if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
+    else if (block.a11y && block.a11y.name) root.setAttribute("aria-label", String(block.a11y.name));
     if (block.align) root.setAttribute("data-align", String(block.align));
     var items = isArray(block.items) ? block.items : [];
     for (var i = 0; i < items.length; i++) {
@@ -5364,14 +5455,68 @@
       if (!isObject(item)) continue;
       if (item.kind === "separator") {
         root.appendChild(el("span", {class: "pui-toolbar-separator", role: "separator"}));
-      } else if (item.kind === "label") {
-        root.appendChild(el("span", {class: "pui-toolbar-label", text: String(item.text || item.label || "")}));
-      } else if (item.kind === "spacer") {
-        root.appendChild(el("span", {class: "pui-toolbar-spacer"}));
-      } else {
-        this.addActionButton(root, item);
+        continue;
       }
+      if (item.kind === "spacer") {
+        root.appendChild(el("span", {class: "pui-toolbar-spacer"}));
+        continue;
+      }
+      if (item.kind === "readout") {
+        var readout = el("span", {class: "pui-toolbar-readout", "data-tone": "info", "data-pui-item": String(item.id || "")});
+        var readoutLabel = el("span", {class: "pui-toolbar-readout-label", text: this.toolbarText(item, "label")});
+        var readoutValue = el("output", {class: "pui-toolbar-readout-value", "data-pui-bind": String(item.bind || "")});
+        readout.appendChild(readoutLabel);
+        readout.appendChild(readoutValue);
+        root.appendChild(readout);
+        this.toolbarRecords.push({kind: "readout", root: readout, item: item, readoutLabel: readoutLabel, value: readoutValue});
+        continue;
+      }
+      if (item.kind === "link") {
+        var link = el("a", {class: "pui-button pui-toolbar-link", href: String(item.href || "#"), "data-pui-item": String(item.id || "")});
+        if (item.target) link.target = String(item.target);
+        if (item.rel) link.rel = String(item.rel);
+        if (item.download) link.download = String(item.download);
+        this.toolbarContent(item, link);
+        if (item.icon_only) link.setAttribute("aria-label", this.toolbarText(item, "label"));
+        var linkRec = {kind: "link", root: link, item: item, button: link};
+        var linkContent = {iconEl: link.children[0], labelEl: link.children[1], badgeEl: link.children[2]};
+        linkRec = Object.assign(linkRec, linkContent);
+        this.toolbarRecords.push(linkRec);
+        root.appendChild(link);
+        this.toolbarRefresh(linkRec);
+        continue;
+      }
+      var button = this.addActionButton(root, item);
+      if (!button) continue;
+      button.textContent = "";
+      button.setAttribute("data-pui-item", String(item.id || ""));
+      button.__puiToolbar = true;
+      var content = this.toolbarContent(item, button);
+      var rec = Object.assign({kind: "action", root: button, button: button, item: item}, content);
+      this.toolbarRecords.push(rec);
+      this.toolbarRefresh(rec);
     }
+    var focusables = Array.prototype.slice.call(root.querySelectorAll("button, a[href]"));
+    focusables.forEach(function (control, index) {
+      control.tabIndex = index === 0 ? 0 : -1;
+      control.addEventListener("focus", function () {
+        focusables.forEach(function (other) { other.tabIndex = other === control ? 0 : -1; });
+      });
+    });
+    root.addEventListener("keydown", function (event) {
+      var index = focusables.indexOf(document.activeElement);
+      if (index < 0) return;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        focusables[(index + 1) % focusables.length].focus();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        focusables[(index - 1 + focusables.length) % focusables.length].focus();
+      } else if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        focusables[event.key === "Home" ? 0 : focusables.length - 1].focus();
+      }
+    });
     this.shellCondition(block, root);
     return root;
   };
@@ -5390,6 +5535,13 @@
     return String(value);
   };
 
+  Renderer.prototype.statusTone = function (item) {
+    var bind = String(item.tone_bind || "");
+    var tone = bind ? (typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(bind, item) : this.adapter.getValue(bind)) : item.tone;
+    return ["info", "success", "warning", "error"].indexOf(String(tone || "info")) >= 0 ? String(tone || "info") : "info";
+  };
+
   Renderer.prototype.buildStatusbar = function (block) {
     var a11y = isObject(block.a11y) ? block.a11y : {};
     var root = el("div", {class: "pui-statusbar", "data-pui-statusbar": String(block.id || ""), role: "status", "aria-live": String(a11y.live || "polite")});
@@ -5399,14 +5551,14 @@
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       if (!isObject(item)) continue;
-      var cell = el("span", {class: "pui-statusbar-item"});
+      var cell = el("span", {class: "pui-statusbar-item", "data-tone": this.statusTone(item)});
       var label = el("span", {class: "pui-statusbar-label", text: String(item.label || item.bind || "")});
       var value = el("output", {class: "pui-statusbar-value", "data-pui-bind": String(item.bind || "")});
       value.textContent = this.statusValue(item);
       cell.appendChild(label);
       cell.appendChild(value);
       root.appendChild(cell);
-      values.push({item: item, value: value});
+      values.push({item: item, value: value, cell: cell});
     }
     if (!values.length && block.bind) {
       var only = {bind: block.bind, label: block.label || ""};
@@ -5416,7 +5568,7 @@
       out.textContent = this.statusValue(only);
       single.appendChild(out);
       root.appendChild(single);
-      values.push({item: only, value: out});
+      values.push({item: only, value: out, cell: single});
     }
     this.statusRecords.push({root: root, block: block, values: values});
     this.shellCondition(block, root);
@@ -6242,7 +6394,7 @@
     var finish = function (ok, detail) {
       button.disabled = !!item.disabled;
       button.removeAttribute("aria-busy");
-      button.textContent = original;
+      if (!button.__puiToolbar) button.textContent = original;
       var message = ok ? String(item.result || "") : String(detail || item.error || "Action failed");
       self.actionStatus(record, message, !ok);
       if (message) self.adapter.announce(ok ? "success" : "error", message);
@@ -6562,10 +6714,15 @@
     for (var tr = 0; tr < this.toastRecords.length; tr++) {
       this.toastRender(this.toastRecords[tr]);
     }
+    for (var tb = 0; tb < this.toolbarRecords.length; tb++) {
+      this.toolbarRefresh(this.toolbarRecords[tb]);
+    }
     for (var sb = 0; sb < this.statusRecords.length; sb++) {
       var statusRec = this.statusRecords[sb];
       for (var sv = 0; sv < statusRec.values.length; sv++) {
-        statusRec.values[sv].value.textContent = this.statusValue(statusRec.values[sv].item);
+        var statusItem = statusRec.values[sv].item;
+        statusRec.values[sv].value.textContent = this.statusValue(statusItem);
+        if (statusRec.values[sv].cell) statusRec.values[sv].cell.setAttribute("data-tone", this.statusTone(statusItem));
       }
     }
     for (var t = 0; t < this.tableRecords.length; t++) {
