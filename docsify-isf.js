@@ -10840,7 +10840,7 @@
    * @param {string} [options.lang]
    * @param {string} [options.dir]
    * @param {Object} [options.theme]
-   * @returns {{document: Object, bindings: Object, fields: Object}}
+   * @returns {{document: Object, bindings: Object, inputs: Array<Object>}}
    */
   function createDocument(inputs, options) {
     options = options || {};
@@ -10978,7 +10978,7 @@
 
       getValue: function (path) {
         var info = binding(path);
-        if (!info) return undefined;
+        if (!info || !info.input) return undefined;
         var name = info.input.name;
         if (info.kind === "define") return defineText(info.input);
         if (info.kind === "audio" || info.kind === "audioFFT") {
@@ -11004,26 +11004,29 @@
       setValue: function (path, value) {
         var info = binding(path);
         if (!info) return false;
+        if (!info.input) return false;
         var input = info.input;
         var name = input.name;
-        if (info.kind === "define") return false;
+        // Constants and readouts are display-only: the view never writes them.
+        if (info.kind === "define" || info.block.kind === "readout") return false;
         if (info.kind === "event" || info.block.widget === "button") {
-          if (typeof host.triggerEvent === "function") host.triggerEvent(name);
+          if (typeof host.triggerEvent !== "function") return false;
+          host.triggerEvent(name);
           return true;
         }
+        if (typeof host.setValue !== "function") return false;
         if (info.kind === "color") {
-          var color = hexToRgba(value);
-          if (typeof host.setValue === "function") host.setValue(name, color);
+          host.setValue(name, hexToRgba(value));
           return true;
         }
         if (info.component !== null && info.component !== undefined) {
           var source = typeof host.getValue === "function" ? host.getValue(name) : undefined;
           var pair = isArray(source) ? source.slice() : defaultValue(input).slice();
           pair[info.component] = Number(value);
-          if (typeof host.setValue === "function") host.setValue(name, pair);
+          host.setValue(name, pair);
           return true;
         }
-        if (typeof host.setValue === "function") host.setValue(name, value);
+        host.setValue(name, value);
         return true;
       },
 
@@ -11055,8 +11058,10 @@
       },
 
       // Rebuild the document after the input list or media state changed.
+      // The revision bumps so hosts that cache by `rev` fetch the new surface.
       refresh: function (nextInputs) {
         if (isArray(nextInputs)) inputs = nextInputs;
+        options.rev = Math.max(1, Number(options.rev) || 1) + 1;
         build();
         return current.document;
       }
