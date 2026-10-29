@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.23.1
+ * docsify-isf v1.24.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.23.1";
+    var VERSION = "1.24.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5575,6 +5575,17 @@
             ".isf-tab{opacity:.75}",
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-template-select{border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;padding:.18rem .25rem;max-width:9.5rem}",
+            ".isf-editor-actions .isf-template-menu{display:inline-flex;flex:0 0 auto}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-trigger:hover{background:var(--isf-surface-2)}",
+            ".isf-editor-actions .isf-template-menu .pui-toolbar-label{color:inherit;font-size:.72rem;font-weight:500;padding:0}",
+            ".isf-editor-actions .isf-template-menu .pui-toolbar-icon{min-width:12px}",
+            ".isf-editor-actions .isf-template-menu .pui-toolbar-icon svg{width:12px;height:12px}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup{min-width:200px;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button:hover{background:var(--isf-surface-2)}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-label{padding:.3rem .5rem;color:var(--isf-muted);font-size:.6rem;letter-spacing:.05em;text-transform:uppercase}",
             ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .6rem;padding:.55rem .75rem .6rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 35%,transparent)}",
             ".isf-view-heading{flex:1 1 100%;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:var(--isf-muted);font-weight:650;margin-bottom:.05rem}",
             ".isf-view-row{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;color:var(--isf-muted)}",
@@ -6343,6 +6354,7 @@
         var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
         var copyButton = h("button", "isf-btn", { type: "button", text: "Copy", title: "Copy source" });
         var importButton = h("button", "isf-btn", { type: "button", text: "Import", title: "Import from Shadertoy / GLSL Sandbox" });
+        var templateMenuHost = h("span", "isf-template-menu isf-pui isf-hidden");
         var templateSelect = h("select", "isf-template-select", {
             "aria-label": "Insert a snippet or start from a template",
             title: "Insert an input snippet or start from a template"
@@ -6370,6 +6382,7 @@
         actions.appendChild(revertButton);
         actions.appendChild(copyButton);
         actions.appendChild(importButton);
+        actions.appendChild(templateMenuHost);
         actions.appendChild(templateSelect);
         var keysButton = h("button", "isf-btn isf-keys-btn", { type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts" });
         actions.appendChild(keysButton);
@@ -6743,6 +6756,66 @@
             if (choice.indexOf("input:") === 0) insertInputTemplate(choice.slice(6));
             else if (choice.indexOf("template:") === 0) applyShaderTemplate(choice.slice(9));
         });
+
+        // PUI menu adoption with the native select as the pre-load fallback.
+        var templateMenuMounted = false;
+        var templateMenuUI = null;
+        function mountEditorTemplateMenu() {
+            if (templateMenuMounted || viewer.disposed || !puiAvailable()) return;
+            var insertPrefix = "isf.editor.insert.";
+            var templatePrefix = "isf.editor.template.";
+            var menuItems = [{kind: "label", text: "Insert input"}];
+            Object.keys(INPUT_TEMPLATES).forEach(function (type) {
+                menuItems.push({id: "input." + type, label: type + " input", call: insertPrefix + type});
+            });
+            menuItems.push({kind: "separator"});
+            menuItems.push({kind: "label", text: "New shader"});
+            Object.keys(SHADER_TEMPLATES).forEach(function (name) {
+                menuItems.push({id: "template." + name, label: name.charAt(0).toUpperCase() + name.slice(1), call: templatePrefix + name});
+            });
+            var menuDoc = {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-editor-menu", title: "Editor templates", embedded: true, pages: [{id: "menu", title: "Templates", sections: [{
+                    id: "menu", title: "Templates", blocks: [{
+                        kind: "menu", id: "templates", label: "Templates", icon: "chevron", items: menuItems
+                    }]
+                }]}]}]
+            };
+            var ui;
+            try {
+                ui = PupitreUI.create({
+                    mount: templateMenuHost,
+                    density: "compact",
+                    icons: {chevron: function () {
+                        var wrap = document.createElement("span");
+                        wrap.innerHTML = ICONS.chevron;
+                        return wrap.firstChild || null;
+                    }},
+                    getValue: function () { return undefined; },
+                    setValue: function () { return false; },
+                    callAction: function (name) {
+                        if (name.indexOf(insertPrefix) === 0) { insertInputTemplate(name.slice(insertPrefix.length)); return true; }
+                        if (name.indexOf(templatePrefix) === 0) { applyShaderTemplate(name.slice(templatePrefix.length)); return true; }
+                        return false;
+                    },
+                    getPathMeta: function () { return {}; },
+                    translate: function (key, fallback) { return fallback; }
+                });
+                ui.render(menuDoc);
+            } catch (error) {
+                if (ui) { try { ui.destroy(); } catch (destroyError) { /* ignore */ } }
+                templateMenuHost.classList.add("isf-hidden");
+                return;
+            }
+            templateMenuMounted = true;
+            templateMenuUI = ui;
+            templateMenuHost.classList.remove("isf-hidden");
+            if (templateSelect.parentNode) templateSelect.parentNode.removeChild(templateSelect);
+            viewer.listeners.push(function () {
+                if (templateMenuUI) { try { templateMenuUI.destroy(); } catch (error) { /* ignore */ } }
+            });
+        }
+        loadPUI().then(mountEditorTemplateMenu, function () { /* keep the native select */ });
         var selectionHandler = function () {
             if (document.activeElement === textarea) scheduleCaret();
         };

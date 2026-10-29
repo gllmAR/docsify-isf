@@ -328,9 +328,10 @@ Press the `</>` button in the viewer header:
   an opening bracket); **Tab / Shift+Tab** indent and dedent the selection;
   **Ctrl/Cmd + /** toggles comments; **Ctrl/Cmd + +/-/0** zooms the editor;
   indentation width follows `editorIndent`.
-- A **Templates…** menu inserts ready-made `INPUTS` snippets (float, bool,
+- A **Templates** PUI menu inserts ready-made `INPUTS` snippets (float, bool,
   color, point2D, event, long, image, audioFFT) or starts a new generator,
-  filter, transition or multi-pass shader.
+  filter, transition or multi-pass shader. The native select remains only as
+  the pre-load fallback if the toolkit assets are unavailable.
 - Compile errors are mapped back to the original `.fs` file line — the gutter
   highlights it, the status bar explains it, and the error overlay offers
   **Fix at line N**, **Copy error** and **Open source**.

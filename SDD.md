@@ -521,9 +521,11 @@ comment/preprocessor/string/number/keyword/type/builtin/ISF/operator.
   that tab and highlight the right line.
 - **Shortcuts**: Ctrl/Cmd+Enter or Ctrl/Cmd+S apply, Ctrl/Cmd+/ toggles
   comments, Ctrl/Cmd +/-/0 zooms (persisted), Enter auto-indents, Tab indents.
-- **Templates menu**: inserts `INPUTS` snippets (float, bool, color, point2D,
-  event, long, image, audioFFT) at the caret or replaces the buffer with a
-  starter generator/filter/transition/multi-pass shader.
+- **Templates menu**: a PUI `menu` block in the editor toolbar inserts
+  `INPUTS` snippets (float, bool, color, point2D, event, long, image,
+  audioFFT) at the caret or replaces the buffer with a starter
+  generator/filter/transition/multi-pass shader. The native select is only the
+  fallback until the toolkit assets load.
 - **Import** opens the Shadertoy/GLSL Sandbox paste box (5.6).
 - `editorLive` recompiles after `editorDebounce` ms of inactivity and the
   status line reports the measured compile time.
@@ -609,7 +611,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), the main header is a PUI toolbar whose icon actions open the drawers/editor, expose pressed states and the input-count badge, drive play/reset/fullscreen/share, and expose an accessible name on the stats readout; fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, structural PUI re-renders keep focus on the same item hook, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens, highlights, reports `Ln x, Col y`, shows the active line, closes from its × button, the editor and side panes resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), the main header is a PUI toolbar whose icon actions open the drawers/editor, expose pressed states and the input-count badge, drive play/reset/fullscreen/share, and expose an accessible name on the stats readout; fullscreen hides the header and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, structural PUI re-renders keep focus on the same item hook, the editor Templates picker is a PUI menu with a native fallback, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

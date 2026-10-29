@@ -492,6 +492,26 @@ try {
     if (importFlow.pointerError) problems.push("pointer events broke the imported shader");
     if (!importFlow.restored) problems.push("revert after import did not restore the original source");
 
+    // The editor template picker is a PUI menu once the toolkit is loaded.
+    const templateMenu = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        const trigger = block && block.querySelector(".isf-template-menu .pui-menu-trigger");
+        if (!trigger) return {missing: true, fallback: !!(block && block.querySelector(".isf-template-select"))};
+        trigger.click();
+        await wait(200);
+        const item = Array.from(block.querySelectorAll('.isf-template-menu [role="menuitem"]'))
+            .find((node) => /float input/i.test(node.textContent));
+        if (!item) return {missing: false, item: false};
+        item.click();
+        await wait(300);
+        const status = block.querySelector(".isf-editor-status");
+        return {missing: false, item: true, inserted: !!status && /Inserted a float input/.test(status.textContent)};
+    });
+    if (templateMenu.missing) problems.push("editor Templates did not adopt the PUI menu: " + JSON.stringify(templateMenu));
+    else if (!templateMenu.item) problems.push("editor Templates menu has no float input item");
+    else if (!templateMenu.inserted) problems.push("editor Templates menu did not insert the snippet");
+
     // View controls: pass preview, quality selector, PNG export, share link.
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
