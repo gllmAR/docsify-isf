@@ -785,7 +785,10 @@ try {
     const phone = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         const actions = b.querySelector(".isf-pui-header .pui-toolbar");
-        if (!actions) return { missing: true, viewport: window.innerWidth, blockWidth: b.getBoundingClientRect().width };
+        const header = b.querySelector(".isf-pui-header");
+        if (!actions) return { missing: true, viewport: window.innerWidth, blockWidth: b.getBoundingClientRect().width,
+            headerClass: header ? header.className : "none", headerHtml: header ? header.innerHTML.slice(0, 300) : "",
+            status: (b.querySelector(".isf-status") || {}).textContent || "" };
         const buttons = Array.from(actions.querySelectorAll("button.pui-button"));
         const heights = buttons.map((button) => button.getBoundingClientRect().height);
         return {
@@ -797,7 +800,7 @@ try {
             stripHeight: actions.getBoundingClientRect().height
         };
     });
-    if (phone.missing) problems.push("mobile: PUI header toolbar did not mount");
+    if (phone.missing) problems.push("mobile: PUI header toolbar did not mount " + JSON.stringify(phone));
     if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px)");
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
