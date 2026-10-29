@@ -20,7 +20,7 @@ becomes, on a Docsify page, a viewer with:
   color, point2D, image, audio, audioFFT, plus the MadMapper `floatRange`
   min/max pair and the animator/shaper/incrementer/damper/pass_thru/
   linear_filter/adsr controllers as sliders; `generate_as_define` inputs are
-  compile-time constants),
+  shown read-only, since the shader already baked them),
 - a live text/shader editor with GLSL syntax highlighting, error mapping and
   a foldable toolbar (chevron or Ctrl/Cmd+Shift+B) that hands its rows back
   to the code pane,

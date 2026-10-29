@@ -64,7 +64,7 @@
         height: "360px",
         aspectRatio: null,          // e.g. "16/9"
         controls: true,
-        ui: "pui",                     // "pui" (shared Pupitre UI) | "legacy"
+        ui: "pui",                  // "pui" (shared Pupitre UI) | "legacy"
         params: "auto",             // "auto" | "open" | "closed"
         paramsOpenLimit: 6,
         autoplay: true,
@@ -4095,24 +4095,26 @@
     }
 
     function markPUIParams(container, viewer) {
-        var nodes = container.querySelectorAll(".pui-field[data-pui-path]");
+        // `data-pui-bind` is the public renderer hook. Keep the smoke/test
+        // marker on the enclosing row; never depend on PUI's private classes.
+        var nodes = container.querySelectorAll("[data-pui-bind]");
         var marked = [];
         for (var i = 0; i < nodes.length; i++) {
-            var path = nodes[i].getAttribute("data-pui-path") || "";
+            var path = nodes[i].getAttribute("data-pui-bind") || "";
             if (path.indexOf("/isf/") !== 0) continue;
+            var row = nodes[i].closest ? nodes[i].closest(".pui-field") : null;
+            if (!row) continue;
             var name = path.slice(5).split("/")[0];
-            if (!name) continue;
-            // Keep the smoke test's parameter hooks without borrowing the
-            // legacy `.isf-param` grid styling.
-            nodes[i].setAttribute("data-isf-param", name);
+            if (!name || row.getAttribute("data-isf-param") === name) continue;
+            row.setAttribute("data-isf-param", name);
             (function (node, inputName) {
                 node.addEventListener("dblclick", function (event) {
                     if (event.target && event.target.closest && event.target.closest("button, select")) return;
                     event.preventDefault();
                     viewer.resetParameter(inputName);
                 });
-            })(nodes[i], name);
-            marked.push(nodes[i]);
+            })(row, name);
+            marked.push(row);
         }
         return marked;
     }

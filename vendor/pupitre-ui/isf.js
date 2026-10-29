@@ -82,6 +82,22 @@
     return input.default;
   }
 
+  /** Readable display value for a compile-time `generate_as_define` input. */
+  function defineText(input) {
+    if (isArray(input.values) && input.values.length) {
+      var value = input.defaultValue !== undefined ? input.defaultValue : input.default;
+      var index = input.values.indexOf(value);
+      if (index < 0 && input.defaultIndex !== undefined) index = Number(input.defaultIndex) || 0;
+      if (index < 0) index = 0;
+      return String(isArray(input.labels) && input.labels[index] !== undefined
+        ? input.labels[index] : input.values[index]);
+    }
+    if (input.type === "bool" || input.type === "event") return input.default ? "true" : "false";
+    var fallback = input.defaultValue !== undefined ? input.defaultValue : input.default;
+    if (isArray(fallback)) return "[" + fallback.map(function (entry) { return num(entry, 0); }).join(", ") + "]";
+    return fallback === undefined ? "" : String(fallback);
+  }
+
   function rangeBounds(input, current) {
     var lo = num(input.min, 0);
     var hi = num(input.max, 1);
@@ -117,9 +133,8 @@
 
   /** Two scalar fields for a pair input: per-axis ranges, labels and resets
    * are exact (PUI's `vector` widget only supports a shared range). */
-  function pairBlocks(input, labels, value) {
+  function pairBlocks(input, labels) {
     var out = [];
-    var current = isArray(value) ? value : defaultValue(input);
     var axes = input.type === "floatRange" ? ["min", "max"] : ["x", "y"];
     var mins = isArray(input.min) ? input.min : [num(input.min, 0), num(input.min, 0)];
     var maxes = isArray(input.max) ? input.max : [num(input.max, 1), num(input.max, 1)];
@@ -140,7 +155,6 @@
         step: rangeStep(lo, hi, input.step),
         default: isArray(defaults) ? num(defaults[i], lo) : lo
       });
-      current[i] = num(current[i], num(defaults[i], lo));
     }
     return out;
   }
@@ -151,9 +165,20 @@
    */
   function inputBlocks(input, value, options) {
     var blocks = [];
-    var color = options.color !== false;
     var type = String(input.type || "float");
     var label = String(input.label || input.name);
+    if (input.define) {
+      // generate_as_define inputs are compiled into the shader; editing them
+      // through the view would be a lie. Keep them visible as a constant.
+      return [{
+        kind: "readout",
+        id: "isf-" + slug(input.name),
+        bind: PREFIX + "/" + input.name,
+        label: label,
+        type: "s",
+        help: "Compile-time constant (generate_as_define); edit the shader source to change it."
+      }];
+    }
     if (type === "float" || type === "double" || controllerTypes().test(type)) {
       blocks.push(scalarBlock(input, PREFIX + "/" + input.name, label, value));
     } else if (type === "bool" || type === "boolean") {
@@ -208,7 +233,7 @@
         if (input.max !== null && input.max !== undefined) integer.max = Number(input.max);
         blocks.push(integer);
       }
-    } else if (type === "color" && color) {
+    } else if (type === "color") {
       blocks.push({
         kind: "field",
         id: "isf-" + slug(input.name),
@@ -219,9 +244,9 @@
         default: rgbaToHex(defaultValue(input))
       });
     } else if (type === "point2D") {
-      blocks = blocks.concat(pairBlocks(input, [label + " X", label + " Y"], value));
+      blocks = blocks.concat(pairBlocks(input, [label + " X", label + " Y"]));
     } else if (type === "floatRange") {
-      blocks = blocks.concat(pairBlocks(input, [label + " min", label + " max"], value));
+      blocks = blocks.concat(pairBlocks(input, [label + " min", label + " max"]));
     } else if (type === "image" || type === "audio" || type === "audioFFT") {
       // Media is host-owned: the adapter emits actions/readouts below.
     } else {
@@ -264,13 +289,16 @@
           type: "s",
           help: "Synthetic " + (input.type === "audio" ? "waveform" : "spectrum") + " or microphone"
         });
-        actions.push({
-          id: "isf-mic-" + slug(input.name),
-          label: "Use mic",
-          help: "Capture audio from the microphone for all audio inputs",
-          call: "isf.toggle_microphone",
-          args: {name: input.name}
-        });
+        if (!actions.some(function (item) { return item.call === "isf.toggle_microphone"; })) {
+          // One microphone toggle covers every audio input on the surface.
+          actions.push({
+            id: "isf-mic",
+            label: "Use mic",
+            help: "Capture audio from the microphone for all audio inputs",
+            call: "isf.toggle_microphone",
+            args: {name: input.name}
+          });
+        }
       }
     }
     return {readouts: readouts, actions: actions};
@@ -320,7 +348,7 @@
           var axis = block.bind.slice((PREFIX + "/" + input.name + "/").length);
           component = axis === "x" || axis === "min" ? 0 : axis === "y" || axis === "max" ? 1 : null;
         }
-        register(block, input, component, input.type);
+        register(block, input, component, input.define ? "define" : input.type);
         blocks.push(block);
       }
     }
@@ -429,16 +457,24 @@
         var info = binding(path);
         if (!info) return undefined;
         var name = info.input.name;
+        if (info.kind === "define") return defineText(info.input);
         if (info.kind === "audio" || info.kind === "audioFFT") {
           return typeof host.audioActive === "function" && host.audioActive() ? "microphone" : "synthetic";
         }
         if (typeof host.getValue !== "function") return undefined;
         var raw = host.getValue(name);
-        if (info.kind === "color") return rgbaToHex(raw);
+        if (info.kind === "color") {
+          if (typeof raw === "string" && raw.charAt(0) === "#") return raw;
+          if (raw === undefined) return info.block ? info.block.default : "#000000ff";
+          return rgbaToHex(raw);
+        }
         if (info.component !== null && info.component !== undefined) {
           var pair = isArray(raw) ? raw : defaultValue(info.input);
-          return num(pair[info.component], 0);
+          return num(pair[info.component], info.block ? info.block.default : 0);
         }
+        // A host that has not produced a value yet shows the header default,
+        // never undefined (PUI would leave the widget blank).
+        if (raw === undefined && info.block && info.block.default !== undefined) return info.block.default;
         return raw;
       },
 
@@ -447,6 +483,7 @@
         if (!info) return false;
         var input = info.input;
         var name = input.name;
+        if (info.kind === "define") return false;
         if (info.kind === "event" || info.block.widget === "button") {
           if (typeof host.triggerEvent === "function") host.triggerEvent(name);
           return true;

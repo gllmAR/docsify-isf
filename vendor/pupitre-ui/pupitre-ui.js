@@ -6579,7 +6579,7 @@
 
   function structureKey(doc) {
     return JSON.stringify((doc.panels || []).map(function (panel) {
-      return [str(panel.id), str(panel.title), str(panel.default_page), (panel.actions || []).map(actionShape),
+      return [str(panel.id), str(panel.title), str(panel.default_page), !!panel.embedded, (panel.actions || []).map(actionShape),
         (panel.pages || []).map(function (page) {
           return [str(page.id), str(page.title), (page.sections || []).map(function (section) {
             return [str(section.id), str(section.title), !!section.help, (section.actions || []).map(actionShape),

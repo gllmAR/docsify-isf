@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Unit, adapter and PUI document checks
+        run: npm test
+      - name: Generated artifact is current
+        run: npm run build:check
+      - name: Vendored PUI snapshot is current and clean
+        run: npm run test:vendor
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+      - name: Browser smoke
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          REQUIRE_BROWSER: "1"
+        run: npm run test:smoke

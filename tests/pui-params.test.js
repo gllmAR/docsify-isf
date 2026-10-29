@@ -120,9 +120,11 @@ const expectations = {
     point2D: (input, built) => ["x", "y"].every((axis) => built.fields.some((field) => field.bind === "/isf/" + input.name + "/" + axis)),
     floatRange: (input, built) => ["min", "max"].every((axis) => built.fields.some((field) => field.bind === "/isf/" + input.name + "/" + axis)),
     image: (input, built) => built.actions.some((item) => item.call === "isf.choose_image" && item.args.name === input.name),
-    audio: (input, built) => built.actions.some((item) => item.call === "isf.toggle_microphone" && item.args.name === input.name) &&
+    // One microphone toggle covers every audio input; each input keeps its
+    // own source readout.
+    audio: (input, built) => built.actions.some((item) => item.call === "isf.toggle_microphone") &&
         built.readouts.some((block) => block.bind === "/isf/" + input.name + "/source"),
-    audioFFT: (input, built) => built.actions.some((item) => item.call === "isf.toggle_microphone" && item.args.name === input.name) &&
+    audioFFT: (input, built) => built.actions.some((item) => item.call === "isf.toggle_microphone") &&
         built.readouts.some((block) => block.bind === "/isf/" + input.name + "/source")
 };
 
@@ -151,18 +153,39 @@ test("every normalised ISF input has a PUI control", () => {
         if (!inputs) continue;
         const built = blocksOf(isf.createParamsDocument(inputs, {}).document);
         for (const input of inputs) {
-            const matches = expectations[input.type];
-            assert(matches, name + ": unmapped ISF type " + input.type + " (" + input.name + ")");
-            assert(matches(input, built), name + ": " + input.type + " " + input.name + " has no PUI control");
+            if (input.define) {
+                // generate_as_define inputs are compile-time constants.
+                assert(built.readouts.some((block) => block.bind === "/isf/" + input.name),
+                    name + ": define " + input.name + " is not a readout");
+            } else {
+                const matches = expectations[input.type];
+                assert(matches, name + ": unmapped ISF type " + input.type + " (" + input.name + ")");
+                assert(matches(input, built), name + ": " + input.type + " " + input.name + " has no PUI control");
+            }
             checked++;
         }
     }
     assert(checked >= 20, "expected the corpus controls, checked " + checked);
 });
 
+test("generate_as_define inputs stay read-only constants", () => {
+    const define = {name: "mode", label: "Mode", type: "long", values: ["before", "after"],
+        labels: ["Before", "After"], defaultValue: "after", defaultIndex: 1, define: true};
+    const built = blocksOf(isf.createParamsDocument([define], {}).document);
+    equal(built.fields.length, 0, "no writable field");
+    equal(built.readouts.length, 1, "one readout");
+    assert(/generate_as_define/.test(built.readouts[0].help), "help explains the constant");
+    const adapter = PupitreISF.createAdapter({inputs: [define], host: {
+        getValue: () => "ignored",
+        setValue: () => { throw new Error("define must not be written"); }
+    }});
+    equal(adapter.getValue("/isf/mode"), "After");
+    equal(adapter.setValue("/isf/mode", "before"), false);
+});
+
 test("the plasma sample maps every control family it declares", () => {
     const inputs = sampleInputs("plasma.fs");
-    const {fields, actions} = blocksOf(isf.createParamsDocument(inputs, {}).document);
+    const {fields} = blocksOf(isf.createParamsDocument(inputs, {}).document);
     const plasma = fields.find((field) => field.bind === "/isf/speed");
     assert(plasma && plasma.widget === "range", "speed slider");
     const center = fields.filter((field) => field.bind.indexOf("/isf/center/") === 0);
@@ -174,7 +197,7 @@ test("the plasma sample maps every control family it declares", () => {
     assert(fields.some((field) => field.widget === "button"), "event button");
     const media = blocksOf(isf.createParamsDocument(sampleInputs("test-card.fs"), {}).document);
     assert(media.actions.some((item) => item.call === "isf.choose_image"), "image picker action");
-    assert(media.actions.filter((item) => item.call === "isf.toggle_microphone").length === 2, "audio/FFT microphone actions");
+    assert(media.actions.filter((item) => item.call === "isf.toggle_microphone").length === 1, "one microphone action for both audio inputs");
     assert(media.readouts.length === 2, "audio/FFT source readouts");
 });
 

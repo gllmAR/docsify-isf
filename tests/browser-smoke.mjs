@@ -66,7 +66,12 @@ try {
 
 const executablePath = findChrome();
 if (!executablePath) {
-    console.log("browser-smoke: no Chrome/Chromium found (set CHROME_PATH). Skipping.");
+    const missing = "browser-smoke: no Chrome/Chromium found (set CHROME_PATH).";
+    if (process.env.REQUIRE_BROWSER === "1") {
+        console.error(missing);
+        process.exit(1);
+    }
+    console.log(missing + " Skipping.");
     process.exit(0);
 }
 
@@ -152,15 +157,21 @@ try {
                 const hasView = !!block.querySelector(".isf-view");
                 const erroring = overlayVisible && /error|could not|invalid|unexpected|redefinition|syntax/i.test(overlay.textContent);
                 const statusError = status && /error/i.test(status.className);
-                return hasParams || hasView || erroring || statusError;
+                const released = overlayVisible && /released|Waiting for a GPU context/i.test(overlay.textContent);
+                return hasParams || hasView || erroring || statusError || released;
             });
         }, { timeout: 45000, polling: 250 });
     } catch (error) {
         const stuck = await page.evaluate(() => Array.from(document.querySelectorAll(".isf-block")).map((block) => ({
             title: (block.querySelector(".isf-title") || {}).textContent,
             status: (block.querySelector(".isf-status") || {}).textContent,
-            params: block.querySelectorAll("[data-isf-param]").length
-        })).filter((item) => !item.params && !/error/i.test(item.status || "")));
+            params: block.querySelectorAll("[data-isf-param]").length,
+            released: (() => {
+                const overlay = block.querySelector(".isf-overlay");
+                return !!overlay && overlay.style.display !== "none" &&
+                    /released|Waiting for a GPU context/i.test(overlay.textContent);
+            })()
+        })).filter((item) => !item.params && !item.released && !/error/i.test(item.status || "")));
         problems.push("viewers never reached a terminal state: " + JSON.stringify(stuck));
     }
 
@@ -184,7 +195,9 @@ try {
                 badge: badge ? badge.textContent.trim() : "",
                 hasEditor: editors.length > 0,
                 hasParams: !!block.querySelector("[data-isf-param]"),
-                hasView: !!block.querySelector(".isf-view")
+                hasView: !!block.querySelector(".isf-view"),
+                released: !!overlay && overlay.style.display !== "none" &&
+                    /released|Waiting for a GPU context/i.test(overlay.textContent)
             };
         });
     });
@@ -235,6 +248,7 @@ try {
             problems.push(item.title + ": status/overlay reports an error: " + item.status + " " + item.overlayText);
             continue;
         }
+        if (item.released) continue; // the context-budget recovery test covers this viewer
         if (!item.canvasWidth || !item.canvasHeight) problems.push(item.title + ": canvas has no size");
         if (!item.hasContext) problems.push(item.title + ": no WebGL context");
         if (!item.hasParams && !item.hasView) problems.push(item.title + ": no controls or view row");

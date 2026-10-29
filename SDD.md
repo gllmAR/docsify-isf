@@ -412,7 +412,8 @@ The PUI document maps every normalised ISF input:
 | `point2D` | two per-axis ranges (`…/x`, `…/y`) |
 | `floatRange` | two per-axis ranges (`…/min`, `…/max`) |
 | `image` | “Choose image…” action + drag & drop on the stage |
-| `audio`/`audioFFT` | source readout + microphone action |
+| `audio`/`audioFFT` | source readout + one microphone action for all audio inputs |
+| `generate_as_define` | read-only readout (the shader already baked the value) |
 
 Reset is PUI's per-field reset button (shown when the value differs from the
 metadata default) and double-clicking a row still resets it. Every value path
