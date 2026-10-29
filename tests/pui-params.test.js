@@ -86,19 +86,12 @@ test("the artifact reads the on-demand toolkit at call time", () => {
     assert(generated && generated.document.format === "pupitre-ui", "createParamsDocument uses the loaded adapter");
 });
 
-test("PUI is the default parameter panel and legacy stays selectable", () => {
-    const config = isf.getConfig();
-    equal(config.ui, "pui");
+test("the on-demand asset base is configurable", () => {
+    assert(isf.getConfig().puiBase === null, "default base");
     const previous = global.window;
-    global.window = {$docsify: {isf: {ui: "legacy"}}};
+    global.window = {$docsify: {isf: {puiBase: "/assets/pui/"}}};
     try {
-        equal(isf.getConfig().ui, "legacy");
-        global.window.$docsify.isf.ui = false;
-        equal(isf.getConfig().ui, "legacy", "ui:false selects the legacy panel");
-        global.window.$docsify.isf.ui = true;
-        equal(isf.getConfig().ui, "pui", "ui:true selects PUI");
-        global.window.$docsify.isf.ui = "bogus";
-        equal(isf.getConfig().ui, "pui", "unknown ui values fall back to pui");
+        equal(isf.getConfig().puiBase, "/assets/pui/");
     } finally {
         if (previous === undefined) delete global.window;
         else global.window = previous;

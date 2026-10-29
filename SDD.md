@@ -399,14 +399,16 @@ normalised `INPUTS` by the vendored ISF adapter (`vendor/pupitre-ui/isf.js`)
 and rendered by the shared `vendor/pupitre-ui/pupitre-ui.js` renderer. Both
 assets are loaded only when the first viewer needs controls, so a Docsify page
 without shader viewers does not pay the PUI download cost. `puiBase` can point
-at another asset location; failure falls back to the legacy rows. The
+at another asset location; if the assets cannot load, the drawer shows a
+diagnostic with Retry while the shader keeps rendering. The
 drawer is an **embedded** PUI panel (`embedded: true`): it carries no panel
 header or implicit titles, uses the viewer's `--isf-*` theme tokens through a
 small CSS bridge, and stacks labels above controls when the drawer is narrow
 (a container query, not a viewport breakpoint). PUI owns the widget
 behaviour, reset affordance, a11y and focus handling; the plugin owns values,
-clamping, media and events. `ui: "legacy"` (or a PUI mount failure) keeps the
-built-in rows described below.
+clamping, media and events. PUI is the only parameter/actions renderer: the
+code editor, stage canvas, header toolbar and status line stay host surfaces
+(a code editor is engine-specific, like a canvas).
 
 The PUI document maps every normalised ISF input:
 
@@ -435,7 +437,8 @@ The parameters panel is one PUI surface. The plugin-owned view row (a
 layout, the **Time** scrub and **Randomize** / **Export PNG**) is mounted as a
 PUI **host block** (`isf.view`, registered with `ui.registerBlock`): it keeps
 the viewer-specific runtime behaviour and DOM while sitting in the normal PUI
-section flow. The legacy renderer keeps the same row as a sibling of its rows.
+section flow. While the on-demand assets load (or if they fail), the row stays
+a sibling of the panel.
 The view row therefore uses PUI's control target sizes and palette.
 
 ### 7.3 Editor
@@ -560,9 +563,9 @@ layer (skips with a message when Chrome or puppeteer-core is unavailable).
 - **Vertex attributes.** Only `isf_position` exists; shaders needing more
   attributes cannot run.
 - **Cross-origin assets** need CORS.
-- **The legacy parameter rows are fallback-only.** The default drawer is PUI;
-  `ui: "legacy"` and a PUI mount failure keep the old rows working. They are
-  frozen and can be removed once the PUI path has shipped for a release.
+- **PUI assets are on-demand.** Deploy `vendor/pupitre-ui/` next to
+  `docsify-isf.js` (or set `isf.puiBase`); the drawer shows a diagnostic with
+  Retry if they cannot load. There is no second parameter renderer.
 - Future: WebGL2 GLSL ES 3.00 transpilation for the dynamic-indexing family,
   `requestVideoFrameCallback` video inputs, `<input type=range>` keyboard
   accessibility pass, per-link option overrides, CodeMirror adapter.

@@ -3903,7 +3903,6 @@
         height: "360px",
         aspectRatio: null,          // e.g. "16/9"
         controls: true,
-        ui: "pui",                  // "pui" (shared Pupitre UI) | "legacy"
         params: "auto",             // "auto" | "open" | "closed"
         paramsOpenLimit: 6,
         autoplay: true,
@@ -3946,9 +3945,6 @@
         if (config.params !== "auto" && config.params !== "open" && config.params !== "closed") config.params = DEFAULTS.params;
         if (typeof config.enabled !== "boolean") config.enabled = DEFAULTS.enabled;
         if (typeof config.controls !== "boolean") config.controls = DEFAULTS.controls;
-        if (config.ui === false || config.ui === 0) config.ui = "legacy";
-        if (config.ui === true || config.ui === 1) config.ui = "pui";
-        if (config.ui !== "pui" && config.ui !== "legacy") config.ui = DEFAULTS.ui;
         if (typeof config.editor !== "boolean") config.editor = DEFAULTS.editor;
         if (typeof config.editorOpen !== "boolean") config.editorOpen = DEFAULTS.editorOpen;
         if (typeof config.editorLive !== "boolean") config.editorLive = DEFAULTS.editorLive;
@@ -5401,22 +5397,9 @@
             ".isf-panel:last-child{border-bottom:0}",
             ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.35rem .6rem;font-size:.72rem;font-weight:600;color:var(--isf-muted);text-transform:uppercase;letter-spacing:.05em;background:var(--isf-surface);position:sticky;top:0;z-index:1}",
             ".isf-params-list{padding:.25rem .65rem .5rem}",
-            ".isf-param{display:grid;grid-template-columns:minmax(84px,32%) minmax(0,1fr);gap:.4rem .6rem;align-items:center;padding:.28rem 0;font-size:.8rem;border-top:1px dashed var(--isf-border)}",
-            ".isf-param:first-child{border-top:0}",
-            ".isf-param-label{color:var(--isf-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-            ".isf-param-label:hover{color:var(--isf-text)}",
-            ".isf-param-control{display:flex;align-items:center;gap:.4rem;min-width:0}",
-            ".isf-param-control input[type=range]{flex:1 1 auto;min-width:0;height:18px;accent-color:var(--isf-accent);margin:0}",
-            ".isf-param-control input[type=number]{width:4.6rem;border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);padding:.12rem .3rem;font-size:.76rem;text-align:right}",
-            ".isf-param-control select{border:1px solid var(--isf-border);border-radius:5px;background:var(--isf-bg);color:var(--isf-text);padding:.12rem .3rem;font-size:.78rem;max-width:100%}",
-            ".isf-param-control input[type=checkbox]{accent-color:var(--isf-accent);width:15px;height:15px;margin:0}",
-            ".isf-param-control input[type=color]{width:28px;height:22px;padding:0;border:1px solid var(--isf-border);border-radius:5px;background:none}",
-            ".isf-param-control .isf-axis{display:flex;align-items:center;gap:.25rem;min-width:0;flex:1 1 auto}",
-            ".isf-param-control .isf-axis span{color:var(--isf-muted);font-size:.68rem;text-transform:uppercase}",
-            ".isf-param-control input[type=range].isf-axis-range{width:100%}",
-            ".isf-event-btn{border:1px solid var(--isf-border);background:var(--isf-surface);color:var(--isf-text);border-radius:6px;padding:.22rem .55rem;font-size:.76rem;cursor:pointer}",
-            ".isf-event-btn:active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
-            ".isf-muted{color:var(--isf-muted);font-size:.74rem}",
+            ".isf-pui-note{padding:.5rem .65rem;font-size:.78rem;color:var(--isf-muted)}",
+            ".isf-pui-note strong{display:block;margin-bottom:.2rem;color:var(--isf-text);font-size:.8rem}",
+            ".isf-pui-note p{margin:0 0 .45rem}",
             ".isf-status{padding:.3rem .65rem;font-size:.74rem;color:var(--isf-muted);border-top:1px solid var(--isf-border);background:var(--isf-surface);white-space:pre-wrap}",
             ".isf-status.is-error{color:var(--isf-danger)}",
             ".isf-status.is-warn{color:#b7791f}",
@@ -5522,9 +5505,9 @@
             ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
             ".isf-spinner{width:22px;height:22px;margin:0 auto .5rem;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:isf-spin .8s linear infinite}",
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
-            "@media (pointer:coarse){.isf-param-control input[type=number],.isf-param-control select,.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem;min-height:36px}.isf-param-control input[type=range]{height:28px}.isf-param-control input[type=number]{padding:.3rem .35rem;font-size:.82rem}}",
+            "@media (pointer:coarse){.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}",
+            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}",
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
@@ -5680,15 +5663,6 @@
         if (!match) return null;
         var value = parseInt(match[1], 16);
         return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
-    }
-
-    function formatNumber(value) {
-        value = Number(value);
-        if (!isFinite(value)) return "0";
-        if (value === 0) return "0";
-        var abs = Math.abs(value);
-        if (abs >= 1000 || abs < 0.001) return value.toPrecision(4).replace(/\+?(e[+-]?\d+)$/i, "e$1");
-        return String(Math.round(value * 10000) / 10000);
     }
 
     // Clamp a parameter value to the constraints declared by the ISF metadata.
@@ -5855,179 +5829,57 @@
             typeof PupitreISF !== "undefined" && !!PupitreISF;
     }
 
-    function buildControls(container, inputs, viewer) {
+    /** Visible fallback when the on-demand PUI assets are missing: a
+     * diagnostic and a retry, not a second control implementation. */
+    function renderPUIStatus(container, viewer, loading) {
         container.innerHTML = "";
-        viewer.controlsList = [];
-        if (viewer.config.ui !== "legacy" && !viewer.puiLoadError) {
-            if (puiAvailable()) {
-                try {
-                    return buildPUIParams(container, inputs, viewer);
-                } catch (error) {
-                    if (viewer.pui) {
-                        try { viewer.pui.ui.destroy(); } catch (destroyError) { /* ignore */ }
-                        viewer.pui = null;
-                    }
-                    container.innerHTML = "";
-                    viewer.warn("PUI controls unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
-                }
-            } else {
-                loadPUI().then(function () {
-                    if (!viewer.disposed) viewer.rebuildParams();
-                }, function (error) {
-                    viewer.puiLoadError = true;
-                    viewer.warn("PUI assets unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
-                });
-            }
+        var note = h("div", "isf-pui-note", { role: loading ? "status" : "alert" });
+        note.appendChild(h("strong", null, { text: loading ? "Loading parameter controls…" : "Parameter controls unavailable" }));
+        note.appendChild(h("p", null, {
+            text: loading
+                ? "The shared Pupitre UI renderer is loading."
+                : "The shared Pupitre UI assets could not load. Deploy vendor/pupitre-ui/ next to docsify-isf.js, or set isf.puiBase; the shader still renders."
+        }));
+        if (!loading) {
+            var retry = h("button", "isf-btn", { type: "button", text: "Retry" });
+            retry.addEventListener("click", function () {
+                viewer.puiLoadError = false;
+                viewer.rebuildParams();
+            });
+            note.appendChild(retry);
         }
-        var rows = [];
-        for (var i = 0; i < inputs.length; i++) {
-            var row = buildControlRow(inputs[i], viewer);
-            if (row) {
-                container.appendChild(row);
-                rows.push(row);
-            }
-        }
-        return rows;
+        container.appendChild(note);
     }
 
-    function buildControlRow(input, viewer) {
-        var row = h("div", "isf-param", { dataset: { isfParam: input.name } });
-        var initial = viewer.values && viewer.values[input.name] !== undefined ? viewer.values[input.name] : input.default;
-        row.appendChild(h("span", "isf-param-label", { title: input.name + " (" + input.type + ") — double-click to reset", text: input.label }));
-        var control = h("span", "isf-param-control");
-
-        function onDoubleClick(event) {
-            event.preventDefault();
-            viewer.resetParameter(input.name);
+    function buildControls(container, inputs, viewer) {
+        container.innerHTML = "";
+        if (viewer.puiLoadError) {
+            renderPUIStatus(container, viewer, false);
+            return [];
         }
-        row.addEventListener("dblclick", onDoubleClick);
-
-        if (input.type === "float" || /^(animator|shaper|incrementer|damper|pass_thru|linear_filter|adsr)$/.test(input.type)) {
-            // Materials without MIN/MAX still need a usable slider: extend the
-            // 0…1 control range so it covers the material's default.
-            var initialValue = numberOr(initial, input.default);
-            var minBound = input.boundedMin === true ? input.min : Math.min(input.min, initialValue);
-            var maxBound = input.boundedMax === true ? input.max : Math.max(input.max, initialValue);
-            var step = Math.max((maxBound - minBound) / 1000, 1e-6);
-            var range = h("input", null, {
-                type: "range", min: minBound, max: maxBound, step: step,
-                value: clamp(initialValue, minBound, maxBound)
-            });
-            var number = h("input", null, {
-                type: "number", step: "any", min: minBound, max: maxBound,
-                inputmode: "decimal", value: formatNumber(clamp(initialValue, minBound, maxBound)),
-                title: "Range: " + minBound + " … " + maxBound
-            });
-            range.addEventListener("input", function () {
-                var applied = viewer.setParameter(input.name, Number(range.value));
-                number.value = formatNumber(applied);
-                number.removeAttribute("aria-invalid");
-            });
-            number.addEventListener("input", function () {
-                number.setAttribute("aria-invalid", number.checkValidity() ? "false" : "true");
-            });
-            number.addEventListener("change", function () {
-                var applied = viewer.setParameter(input.name, numberOr(number.value, input.default));
-                range.value = applied;
-                number.value = formatNumber(applied);
-                number.removeAttribute("aria-invalid");
-            });
-            control.appendChild(range);
-            control.appendChild(number);
-            viewer.controlsList.push({ name: input.name, range: range, number: number });
-        } else if (input.type === "bool") {
-            var checkbox = h("input", null, { type: "checkbox" });
-            checkbox.checked = !!initial;
-            checkbox.addEventListener("change", function () { viewer.setParameter(input.name, checkbox.checked); });
-            control.appendChild(checkbox);
-        } else if (input.type === "event") {
-            var eventButton = h("button", "isf-event-btn", { type: "button", text: "Trigger" });
-            eventButton.addEventListener("click", function () { viewer.triggerEvent(input.name); });
-            control.appendChild(eventButton);
-        } else if (input.type === "long" && input.values && input.values.length) {
-            var select = h("select");
-            for (var v = 0; v < input.values.length; v++) {
-                var option = h("option", null, { value: String(v), text: String(input.labels[v]) });
-                select.appendChild(option);
+        if (puiAvailable()) {
+            try {
+                return buildPUIParams(container, inputs, viewer);
+            } catch (error) {
+                if (viewer.pui) {
+                    try { viewer.pui.ui.destroy(); } catch (destroyError) { /* ignore */ }
+                    viewer.pui = null;
+                }
+                container.innerHTML = "";
+                viewer.warn("PUI controls failed: " + (error && error.message ? error.message : error));
+                renderPUIStatus(container, viewer, false);
+                return [];
             }
-            var selectedIndex = input.values.indexOf(initial !== undefined ? initial : input.defaultValue);
-            select.value = String(selectedIndex === -1 ? 0 : selectedIndex);
-            select.addEventListener("change", function () {
-                var index = Number(select.value) || 0;
-                viewer.setParameter(input.name, input.values[index]);
-            });
-            control.appendChild(select);
-        } else if (input.type === "long") {
-            var intInput = h("input", null, { type: "number", step: "1", inputmode: "numeric", value: formatNumber(initial !== undefined ? initial : input.defaultValue) });
-            if (input.min != null) intInput.min = input.min;
-            if (input.max != null) intInput.max = input.max;
-            intInput.addEventListener("change", function () {
-                var applied = viewer.setParameter(input.name, numberOr(intInput.value, input.defaultValue));
-                intInput.value = formatNumber(applied);
-            });
-            control.appendChild(intInput);
-        } else if (input.type === "color") {
-            var swatch = h("input", null, { type: "color", value: colorToHex(Array.isArray(initial) ? initial : input.default) });
-            var alpha = h("input", null, {
-                type: "range", min: 0, max: 1, step: 0.01,
-                value: clamp(Array.isArray(initial) ? initial[3] : input.default[3], 0, 1), title: "Alpha"
-            });
-            function pushColor() {
-                var rgb = hexToColor(swatch.value) || [0, 0, 0];
-                viewer.setParameter(input.name, [rgb[0], rgb[1], rgb[2], Number(alpha.value)]);
-            }
-            swatch.addEventListener("input", pushColor);
-            alpha.addEventListener("input", pushColor);
-            control.appendChild(swatch);
-            control.appendChild(alpha);
-        } else if (input.type === "point2D" || input.type === "floatRange") {
-            var axes = input.type === "floatRange" ? ["min", "max"] : ["x", "y"];
-            for (var a = 0; a < 2; a++) {
-                (function (axisIndex) {
-                    var axis = h("span", "isf-axis");
-                    axis.appendChild(h("span", null, { text: axes[axisIndex] }));
-                    var axisRange = h("input", "isf-axis-range", {
-                        type: "range", min: input.min[axisIndex], max: input.max[axisIndex],
-                        step: Math.max((input.max[axisIndex] - input.min[axisIndex]) / 1000, 1e-6),
-                        value: clamp(Array.isArray(initial) ? initial[axisIndex] : input.default[axisIndex], input.min[axisIndex], input.max[axisIndex]),
-                        title: axes[axisIndex] + ": " + input.min[axisIndex] + " … " + input.max[axisIndex]
-                    });
-                    axisRange.addEventListener("input", function () {
-                        var current = viewer.getParameter(input.name) || input.default.slice();
-                        current = current.slice();
-                        current[axisIndex] = Number(axisRange.value);
-                        viewer.setParameter(input.name, current);
-                    });
-                    axis.appendChild(axisRange);
-                    control.appendChild(axis);
-                })(a);
-            }
-        } else if (input.type === "image") {
-            var fileInput = h("input", "isf-hidden", { type: "file", accept: "image/*" });
-            var fileButton = h("button", "isf-btn", { type: "button", text: "Choose image…" });
-            fileButton.addEventListener("click", function () { fileInput.click(); });
-            fileInput.addEventListener("change", function () {
-                if (fileInput.files && fileInput.files[0]) viewer.setInputImage(input.name, fileInput.files[0]);
-            });
-            control.appendChild(fileButton);
-            control.appendChild(fileInput);
-        } else if (input.type === "audio" || input.type === "audioFFT") {
-            var micEnabled = !!viewer.audioState;
-            var micButton = h("button", "isf-btn", {
-                type: "button",
-                text: micEnabled ? "Microphone" : "Use mic",
-                title: micEnabled ? "Switch back to the synthetic " + input.type + " source" : "Use the microphone for audio inputs"
-            });
-            micButton.addEventListener("click", function () {
-                if (viewer.audioState) viewer.disableMicrophone();
-                else viewer.enableMicrophone();
-            });
-            control.appendChild(micButton);
-            if (!micEnabled) control.appendChild(h("span", "isf-muted", { text: "synthetic " + (input.type === "audio" ? "waveform" : "spectrum") }));
         }
-
-        row.appendChild(control);
-        return row;
+        renderPUIStatus(container, viewer, true);
+        loadPUI().then(function () {
+            if (!viewer.disposed) viewer.rebuildParams();
+        }, function (error) {
+            viewer.puiLoadError = true;
+            viewer.warn("PUI assets unavailable: " + (error && error.message ? error.message : error));
+            if (!viewer.disposed) viewer.rebuildParams();
+        });
+        return [];
     }
 
     /* ==================================================================
@@ -6036,8 +5888,8 @@
      * The parameter drawer is a PUI document generated from the normalised
      * ISF inputs by the vendored PupitreISF adapter; the renderer is the
      * vendored PupitreUI. The host (this plugin) keeps values, clamping,
-     * media and events. The legacy rows above stay as the fallback for
-     * `ui: "legacy"` and for a renderer that failed to mount.
+     * media and events. PUI is the only parameter renderer; the on-demand
+     * assets must be deployed next to the plugin (see README `puiBase`).
      * ================================================================== */
 
     function chooseImageFor(viewer, name) {
@@ -8185,21 +8037,12 @@
             }
             return applied;
         };
-        viewer.syncParameterControl = function (name, value) {
-            if (viewer.pui) {
-                // The transition animates the host value; PUI reads it back.
-                viewer.pui.ui.apply();
-                return;
-            }
-            var control = viewer.controls && viewer.controls[name];
-            if (!control || !control.range) return;
-            var active = typeof document !== "undefined" ? document.activeElement : null;
-            if (active === control.range || active === control.number) return;
-            control.range.value = clamp(value, Number(control.range.min), Number(control.range.max));
-            if (control.number) control.number.value = formatNumber(value);
+        viewer.syncParameterControl = function () {
+            // The transition animates the host value; PUI reads it back.
+            if (viewer.pui) viewer.pui.ui.apply();
         };
         // Repaint the parameter panel from host values: PUI patches in place
-        // (focus-safe); the legacy rows need a rebuild to re-read values.
+        // (focus-safe); without a renderer there is nothing to patch.
         viewer.refreshParamControls = function () {
             if (viewer.pui) {
                 try { viewer.pui.ui.apply(); return; } catch (error) { /* fall through */ }
@@ -8364,13 +8207,9 @@
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
             // PUI renders the view row as an `isf.view` host block inside the
-            // panel; the legacy renderer keeps it as a sibling.
+            // panel; while the assets load (or if they fail) it stays a sibling
+            // so pass/quality/time remain usable.
             if (!viewer.pui) paramsList.insertBefore(viewer.buildViewControls(inputs), controlsHost);
-            viewer.controls = {};
-            for (var ci = 0; ci < viewer.controlsList.length; ci++) {
-                var controlEntry = viewer.controlsList[ci];
-                viewer.controls[controlEntry.name] = controlEntry;
-            }
             viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
             var open;
             if (!config.controls) open = false;

@@ -169,8 +169,8 @@ Load**. Move the pointer over the preview to move the ripple (click for the
 Keep `docsify-isf.js` next to its `vendor/pupitre-ui/` folder: the parameter
 drawer loads the shared toolkit on demand from that sibling directory. Both
 are in the npm package and the Pages build. If you host the script elsewhere,
-point `isf.puiBase` at the folder; without it the plugin falls back to the
-built-in legacy parameter rows.
+point `isf.puiBase` at the folder; if the assets cannot load, the drawer shows
+a diagnostic with a Retry button and the shader still renders.
 
 Then write ordinary Markdown:
 
@@ -213,8 +213,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
-| `ui` | `"pui"` | Parameter panel renderer: `"pui"` uses the shared [Pupitre UI](https://codeberg.org/gllm/pupitre-ui) toolkit, `"legacy"` keeps the built-in rows (`false` is an alias). PUI falls back to the legacy rows if it cannot mount. |
-| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the legacy rows are used. |
+| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the drawer shows a diagnostic and Retry. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |
@@ -246,7 +245,9 @@ drawer is a PUI document generated from the
 normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
 as the other Pupitre hosts, embedded in the drawer with the viewer theme. The
 pass/quality/time/export row is a PUI **host block** (`isf.view`), so the whole
-drawer is one renderer; only the legacy fallback keeps it separate.
+drawer is one renderer (while the assets load, or if they fail, the row stays
+a sibling of the panel). PUI owns every parameter/action surface; the code
+editor, stage, header and status line are host surfaces.
 
 ## OBS / fullscreen link
 
