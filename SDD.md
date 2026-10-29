@@ -362,8 +362,8 @@ menu's **Default** clears the stored override and returns to the site config.
 ```
 .isf-block
 ├── .isf-header    host fallback (title + actions, removed after PUI mounts)
-│   └── .isf-pui-header  PUI toolbar: source-link title, stats readout,
-│                        editor/params/play/reset/fullscreen/source/share
+│   └── .isf-pui-header  PUI toolbar: title + ISF chip, stats readout,
+│                        editor/params/play/fullscreen/share, More menu
 ├── .isf-body
 │   └── .isf-stage  canvas, overlay (loading/error/released), fps badge
 │       ├── .isf-drawer-left   editor + import panel (overlay, translucent)
@@ -417,7 +417,7 @@ the rails are hidden.
 
 ### 7.2 Controls
 
-The parameter rows are a **Pupitre UI (PUI)** document generated from the
+The parameter inspector is a **Pupitre UI (PUI)** document generated from the
 normalised `INPUTS` by the vendored ISF adapter (`vendor/pupitre-ui/isf.js`)
 and rendered by the shared `vendor/pupitre-ui/pupitre-ui.js` renderer. Both
 assets are loaded only when the first viewer needs controls, so a Docsify page
@@ -458,15 +458,16 @@ metadata default) and double-clicking a row still resets it. Every value path
 and both `point2D` axes, `color` stays in 0…1, and `long` values snap to the
 declared `VALUES`.
 
-The parameters panel is one PUI surface. The plugin-owned view row (a
-**View** selector for pass targets, a **Resolution** preset and a **Scale**
-multiplier persisted with the layout, the **Time** scrub and **Randomize** /
-**Export PNG**) is mounted as a
-PUI **host block** (`isf.view`, registered with `ui.registerBlock`): it keeps
-the viewer-specific runtime behaviour and DOM while sitting in the normal PUI
-section flow. While the on-demand assets load (or if they fail), the row stays
-a sibling of the panel.
-The view row therefore uses PUI's control target sizes and palette. The
+The parameter inspector is one PUI surface. Its header, shader description/
+credit/categories intro and floating card frame are host chrome; the fields
+are PUI. The plugin-owned view row (a **View** selector for pass targets, a
+**Resolution** preset and a **Scale** multiplier persisted with the layout, the
+**Time** scrub and **Randomize** / **Export PNG**) is mounted as a PUI **host
+block** (`isf.view`, registered with `ui.registerBlock`) in the **last** section,
+after the parameter fields: render settings are secondary to the controls that
+define the look. While the on-demand assets load (or if they fail), the row
+stays a sibling of the panel. The view row uses PUI's control target sizes and
+palette. The
 global status line is a third PUI surface: a `statusbar` block bound to
 `/isf/status` with `tone_bind` (`/isf/statusTone` → info/success/warning/error),
 kept live by `viewer.setState()` → `ui.apply()` (the outer `.isf-status`
@@ -484,21 +485,23 @@ cleared with the page instances. When PUI is unavailable the message falls
 back to the status line.
 
 The main header is another PUI surface: a `toolbar` block built once the
-normalised inputs are known. It carries the source-link title, the live
-FPS/size `readout`, and icon-only editor/parameters/play/reset/fullscreen/
-source/share actions. Drawer and fullscreen `pressed_bind`s reflect the host
+normalised inputs are known. It carries the source-link title and an ISF chip,
+the live FPS/size `readout`, and grouped icon actions. Editor, parameters,
+play, fullscreen and share stay visible; reset and the source link live in a
+`kind:"menu"` More item. Drawer and fullscreen `pressed_bind`s reflect the host
 state, the parameters action carries the input-count badge, and play swaps its
 label and icon through the adapter. Every action calls back into the viewer;
 icon-only actions keep an `aria-label` and a native `title` tooltip, and the
-stats readout carries `a11y.name: "Render statistics"`.
-The host title/actions/stats badge are removed after a successful mount and
-remain as the fallback before the assets arrive or if the toolbar fails; the
-toolbar is refreshed when a source reload changes the available inputs.
+stats readout carries `a11y.name: "Render statistics"`. The host
+title/actions/stats badge are removed after a successful mount and remain as
+the fallback before the assets arrive or if the toolbar fails; the toolbar is
+refreshed when a source reload changes the available inputs.
 
-The fullscreen toolbox is another PUI surface: a top, non-modal `drawer` block
-holding a native PUI `toolbar` block, whose `open_bind` maps to
-`viewer.toolbarOpen`; the host block boundary only applies to the
-editor/stage themselves.
+The fullscreen toolbox is another PUI surface: a floating top, non-modal
+`drawer` block holding a native PUI `toolbar` block, whose `open_bind` maps to
+`viewer.toolbarOpen`. Opening it closes any side inspector, so the Controls
+card and the parameters/editor card never overlap; the host block boundary only
+applies to the editor/stage themselves.
 
 ### 7.3 Editor
 

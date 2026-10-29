@@ -690,6 +690,8 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 350));
     const slider = await page.$('.isf-block [data-isf-param="scale"] input[type="range"]');
     if (slider) {
+        await slider.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await new Promise((resolve) => setTimeout(resolve, 150));
         const box = await slider.boundingBox();
         const scaleBefore = await page.$eval('.isf-block [data-isf-param="scale"] input[type="number"]', (el) => Number(el.value));
         await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
@@ -789,7 +791,8 @@ try {
         if (!actions) return { missing: true, viewport: window.innerWidth, blockWidth: b.getBoundingClientRect().width,
             headerClass: header ? header.className : "none", headerHtml: header ? header.innerHTML.slice(0, 300) : "",
             status: (b.querySelector(".isf-status") || {}).textContent || "" };
-        const buttons = Array.from(actions.querySelectorAll("button.pui-button"));
+        const buttons = Array.from(actions.querySelectorAll("button.pui-button"))
+            .filter((button) => button.getClientRects().length && button.getBoundingClientRect().height > 0);
         const heights = buttons.map((button) => button.getBoundingClientRect().height);
         return {
             viewport: window.innerWidth,
@@ -891,7 +894,10 @@ try {
     const badgeHome = await page.evaluate(() => {
         const stats = Array.from(document.querySelectorAll('[data-pui-item="stats"]'));
         const statsNamed = stats.filter((el) => el.getAttribute("aria-label") === "Render statistics").length;
-        const headerButtons = Array.from(document.querySelectorAll(".isf-block .isf-pui-header button.pui-button"));
+        const headerButtons = Array.from(document.querySelectorAll(
+            ".isf-block .isf-pui-header .pui-toolbar > button.pui-button, " +
+            ".isf-block .isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger"
+        ));
         const pressedItems = Array.from(document.querySelectorAll(".isf-block .isf-pui-header [aria-pressed]"))
             .map((el) => el.getAttribute("data-pui-item"));
         return {
@@ -901,7 +907,11 @@ try {
             outsideHeader: stats.filter((el) => !el.closest(".isf-header")).length,
             headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar"),
             headerButtons: headerButtons.length,
-            nameless: headerButtons.filter((button) => !(button.getAttribute("aria-label") || "").trim()).length,
+            nameless: headerButtons.filter((button) => !(
+                (button.getAttribute("aria-label") || "").trim() ||
+                (button.title || "").trim() ||
+                (button.textContent || "").trim()
+            )).length,
             pressedItems: pressedItems,
             unexpectedPressed: pressedItems.filter((id) => ["editor", "params", "fullscreen"].indexOf(id) < 0)
         };
@@ -1302,6 +1312,8 @@ try {
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
         await sleep(300);
         const keyboardReveal = getComputedStyle(header).display !== "none";
+        const more = block.querySelector('.isf-header [data-pui-item="more"]');
+        if (more) more.click();
         const reset = block.querySelector('.isf-header [data-pui-item="reset"]');
         if (reset) reset.click();
         await sleep(400);

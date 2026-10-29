@@ -235,7 +235,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
 | `showStats` | `true` | Show `fps · resolution · passes`. |
-| `showSource` | `true` | Header download/source button. |
+| `showSource` | `true` | Source link (title and header More menu). |
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
@@ -250,11 +250,15 @@ drawer is one renderer (while the assets load, or if they fail, the row stays
 a sibling of the panel). The fullscreen toolbox is a PUI toolbar in a
 non-modal top drawer, the bottom status line is a PUI statusbar with a tone,
 and transient action feedback (copy link, reset, export, microphone) uses a
-dismissible PUI toast stack. The main header is also a PUI `toolbar`: the
-source-link title, the live FPS/size readout with an accessible name, and
-icon-only editor/parameters/play/reset/fullscreen/source/share actions
-(pressed states and the input-count badge come from bindings). The host title/actions stay as
-the pre-load/failure fallback and are removed once the PUI toolbar mounts; the
+dismissible PUI toast stack. The main header is a PUI `toolbar` with a
+source-link title and an ISF format chip, the live FPS/size readout, and
+grouped icon actions: editor, parameters, play, fullscreen and share stay
+visible; reset and source live in a More menu (pressed states and the
+input-count badge come from bindings). The parameter inspector opens with the
+shader description, credit/categories, the fields, and the View section below
+them. Drawers are floating solid cards with a shared header/close treatment in
+both the page and fullscreen. The host title/actions stay as the
+pre-load/failure fallback and are removed once the PUI toolbar mounts; the
 code editor and stage remain host surfaces.
 
 ## OBS / fullscreen link
@@ -293,9 +297,10 @@ The in-page fullscreen button (or double-clicking the canvas) makes the whole
 viewer block fill the display. The header is hidden: a PUI **Controls** drawer
 is revealed by the pill at the top centre (or **H**), clear of the side
 drawers. It carries Source editor, Parameters, Play/Pause, Reset, Exit
-fullscreen, Open source and Copy OBS link; **Escape** closes it, and choosing
-Source editor/Parameters closes it so the side drawer's own header is fully
-accessible. On narrow fullscreens the pill steps aside while a side drawer is
+fullscreen, Open source and Copy OBS link. The panel is a floating card;
+opening it closes any side inspector so the two overlays never cover each
+other. **Escape** closes it, and choosing Source editor/Parameters closes it so
+the side drawer's own header is fully accessible. On narrow fullscreens the pill steps aside while a side drawer is
 open. The shader gets the whole viewport, and the same
 Resolution/Scale cap applies, so a 4K fullscreen still renders at SD by default
 until you pick HD/FHD/Native. If the PUI assets cannot load, the normal header

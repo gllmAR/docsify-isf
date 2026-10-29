@@ -5660,8 +5660,12 @@
     var root = el("div", {class: "pui-menu"});
     var label = String(block.label || "Actions");
     var popupId = this.id("menu-popup");
-    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": popupId, text: label});
+    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": popupId});
     if (block.id) trigger.setAttribute("data-pui-item", String(block.id));
+    var triggerContent = this.toolbarContent(block, trigger);
+    var triggerRec = Object.assign({kind: "action", root: trigger, button: trigger, item: block}, triggerContent);
+    this.toolbarRecords.push(triggerRec);
+    this.toolbarRefresh(triggerRec);
     var popup = el("div", {class: "pui-menu-popup", role: "menu", "aria-label": label, id: popupId});
     popup.setAttribute("hidden", "");
     var items = isArray(block.items) ? block.items : [];
