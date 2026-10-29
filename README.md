@@ -412,10 +412,13 @@ const diff = await DocsifyISF.compareFrames(a.dataUrl, b.dataUrl, { threshold: 2
 `DATE` is frozen to `2020-01-01T00:00:00Z` by default (`date: "now"` for the
 real clock), `TIME`/`TIMEDELTA`/generators/frame index are reset per frame,
 and the viewer is disposed afterwards, so repeated renders are byte-identical.
-Frames are captured in screen orientation (the drawing buffer is flipped, like
-the editor core's captures) and composited over black because ISF output is
-straight RGBA while OBS covers are opaque — pass `background: null` to keep
-the alpha channel. `Export PNG` uses the same oriented capture.
+Frames are captured in canvas/display orientation — the same orientation as
+the live viewer and the OBS `_cover.png` captures (the raw bottom-up OBS
+source screenshot is flipped by the cover tool, not by this capture) — and
+composited over black because ISF output is straight RGBA while OBS covers are
+opaque; pass `background: null` to keep the alpha channel. `Export PNG` uses
+the same capture. Image inputs upload bottom-up so `IMG_NORM_PIXEL()` is
+upright with the bottom-left `isf_FragNormCoord`, like the reference renderer.
 
 The bundled CLI renders files or whole library sweeps and can diff them
 against the project's OBS `_cover.png` captures:

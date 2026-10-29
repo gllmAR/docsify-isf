@@ -6,7 +6,8 @@
   "files": [
     "docsify-isf.js",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "vendor/pupitre-ui/"
   ],
   "scripts": {
     "build": "node tools/build.mjs",

@@ -50,6 +50,9 @@
 
     var VERSION = "1.20.0";
     var VIEWER_SEQ = 0;
+    var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+    var PUI_BASE = "";
+    var puiLoading = null;
 
     /* ==================================================================
      * Configuration
@@ -89,6 +92,7 @@
         showStats: true,
         showSource: true,
         sourceLabel: "Source",
+        puiBase: null,              // optional URL prefix for on-demand PUI assets
         debug: false,
         silent: true
     };
@@ -3640,11 +3644,9 @@
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
             "@media (pointer:coarse){.isf-param-control input[type=number],.isf-param-control select,.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}.isf-param-control input[type=checkbox]{width:20px;height:20px}.isf-event-btn{padding:.45rem .8rem;min-height:36px}.isf-param-control input[type=range]{height:28px}.isf-param-control input[type=number]{padding:.3rem .35rem;font-size:.82rem}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}"
-        ].concat(typeof PUPITRE_CSS === "string" && PUPITRE_CSS ? [
-            PUPITRE_CSS,
-            /* PUI bridge: the parameters drawer uses the ISF palette and a
-               compact type scale; the embedded panel supplies no chrome. */
+            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-title{flex:1 1 100%;font-size:.95rem}.isf-actions{flex:1 1 100%;flex-wrap:wrap;gap:.3rem;padding:.08rem 0 .1rem}.isf-actions .isf-btn{flex:0 0 auto}.isf-count{display:none}.isf-drawer{width:100%!important;max-width:100vw}.isf-resize-x{display:none}.isf-param{grid-template-columns:minmax(0,1fr)}.isf-param-label{grid-column:1}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}.isf-badge{font-size:.72rem}}",
+            /* PUI bridge: loaded on demand, but the host palette is always
+               available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
             ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-warning:var(--isf-muted);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
             ".isf-pui .pui-caption{color:var(--isf-muted)}",
@@ -3654,7 +3656,7 @@
             ".isf-pui .pui-actions{justify-content:flex-start}",
             ".isf-pui .pui-button{font-size:.75rem;font-weight:500}",
             "@media (pointer:coarse){.isf-pui .pui input,.isf-pui .pui select,.isf-pui .pui button{font-size:16px}}"
-        ] : []).join("\n");
+        ].join("\n");
         document.head.appendChild(style);
     }
 
@@ -3901,6 +3903,64 @@
     }
 
     /* ==================================================================
+     * On-demand PUI assets
+     *
+     * docsify pages without an ISF viewer should not download the common UI
+     * renderer. The first viewer with parameters loads the renderer, adapter
+     * and CSS from the sibling vendor directory; legacy rows remain the
+     * fallback if that request fails.
+     * ================================================================== */
+
+    function puiBase() {
+        if (PUI_BASE) return PUI_BASE;
+        var configured = getConfig().puiBase;
+        if (configured) {
+            PUI_BASE = String(configured).replace(/\/?$/, "/");
+            return PUI_BASE;
+        }
+        var src = SCRIPT_SRC;
+        if (!src && typeof document !== "undefined" && document.currentScript) {
+            src = document.currentScript.src || "";
+        }
+        try {
+            PUI_BASE = new URL("vendor/pupitre-ui/", src || (typeof location !== "undefined" ? location.href : "")).toString();
+        } catch (error) {
+            PUI_BASE = "vendor/pupitre-ui/";
+        }
+        return PUI_BASE;
+    }
+
+    function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+            var script = document.createElement("script");
+            script.src = src;
+            script.async = true;
+            script.onload = function () { resolve(); };
+            script.onerror = function () { reject(new Error("Could not load " + src)); };
+            document.head.appendChild(script);
+        });
+    }
+
+    function loadPUI() {
+        if (puiAvailable()) return Promise.resolve();
+        if (puiLoading) return puiLoading;
+        puiLoading = new Promise(function (resolve, reject) {
+            var base = puiBase();
+            var css = document.createElement("link");
+            css.rel = "stylesheet";
+            css.href = base + "pupitre-ui.css";
+            document.head.appendChild(css);
+            loadScript(base + "pupitre-ui.js")
+                .then(function () { return loadScript(base + "isf.js"); })
+                .then(resolve, reject);
+        }).catch(function (error) {
+            puiLoading = null;
+            throw error;
+        });
+        return puiLoading;
+    }
+
+    /* ==================================================================
      * Parameter controls
      * ================================================================== */
 
@@ -3918,16 +3978,25 @@
     function buildControls(container, inputs, viewer) {
         container.innerHTML = "";
         viewer.controlsList = [];
-        if (viewer.config.ui !== "legacy" && puiAvailable()) {
-            try {
-                return buildPUIParams(container, inputs, viewer);
-            } catch (error) {
-                if (viewer.pui) {
-                    try { viewer.pui.ui.destroy(); } catch (destroyError) { /* ignore */ }
-                    viewer.pui = null;
+        if (viewer.config.ui !== "legacy" && !viewer.puiLoadError) {
+            if (puiAvailable()) {
+                try {
+                    return buildPUIParams(container, inputs, viewer);
+                } catch (error) {
+                    if (viewer.pui) {
+                        try { viewer.pui.ui.destroy(); } catch (destroyError) { /* ignore */ }
+                        viewer.pui = null;
+                    }
+                    container.innerHTML = "";
+                    viewer.warn("PUI controls unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
                 }
-                container.innerHTML = "";
-                viewer.warn("PUI controls unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
+            } else {
+                loadPUI().then(function () {
+                    if (!viewer.disposed) viewer.rebuildParams();
+                }, function (error) {
+                    viewer.puiLoadError = true;
+                    viewer.warn("PUI assets unavailable, using the legacy panel: " + (error && error.message ? error.message : error));
+                });
             }
         }
         var rows = [];

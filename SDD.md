@@ -239,7 +239,8 @@ Imported shaders are therefore interactive without an input control, and
 of the final output (the official editor's per-pass debug view); the
 parameters panel builds a `View` selector whenever the shader has targets.
 `runtime.qualityScale` overrides the render multiplier (Auto/1×/0.5×/0.25×/2×)
-and `runtime.snapshot()` draws synchronously and returns a PNG data URL for
+and `runtime.snapshot()` draws synchronously and returns a PNG data URL in
+canvas/display orientation (the orientation OBS covers use) for
 the export button.
 
 ### 5.8 Compatibility layers
@@ -320,6 +321,10 @@ frame (`runtime.events` is cleared after the pass loop).
 - `image` inputs get a 512×512 canvas test pattern (two variants, `endImage`
   gets the B pattern), the `imageUrl` config, or a user file (button / drag &
   drop). The canvas is uploaded once and re-uploaded when replaced.
+- Image textures upload with `UNPACK_FLIP_Y_WEBGL` so `v=0` is the image
+  bottom: `isf_FragNormCoord` is bottom-left (ISF), so
+  `IMG_NORM_PIXEL(image, isf_FragNormCoord)` is upright on the canvas, matching
+  the reference ISF-JS-Renderer. `_<image>_flip` stays 0.
 - `IMPORTED` paths are resolved against the **answering** `.fs` URL and loaded
   with `crossOrigin="anonymous"`.
 - `audio`/`audioFFT` receive a synthetic 1×N byte texture updated every frame
@@ -391,7 +396,10 @@ the rails are hidden.
 
 The parameter rows are a **Pupitre UI (PUI)** document generated from the
 normalised `INPUTS` by the vendored ISF adapter (`vendor/pupitre-ui/isf.js`)
-and rendered by the shared `vendor/pupitre-ui/pupitre-ui.js` renderer. The
+and rendered by the shared `vendor/pupitre-ui/pupitre-ui.js` renderer. Both
+assets are loaded only when the first viewer needs controls, so a Docsify page
+without shader viewers does not pay the PUI download cost. `puiBase` can point
+at another asset location; failure falls back to the legacy rows. The
 drawer is an **embedded** PUI panel (`embedded: true`): it carries no panel
 header or implicit titles, uses the viewer's `--isf-*` theme tokens through a
 small CSS bridge, and stacks labels above controls when the drawer is narrow

@@ -14,9 +14,14 @@
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+global.window = global;
+require("../vendor/pupitre-ui/pupitre-ui.js");
+require("../vendor/pupitre-ui/isf.js");
+const PupitreUI = global.window.PupitreUI;
+const PupitreISF = global.window.PupitreISF;
 
 const isf = require(path.join(__dirname, "..", "docsify-isf.js"));
-const {VERSION, PupitreUI, PupitreISF} = isf;
+const {VERSION} = isf;
 
 let passed = 0;
 let failed = 0;
@@ -141,7 +146,7 @@ test("every committed sample generates a valid PUI document", () => {
     for (const name of files) {
         const inputs = sampleInputs(name);
         if (!inputs) continue; // the two negative samples
-        const generated = isf.createParamsDocument(inputs, {valueOf: (input) => input.default});
+        const generated = PupitreISF.createDocument(inputs, {valueOf: (input) => input.default});
         assert(generated, name + ": no document");
         equal(PupitreUI.validate(generated.document), [], name + ": invalid PUI");
         equal(generated.document.panels[0].embedded, true, name + ": embedded panel");
@@ -155,7 +160,7 @@ test("every normalised ISF input has a PUI control", () => {
     for (const name of sampleFiles()) {
         const inputs = sampleInputs(name);
         if (!inputs) continue;
-        const built = blocksOf(isf.createParamsDocument(inputs, {}).document);
+        const built = blocksOf(PupitreISF.createDocument(inputs, {}).document);
         for (const input of inputs) {
             if (input.define) {
                 // generate_as_define inputs are compile-time constants.
@@ -175,7 +180,7 @@ test("every normalised ISF input has a PUI control", () => {
 test("generate_as_define inputs stay read-only constants", () => {
     const define = {name: "mode", label: "Mode", type: "long", values: ["before", "after"],
         labels: ["Before", "After"], defaultValue: "after", defaultIndex: 1, define: true};
-    const built = blocksOf(isf.createParamsDocument([define], {}).document);
+    const built = blocksOf(PupitreISF.createDocument([define], {}).document);
     equal(built.fields.length, 0, "no writable field");
     equal(built.readouts.length, 1, "one readout");
     assert(/generate_as_define/.test(built.readouts[0].help), "help explains the constant");
@@ -189,7 +194,7 @@ test("generate_as_define inputs stay read-only constants", () => {
 
 test("the plasma sample maps every control family it declares", () => {
     const inputs = sampleInputs("plasma.fs");
-    const {fields} = blocksOf(isf.createParamsDocument(inputs, {}).document);
+    const {fields} = blocksOf(PupitreISF.createDocument(inputs, {}).document);
     const plasma = fields.find((field) => field.bind === "/isf/speed");
     assert(plasma && plasma.widget === "range", "speed slider");
     const center = fields.filter((field) => field.bind.indexOf("/isf/center/") === 0);
@@ -199,7 +204,7 @@ test("the plasma sample maps every control family it declares", () => {
     assert(fields.some((field) => field.widget === "select"), "long VALUES select");
     assert(fields.some((field) => field.widget === "switch"), "bool switch");
     assert(fields.some((field) => field.widget === "button"), "event button");
-    const media = blocksOf(isf.createParamsDocument(sampleInputs("test-card.fs"), {}).document);
+    const media = blocksOf(PupitreISF.createDocument(sampleInputs("test-card.fs"), {}).document);
     assert(media.actions.some((item) => item.call === "isf.choose_image"), "image picker action");
     assert(media.actions.filter((item) => item.call === "isf.toggle_microphone").length === 1, "one microphone action for both audio inputs");
     assert(media.readouts.length === 2, "audio/FFT source readouts");
