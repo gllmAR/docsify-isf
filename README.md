@@ -207,7 +207,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
-| `ui` | `"pui"` | Parameter panel renderer: `"pui"` uses the shared [Pupitre UI](https://codeberg.org/gllm/pupitre-ui) toolkit, `"legacy"` keeps the built-in rows. PUI falls back to the legacy rows if it cannot mount. |
+| `ui` | `"pui"` | Parameter panel renderer: `"pui"` uses the shared [Pupitre UI](https://codeberg.org/gllm/pupitre-ui) toolkit, `"legacy"` keeps the built-in rows (`false` is an alias). PUI falls back to the legacy rows if it cannot mount. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |

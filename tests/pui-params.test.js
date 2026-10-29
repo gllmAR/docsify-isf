@@ -76,6 +76,10 @@ test("PUI is the default parameter panel and legacy stays selectable", () => {
     global.window = {$docsify: {isf: {ui: "legacy"}}};
     try {
         equal(isf.getConfig().ui, "legacy");
+        global.window.$docsify.isf.ui = false;
+        equal(isf.getConfig().ui, "legacy", "ui:false selects the legacy panel");
+        global.window.$docsify.isf.ui = true;
+        equal(isf.getConfig().ui, "pui", "ui:true selects PUI");
         global.window.$docsify.isf.ui = "bogus";
         equal(isf.getConfig().ui, "pui", "unknown ui values fall back to pui");
     } finally {

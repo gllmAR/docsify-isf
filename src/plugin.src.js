@@ -106,6 +106,8 @@
         if (config.params !== "auto" && config.params !== "open" && config.params !== "closed") config.params = DEFAULTS.params;
         if (typeof config.enabled !== "boolean") config.enabled = DEFAULTS.enabled;
         if (typeof config.controls !== "boolean") config.controls = DEFAULTS.controls;
+        if (config.ui === false || config.ui === 0) config.ui = "legacy";
+        if (config.ui === true || config.ui === 1) config.ui = "pui";
         if (config.ui !== "pui" && config.ui !== "legacy") config.ui = DEFAULTS.ui;
         if (typeof config.editor !== "boolean") config.editor = DEFAULTS.editor;
         if (typeof config.editorOpen !== "boolean") config.editorOpen = DEFAULTS.editorOpen;
