@@ -235,7 +235,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
 | `showStats` | `true` | Show `fps · resolution · passes`. |
-| `showSource` | `true` | Source link (title and header More menu). |
+| `showSource` | `true` | Source link (title and header overflow menu). |
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
@@ -252,9 +252,10 @@ non-modal top drawer, the bottom status line is a PUI statusbar with a tone,
 and transient action feedback (copy link, reset, export, microphone) uses a
 dismissible PUI toast stack. The main header is a PUI `toolbar` with a
 source-link title and an ISF format chip, the live FPS/size readout, and
-grouped icon actions: editor, parameters, play, fullscreen and share stay
-visible; reset and source live in a More menu (pressed states and the
-input-count badge come from bindings). The parameter inspector opens with the
+grouped icon actions. The toolbar measures itself: at wide widths every action
+is visible; when space is tight the lowest-priority actions (reset/source/
+share, then fullscreen/play if needed) collapse into More, while the title and
+stats stay put. Pressed states and the input-count badge come from bindings. The parameter inspector opens with the
 shader description, credit/categories, the fields, and the View section below
 them. Drawers are floating solid cards with a shared header/close treatment in
 both the page and fullscreen. The host title/actions stay as the

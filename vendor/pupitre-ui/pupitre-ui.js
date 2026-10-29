@@ -5638,7 +5638,9 @@
     var available = root.clientWidth || (root.getBoundingClientRect ? root.getBoundingClientRect().width : 0);
     if (!available) return;
     var main = layout.main;
-    for (var i = 0; i < main.length; i++) main[i].node.hidden = false;
+    for (var i = 0; i < main.length; i++) {
+      if (main[i].collapsible) main[i].node.hidden = false;
+    }
     for (var m = 0; m < layout.menuNodes.length; m++) layout.menuNodes[m].hidden = true;
     layout.trigger.hidden = true;
     layout.menu.hidden = true;
@@ -5646,7 +5648,10 @@
     var widths = [];
     var total = 0;
     for (var w = 0; w < main.length; w++) {
-      widths[w] = this.toolbarMeasure(main[w].node);
+      // A flex spacer absorbs the remaining width; counting its expanded
+      // measurement as fixed content makes every toolbar look overfull.
+      var flexible = main[w].node.classList && main[w].node.classList.contains("pui-toolbar-spacer");
+      widths[w] = flexible ? 0 : this.toolbarMeasure(main[w].node);
       total += widths[w] + (w ? gap : 0);
     }
     layout.menu.hidden = false;
@@ -5782,7 +5787,13 @@
       trigger = menu.querySelector(".pui-menu-trigger");
       if (trigger) trigger.hidden = true;
       menuNodes = Array.prototype.slice.call(menu.querySelectorAll("[data-pui-overflow-index]"));
-      menuNodes.forEach(function (entry) { entry.hidden = true; });
+      // The menu builder numbers its own children; map them back to the
+      // toolbar item indices used by the layout planner.
+      var autoCandidates = main.filter(function (entry) { return entry.collapsible; });
+      menuNodes.forEach(function (entry, menuIndex) {
+        entry.hidden = true;
+        if (autoCandidates[menuIndex]) entry.setAttribute("data-pui-overflow-index", String(autoCandidates[menuIndex].index));
+      });
     } else if (keep < items.length) {
       var overflowItems = items.slice(keep);
       menu = this.buildMenu({
@@ -5914,7 +5925,8 @@
     var items = isArray(block.items) ? block.items : [];
     for (var i = 0; i < items.length; i++) {
       var node = this.buildToolbarItem(popup, items[i], "menu");
-      if (node) node.setAttribute("data-pui-overflow-index", String(i));
+      var overflowIndex = isObject(items[i]) && items[i].overflow_index !== undefined ? items[i].overflow_index : i;
+      if (node) node.setAttribute("data-pui-overflow-index", String(overflowIndex));
       if (node && node.getAttribute && node.getAttribute("role") === "menuitem") {
         (function (control) {
           control.addEventListener("click", function () {
