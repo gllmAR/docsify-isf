@@ -5434,7 +5434,7 @@
       rec.badgeEl.hidden = !badge;
     }
     if (rec.button) {
-      if (item.icon_only && !hasIcon) rec.button.setAttribute("aria-label", label);
+      if (item.icon_only) rec.button.setAttribute("aria-label", label || title);
       else rec.button.removeAttribute("aria-label");
       if (title) rec.button.title = title;
       if (item.aria_controls) rec.button.setAttribute("aria-controls", String(item.aria_controls));

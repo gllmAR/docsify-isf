@@ -488,7 +488,8 @@ normalised inputs are known. It carries the source-link title, the live
 FPS/size `readout`, and icon-only editor/parameters/play/reset/fullscreen/
 source/share actions. Drawer and fullscreen `pressed_bind`s reflect the host
 state, the parameters action carries the input-count badge, and play swaps its
-label and icon through the adapter. Every action calls back into the viewer.
+label and icon through the adapter. Every action calls back into the viewer;
+icon-only actions keep an `aria-label` and a native `title` tooltip.
 The host title/actions/stats badge are removed after a successful mount and
 remain as the fallback before the assets arrive or if the toolbar fails; the
 toolbar is refreshed when a source reload changes the available inputs.

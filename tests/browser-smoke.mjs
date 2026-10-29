@@ -880,15 +880,21 @@ try {
     // ── UI: the stats pill belongs to the top bar, never over the shader ──
     const badgeHome = await page.evaluate(() => {
         const stats = Array.from(document.querySelectorAll('[data-pui-item="stats"]'));
+        const headerButtons = Array.from(document.querySelectorAll(".isf-block .isf-pui-header button.pui-button"));
         return {
             count: stats.length,
             inStage: stats.filter((el) => !!el.closest(".isf-stage")).length,
             outsideHeader: stats.filter((el) => !el.closest(".isf-header")).length,
-            headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar")
+            headerToolbar: !!document.querySelector(".isf-block .isf-pui-header .pui-toolbar"),
+            headerButtons: headerButtons.length,
+            nameless: headerButtons.filter((button) => !(button.getAttribute("aria-label") || "").trim()).length
         };
     });
     if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
         problems.push("the stats readout should live in the PUI header, never over the shader: " + JSON.stringify(badgeHome));
+    }
+    if (!badgeHome.headerButtons || badgeHome.nameless) {
+        problems.push("PUI header icon actions need an accessible name: " + JSON.stringify(badgeHome));
     }
 
     // ── UI: the code editor fills the drawer and follows a taller stage ──
