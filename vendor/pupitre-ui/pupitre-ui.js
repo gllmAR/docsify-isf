@@ -5937,6 +5937,86 @@
     return [String(raw)];
   };
 
+  Renderer.prototype.tableFilterText = function (rec) {
+    var block = rec.block;
+    var path = String(block.filter_bind || "");
+    if (path) {
+      var raw = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(path, block)
+        : this.adapter.getValue(path);
+      if (raw !== undefined && raw !== null) return String(raw);
+    }
+    if (rec.filterText !== undefined) return String(rec.filterText);
+    return String(block.filter_text || "");
+  };
+
+  Renderer.prototype.tableSortState = function (rec) {
+    var block = rec.block;
+    var path = String(block.sort_bind || "");
+    var raw = null;
+    if (path) {
+      raw = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(path, block)
+        : this.adapter.getValue(path);
+    }
+    if (!isObject(raw)) raw = isObject(rec.sort) ? rec.sort : block.sort;
+    if (!isObject(raw) || !raw.key) return {key: "", dir: "asc"};
+    var dir = String(raw.dir || "asc").toLowerCase() === "desc" ? "desc" : "asc";
+    return {key: String(raw.key), dir: dir};
+  };
+
+  Renderer.prototype.tableFilterMatch = function (row, columns, query) {
+    if (!query) return true;
+    var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    var haystack = "";
+    for (var i = 0; i < columns.length; i++) {
+      var column = columns[i];
+      if (!isObject(column) || column.filterable === false) continue;
+      haystack += " " + this.tableCell(row, column);
+    }
+    haystack = haystack.toLowerCase();
+    for (var t = 0; t < terms.length; t++) {
+      if (haystack.indexOf(terms[t]) < 0) return false;
+    }
+    return true;
+  };
+
+  Renderer.prototype.tableView = function (rec) {
+    var block = rec.block;
+    var rows = this.tableRows(block);
+    var columns = isArray(block.columns) ? block.columns.filter(isObject) : [];
+    var query = block.filterable ? this.tableFilterText(rec).trim() : "";
+    if (query) rows = rows.filter(function (row) { return this.tableFilterMatch(row, columns, query); }, this);
+    var sort = this.tableSortState(rec);
+    if (sort.key) {
+      var direction = sort.dir === "desc" ? -1 : 1;
+      rows = rows.map(function (row, index) { return {row: row, index: index}; });
+      rows.sort(function (a, b) {
+        var av = this.tableCell(a.row, {key: sort.key});
+        var bv = this.tableCell(b.row, {key: sort.key});
+        var an = av === "" ? null : Number(av);
+        var bn = bv === "" ? null : Number(bv);
+        var cmp = 0;
+        if (av !== "" && bv !== "" && !isNaN(an) && !isNaN(bn)) cmp = an - bn;
+        else cmp = String(av).localeCompare(String(bv), undefined, {numeric: true, sensitivity: "base"});
+        if (cmp === 0) cmp = a.index - b.index;
+        return cmp * direction;
+      }.bind(this));
+      rows = rows.map(function (entry) { return entry.row; });
+    }
+    return rows;
+  };
+
+  Renderer.prototype.tableSort = function (rec, key) {
+    var state = this.tableSortState(rec);
+    var next = {key: String(key), dir: state.key === String(key) && state.dir === "asc" ? "desc" : "asc"};
+    if (rec.block.sort_bind) this.setPath(String(rec.block.sort_bind), next, rec.block);
+    else rec.sort = next;
+    rec.resetScroll = true;
+    this.tableRebuild(rec);
+  };
+
   Renderer.prototype.tableWriteSelection = function (rec, keys) {
     var path = String(rec.block.selection_bind || "");
     if (!path) return;
@@ -5963,8 +6043,14 @@
     } else {
       selected.push(String(key));
     }
-    // Keep multi-selection deterministic in visual row order.
-    selected.sort(function (a, b) { return rec.keys.indexOf(a) - rec.keys.indexOf(b); });
+    // Visible rows follow the current view order; hidden selections stay put.
+    selected.sort(function (a, b) {
+      var ai = rec.keys.indexOf(a), bi = rec.keys.indexOf(b);
+      if (ai < 0 && bi < 0) return 0;
+      if (ai < 0) return -1;
+      if (bi < 0) return 1;
+      return ai - bi;
+    });
     this.tableWriteSelection(rec, selected);
   };
 
@@ -5980,81 +6066,96 @@
     });
   };
 
-  Renderer.prototype.tableRefresh = function (rec) {
-    var keys = rec.rows.map(function (row, index) { return String(this.tableKey(rec.block, row, index)); }, this);
-    if (keys.join("\u0001") !== rec.keys.join("\u0001")) {
-      this.tableRebuild(rec);
-      return;
-    }
-    rec.selected = this.tableSelection(rec.block);
-    for (var i = 0; i < rec.rows.length; i++) {
-      var selected = rec.selected.indexOf(rec.keys[i]) >= 0;
-      var rowEl = rec.rowEls[i];
-      if (rowEl) {
-        rowEl.classList.toggle("is-selected", selected);
-        rowEl.setAttribute("aria-selected", selected ? "true" : "false");
+  Renderer.prototype.tableSelectedVisible = function (rec) {
+    var selected = {};
+    rec.selected.forEach(function (key) { selected[String(key)] = true; });
+    return rec.keys.filter(function (key) { return selected[key]; });
+  };
+
+  Renderer.prototype.tableUpdateHead = function (rec) {
+    var state = this.tableSortState(rec);
+    var visible = this.tableSelectedVisible(rec);
+    for (var i = 0; i < (rec.headerCells || []).length; i++) {
+      var cell = rec.headerCells[i];
+      if (cell.th) {
+        if (cell.sortable) {
+          if (state.key === cell.key) cell.th.setAttribute("aria-sort", state.dir === "desc" ? "descending" : "ascending");
+          else cell.th.setAttribute("aria-sort", "none");
+        }
+        if (cell.indicator) {
+          cell.indicator.textContent = state.key === cell.key ? (state.dir === "desc" ? "▼" : "▲") : "";
+          cell.indicator.hidden = state.key !== cell.key;
+        }
       }
-      var check = rec.checks[i];
-      if (check && check.checked !== selected) check.checked = selected;
     }
-    for (var a = 0; a < rec.actionItems.length; a++) {
-      rec.actionItems[a].args = Object.assign({}, rec.actionItems[a].args, {
-        selected: rec.selected.slice(),
-        item: rec.selected.length === 1 ? rec.selected[0] : undefined
-      });
+    if (rec.selectAll) {
+      rec.selectAll.checked = visible.length > 0 && visible.length === rec.keys.length;
+      rec.selectAll.indeterminate = visible.length > 0 && visible.length < rec.keys.length;
+      rec.selectAll.setAttribute("aria-label", rec.keys.length ? "Select all visible rows" : "Select all rows");
+    }
+    if (rec.count) {
+      rec.count.textContent = rec.keys.length === rec.totalRows ? rec.totalRows + " rows" : rec.keys.length + " of " + rec.totalRows + " rows";
+    }
+    if (rec.table) {
+      rec.table.setAttribute("aria-rowcount", String(rec.keys.length + 1));
+      rec.table.setAttribute("aria-colcount", String((rec.headerCells || []).length + (rec.block.multi !== false ? 1 : 0)));
     }
   };
 
-  Renderer.prototype.tableRebuild = function (rec) {
+  Renderer.prototype.tableRowEmpty = function (rec) {
+    var block = rec.block;
+    var columns = isArray(block.columns) ? block.columns : [];
+    var colspan = Math.max(1, columns.length + (block.multi !== false ? 1 : 0));
+    var row = el("tr", {}, el("td", {colspan: colspan, class: "pui-table-empty-cell"}));
+    if (rec.totalRows === 0 && isObject(block.empty)) row.firstChild.appendChild(this.buildBlock(block.empty));
+    else row.firstChild.textContent = String(rec.totalRows === 0 ? (block.empty_text || "No rows.") : (block.empty_filter_text || "No matching rows."));
+    return row;
+  };
+
+  Renderer.prototype.tableRenderBody = function (rec) {
     var self = this;
     var block = rec.block;
-    var rows = this.tableRows(block);
-    var keys = rows.map(function (row, index) { return String(self.tableKey(block, row, index)); });
-    var selected = this.tableSelection(block);
-    rec.rows = rows;
-    rec.keys = keys;
-    rec.selected = selected;
+    var columns = isArray(block.columns) ? block.columns.filter(isObject) : [];
+    while (rec.body.firstChild) rec.body.removeChild(rec.body.firstChild);
     rec.rowEls = [];
     rec.checks = [];
-    rec.body.innerHTML = "";
-    var columns = isArray(block.columns) ? block.columns : [];
+    var total = rec.keys.length;
     if (!columns.length) {
-      var empty = el("p", {class: "pui-table-empty", text: "Table has no columns."});
-      rec.body.appendChild(el("tr", {}, el("td", {colspan: 1}, empty)));
+      rec.body.appendChild(el("tr", {}, el("td", {colspan: 1}, el("p", {class: "pui-table-empty", text: "Table has no columns."}))));
+      this.tableUpdateHead(rec);
       return;
     }
-    var headRow = rec.headRow;
-    headRow.innerHTML = "";
-    if (block.multi !== false) {
-      var selectAll = el("input", {type: "checkbox", "aria-label": "Select all rows"});
-      selectAll.checked = rows.length > 0 && selected.length === rows.length;
-      selectAll.addEventListener("change", function () {
-        self.tableWriteSelection(rec, selectAll.checked ? keys.slice() : []);
-      });
-      headRow.appendChild(el("th", {class: "pui-table-select"}, selectAll));
-    }
-    columns.forEach(function (column) {
-      var th = el("th", {scope: "col", text: String(column.label || column.key || "")});
-      if (column.width) th.style.width = String(column.width);
-      headRow.appendChild(th);
-    });
-    if (rows.length === 0) {
-      var colspan = columns.length + (block.multi !== false ? 1 : 0);
-      var emptyRow = el("tr", {}, el("td", {colspan: colspan, class: "pui-table-empty-cell"}));
-      if (isObject(block.empty)) emptyRow.firstChild.appendChild(this.buildBlock(block.empty));
-      else emptyRow.firstChild.textContent = String(block.empty_text || "No rows.");
-      rec.body.appendChild(emptyRow);
+    if (!total) {
+      rec.body.appendChild(this.tableRowEmpty(rec));
+      this.tableUpdateHead(rec);
       return;
     }
-    for (var r = 0; r < rows.length; r++) {
+    var start = 0;
+    var end = total;
+    var virtual = !!block.virtual;
+    var rowHeight = Math.max(18, Number(block.row_height) || 32);
+    var viewportHeight = Math.max(1, Number(block.height) || 320);
+    if (virtual && rec.viewport) {
+      var scrollTop = Number(rec.viewport.scrollTop) || 0;
+      start = Math.max(0, Math.floor(scrollTop / rowHeight) - 2);
+      end = Math.min(total, start + Math.ceil(viewportHeight / rowHeight) + 5);
+    }
+    if (virtual && start > 0) {
+      var top = el("tr", {class: "pui-table-spacer", "aria-hidden": "true"}, el("td", {colspan: columns.length + (block.multi !== false ? 1 : 0)}));
+      top.firstChild.style.height = String(start * rowHeight) + "px";
+      rec.body.appendChild(top);
+    }
+    for (var index = start; index < end; index++) {
       (function (row, index) {
-        var key = keys[index];
+        var key = rec.keys[index];
         var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: "0", role: "row"});
-        tr.setAttribute("aria-selected", selected.indexOf(key) >= 0 ? "true" : "false");
-        if (selected.indexOf(key) >= 0) tr.classList.add("is-selected");
+        tr.setAttribute("aria-selected", rec.selected.indexOf(key) >= 0 ? "true" : "false");
+        if (virtual) tr.setAttribute("aria-rowindex", String(index + 2));
+        if (rec.selected.indexOf(key) >= 0) tr.classList.add("is-selected");
+        var check = null;
         if (block.multi !== false) {
-          var check = el("input", {type: "checkbox", "aria-label": "Select " + key});
-          check.checked = selected.indexOf(key) >= 0;
+          check = el("input", {type: "checkbox", "aria-label": "Select " + key});
+          check.checked = rec.selected.indexOf(key) >= 0;
           check.addEventListener("click", function (event) {
             event.stopPropagation();
             self.tableToggle(rec, key, true);
@@ -6062,10 +6163,12 @@
           tr.appendChild(el("td", {class: "pui-table-select"}, check));
           rec.checks.push(check);
         }
+        var cells = [];
         columns.forEach(function (column) {
           var td = el("td", {class: column.cell ? "pui-table-" + String(column.cell) : ""});
           td.textContent = self.tableCell(row, column);
           tr.appendChild(td);
+          cells.push({node: td, column: column});
         });
         tr.addEventListener("click", function (event) {
           if (event.target && event.target.tagName === "INPUT") return;
@@ -6077,13 +6180,120 @@
             self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
           }
         });
-        rec.rowEls.push(tr);
+        rec.rowEls.push({key: key, row: row, el: tr, check: check, cells: cells});
         rec.body.appendChild(tr);
-      })(rows[r], r);
+      })(rec.rows[index], index);
     }
+    if (virtual && end < total) {
+      var bottom = el("tr", {class: "pui-table-spacer", "aria-hidden": "true"}, el("td", {colspan: columns.length + (block.multi !== false ? 1 : 0)}));
+      bottom.firstChild.style.height = String((total - end) * rowHeight) + "px";
+      rec.body.appendChild(bottom);
+    }
+    this.tableUpdateHead(rec);
+  };
+
+  Renderer.prototype.tableRefresh = function (rec) {
+    var block = rec.block;
+    var rows = this.tableView(rec);
+    var keys = rows.map(function (row, index) { return String(this.tableKey(block, row, index)); }, this);
+    var rowSignature;
+    try { rowSignature = JSON.stringify(rows); } catch (error) { rowSignature = ""; }
+    var viewChanged = keys.join("\u0001") !== rec.keys.join("\u0001");
+    var sortOrFilter = !!this.tableSortState(rec).key || (!!block.filterable && !!this.tableFilterText(rec).trim());
+    if (viewChanged || (rowSignature !== rec.rowSignature && sortOrFilter)) {
+      rec.resetScroll = false;
+      this.tableRebuild(rec);
+      return;
+    }
+    rec.rowSignature = rowSignature;
+    rec.rows = rows;
+    rec.totalRows = this.tableRows(block).length;
+    rec.selected = this.tableSelection(block);
+    var filterText = this.tableFilterText(rec);
+    if (rec.filterInput && rec.filterInput.value !== filterText) rec.filterInput.value = filterText;
+    for (var i = 0; i < rec.rowEls.length; i++) {
+      var entry = rec.rowEls[i];
+      var selected = rec.selected.indexOf(entry.key) >= 0;
+      entry.el.classList.toggle("is-selected", selected);
+      entry.el.setAttribute("aria-selected", selected ? "true" : "false");
+      if (entry.check && entry.check.checked !== selected) entry.check.checked = selected;
+      for (var c = 0; c < entry.cells.length; c++) {
+        entry.cells[c].node.textContent = this.tableCell(entry.row, entry.cells[c].column);
+      }
+    }
+    this.tableUpdateHead(rec);
+    for (var a = 0; a < rec.actionItems.length; a++) {
+      rec.actionItems[a].args = Object.assign({}, rec.actionItems[a].args, {
+        selected: rec.selected.slice(),
+        item: rec.selected.length === 1 ? rec.selected[0] : undefined
+      });
+    }
+  };
+
+  Renderer.prototype.tableRebuild = function (rec) {
+    var self = this;
+    var block = rec.block;
+    var rows = this.tableView(rec);
+    var keys = rows.map(function (row, index) { return String(self.tableKey(block, row, index)); });
+    var selected = this.tableSelection(block);
+    rec.rows = rows;
+    rec.keys = keys;
+    rec.selected = selected;
+    rec.totalRows = this.tableRows(block).length;
+    try { rec.rowSignature = JSON.stringify(rows); } catch (error) { rec.rowSignature = ""; }
+    if (rec.filterInput) rec.filterInput.value = this.tableFilterText(rec);
+    rec.rowEls = [];
+    rec.checks = [];
+    rec.headerCells = [];
+    rec.body.innerHTML = "";
+    var columns = isArray(block.columns) ? block.columns : [];
+    if (!columns.length) {
+      rec.body.appendChild(el("tr", {}, el("td", {colspan: 1}, el("p", {class: "pui-table-empty", text: "Table has no columns."}))));
+      this.tableUpdateHead(rec);
+      return;
+    }
+    var headRow = rec.headRow;
+    headRow.innerHTML = "";
+    rec.selectAll = null;
+    if (block.multi !== false) {
+      var selectAll = el("input", {type: "checkbox", "aria-label": "Select all rows"});
+      selectAll.checked = rows.length > 0 && selected.length === rows.length;
+      selectAll.addEventListener("change", function () {
+        // Select every visible row, preserving hidden selections.
+        var next = rec.selected.filter(function (key) { return rec.keys.indexOf(String(key)) < 0; });
+        if (selectAll.checked) next = next.concat(rec.keys);
+        self.tableWriteSelection(rec, next);
+      });
+      rec.selectAll = selectAll;
+      headRow.appendChild(el("th", {class: "pui-table-select"}, selectAll));
+    }
+    var sortState = this.tableSortState(rec);
+    columns.forEach(function (column) {
+      if (!isObject(column)) return;
+      var key = String(column.key || "");
+      var sortable = !!block.sortable ? column.sortable !== false : column.sortable === true;
+      var th = el("th", {scope: "col"});
+      if (column.width) th.style.width = String(column.width);
+      if (sortable) {
+        var button = el("button", {type: "button", class: "pui-table-sort", text: String(column.label || key || "")});
+        var indicator = el("span", {class: "pui-table-sort-indicator", "aria-hidden": "true", text: sortState.key === key ? (sortState.dir === "desc" ? "▼" : "▲") : ""});
+        if (sortState.key !== key) indicator.hidden = true;
+        button.appendChild(indicator);
+        button.addEventListener("click", function () { self.tableSort(rec, key); });
+        th.appendChild(button);
+        rec.headerCells.push({th: th, key: key, sortable: true, indicator: indicator});
+      } else {
+        th.textContent = String(column.label || key || "");
+        rec.headerCells.push({th: th, key: key, sortable: false});
+      }
+      headRow.appendChild(th);
+    });
     rec.actions.innerHTML = "";
     rec.actionItems = this.tableActionItems(rec);
     if (rec.actionItems.length) rec.actions.appendChild(this.buildActions(rec.actionItems, "table"));
+    if (rec.resetScroll && rec.viewport) rec.viewport.scrollTop = 0;
+    rec.resetScroll = false;
+    this.tableRenderBody(rec);
   };
 
   Renderer.prototype.buildTable = function (block) {
@@ -6093,6 +6303,20 @@
     if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
     if (block.label) root.appendChild(el("h4", {class: "pui-table-title", text: String(block.label)}));
     if (block.help) root.appendChild(el("p", {class: "pui-help", text: String(block.help)}));
+    var filterBar = null;
+    var filterInput = null;
+    var count = null;
+    if (block.filterable) {
+      filterBar = el("div", {class: "pui-table-toolbar"});
+      var filterId = this.id("table-filter");
+      filterInput = el("input", {type: "search", id: filterId, class: "pui-table-filter",
+        placeholder: String(block.filter_placeholder || "Filter rows…"),
+        "aria-label": String(block.filter_label || "Filter rows")});
+      count = el("span", {class: "pui-table-count", role: "status", "aria-live": "polite"});
+      filterBar.appendChild(filterInput);
+      filterBar.appendChild(count);
+      root.appendChild(filterBar);
+    }
     var table = el("table", {class: "pui-table-grid"});
     var captionId = this.id("table-caption");
     if (block.label) {
@@ -6105,18 +6329,39 @@
     table.appendChild(head);
     var body = el("tbody");
     table.appendChild(body);
+    var viewport = el("div", {class: "pui-table-viewport"});
+    if (block.virtual) {
+      viewport.style.maxHeight = String(Number(block.height) || 320) + "px";
+      viewport.tabIndex = 0;
+    }
+    viewport.appendChild(table);
     var actions = el("div", {class: "pui-table-actions"});
-    root.appendChild(table);
+    root.appendChild(viewport);
     root.appendChild(actions);
     var rec = {
       root: root, block: block, table: table, headRow: headRow, body: body, actions: actions,
-      rows: [], keys: [], selected: [], rowEls: [], checks: [], actionItems: [],
+      viewport: viewport, filterInput: filterInput, count: count,
+      rows: [], keys: [], selected: [], rowEls: [], checks: [], actionItems: [], headerCells: [],
+      filterText: block.filter_text, sort: block.sort, totalRows: 0, resetScroll: true,
       pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
       visible: true, enabled: true
     };
+    if (filterInput) {
+      filterInput.value = this.tableFilterText(rec);
+      filterInput.addEventListener("input", function () {
+        var value = filterInput.value;
+        if (block.filter_bind) self.setPath(String(block.filter_bind), value, block);
+        else rec.filterText = value;
+        rec.resetScroll = true;
+        self.tableRebuild(rec);
+      });
+    }
+    viewport.addEventListener("scroll", function () {
+      if (block.virtual) self.tableRenderBody(rec);
+    });
     this.tableRecords.push(rec);
     this.tableRebuild(rec);
-    return root;
+    return rec.root;
   };
 
   Renderer.prototype.collectionItems = function (block) {

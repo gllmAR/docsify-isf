@@ -770,8 +770,13 @@ try {
     // swapping one for the other keeps the render reachable.
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await new Promise((resolve) => setTimeout(resolve, 500));
+    await page.waitForFunction(() => {
+        const b = document.querySelector(".isf-block");
+        return !!b && !!b.querySelector(".isf-pui-header .pui-toolbar");
+    }, { timeout: 10000 }).catch(() => {});
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
+        if (!b) return;
         b.scrollIntoView({ block: "center" });
         if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="editor"]').click();
         if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="params"]').click();
@@ -780,6 +785,7 @@ try {
     const phone = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         const actions = b.querySelector(".isf-pui-header .pui-toolbar");
+        if (!actions) return { missing: true, viewport: window.innerWidth, blockWidth: b.getBoundingClientRect().width };
         const buttons = Array.from(actions.querySelectorAll("button.pui-button"));
         const heights = buttons.map((button) => button.getBoundingClientRect().height);
         return {
@@ -791,6 +797,7 @@ try {
             stripHeight: actions.getBoundingClientRect().height
         };
     });
+    if (phone.missing) problems.push("mobile: PUI header toolbar did not mount");
     if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px)");
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
