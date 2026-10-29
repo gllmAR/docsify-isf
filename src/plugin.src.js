@@ -227,6 +227,11 @@
     var LAYOUT_KEY = "docsify-isf:layout";
     var VALUES_KEY_PREFIX = "docsify-isf:values:";
     var VIEWERS = [];
+    var TOASTS = [];
+    var TOAST_SEQ = 0;
+    var toastUI = null;
+    var toastHost = null;
+    var toastTimers = {};
 
     function loadStoredValues(url) {
         try {
@@ -3554,8 +3559,6 @@
             ".isf-pui-statusbar .pui-statusbar{border:0;background:transparent;padding:.3rem .65rem;min-height:0;gap:.5rem;font-size:.74rem;color:var(--isf-muted)}",
             ".isf-pui-statusbar .pui-statusbar-label{display:none}",
             ".isf-pui-statusbar .pui-statusbar-value{white-space:pre-wrap;font-weight:400;text-align:start;color:inherit}",
-            ".isf-status.is-error .isf-pui-statusbar .pui-statusbar-value{color:var(--isf-danger)}",
-            ".isf-status.is-warn .isf-pui-statusbar .pui-statusbar-value{color:#b7791f}",
             ".isf-editor-wrap{display:flex;flex-direction:column;min-height:0;height:100%}",
             ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -3618,6 +3621,10 @@
             ".isf-pui-toolbar .pui-toolbar{border-bottom:0;background:transparent;padding:0;min-height:0}",
             ".isf-pui-toolbar .pui-actions{gap:.4rem}",
             ".isf-pui-toolbar .pui-button{font-size:.75rem;background:var(--isf-surface);border-color:var(--isf-border);color:var(--isf-text)}",
+            ".isf-pui-toasts{position:fixed;inset:0;z-index:2147483002;pointer-events:none}",
+            ".isf-pui-toasts .pui{padding:0;background:transparent;border-radius:0;pointer-events:none}",
+            ".isf-pui-toasts .pui-toast-region{pointer-events:none}",
+            ".isf-pui-toasts .pui-toast{pointer-events:auto;background:var(--isf-surface)}",
 
 
             "/* bare mode: a self-contained fullscreen viewer for OBS browser sources */",
@@ -3682,7 +3689,7 @@
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
-            ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-warning:var(--isf-muted);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
+            ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
             ".isf-pui .pui output{display:inline;padding:0;margin:0;border:0;border-radius:0;position:static;background:none}",
             ".isf-pui .pui-caption{color:var(--isf-muted)}",
             ".isf-pui .pui-caption:hover{color:var(--isf-text)}",
@@ -4021,6 +4028,92 @@
             note.appendChild(retry);
         }
         container.appendChild(note);
+    }
+
+    function toastLevel(level) {
+        var value = String(level || "info").toLowerCase();
+        return value === "success" || value === "warning" || value === "error" ? value : "info";
+    }
+
+    function ensureToastUI() {
+        if (toastUI || typeof document === "undefined" || !puiAvailable()) return;
+        var host = h("div", "isf-pui isf-pui-toasts");
+        document.body.appendChild(host);
+        var adapter = {
+            getValue: function (path) { return path === "/isf/ui/notices" ? TOASTS : undefined; },
+            setValue: function () { return false; },
+            callAction: function (name, args) {
+                if (name === "isf.notice_dismiss") return dismissNotice(args && args.id);
+                return false;
+            },
+            getPathMeta: function () { return {}; }
+        };
+        var ui = PupitreUI.create({
+            mount: host,
+            density: "compact",
+            getValue: adapter.getValue,
+            setValue: adapter.setValue,
+            callAction: adapter.callAction,
+            getPathMeta: adapter.getPathMeta,
+            translate: function (key, fallback) { return fallback; }
+        });
+        var doc = {
+            format: "pupitre-ui", version: 1, host: "docsify-isf",
+            panels: [{id: "isf-toasts", title: "Notifications", embedded: true, pages: [{id: "toasts", title: "Notifications", sections: [{
+                id: "toasts", title: "Notifications", blocks: [{
+                    kind: "toast", id: "isf-toasts", bind: "/isf/ui/notices",
+                    placement: "bottom-end",
+                    dismiss: {id: "isf-notice-dismiss", label: "Dismiss", call: "isf.notice_dismiss"}
+                }]
+            }]}]}]
+        };
+        try {
+            ui.render(doc);
+        } catch (error) {
+            try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+            if (host.parentNode) host.parentNode.removeChild(host);
+            return;
+        }
+        toastUI = {ui: ui, host: host};
+        toastHost = host;
+    }
+
+    function dismissNotice(id) {
+        var index = -1;
+        for (var i = 0; i < TOASTS.length; i++) {
+            if (String(TOASTS[i].id) === String(id)) { index = i; break; }
+        }
+        if (index < 0) return false;
+        TOASTS.splice(index, 1);
+        if (toastTimers[id]) { clearTimeout(toastTimers[id]); delete toastTimers[id]; }
+        try { if (toastUI) toastUI.ui.apply(); } catch (error) { /* ignore */ }
+        return true;
+    }
+
+    function notify(level, text) {
+        var message = String(text === undefined || text === null ? "" : text);
+        if (!message || typeof document === "undefined" || !puiAvailable()) return false;
+        ensureToastUI();
+        if (!toastUI) return false;
+        var id = "n" + (++TOAST_SEQ);
+        TOASTS.push({id: id, text: message, level: toastLevel(level)});
+        try { toastUI.ui.apply(); } catch (error) { /* ignore */ }
+        toastTimers[id] = setTimeout(function () { dismissNotice(id); }, 4200);
+        return true;
+    }
+
+    function destroyToastUI() {
+        for (var id in toastTimers) {
+            if (Object.prototype.hasOwnProperty.call(toastTimers, id)) clearTimeout(toastTimers[id]);
+        }
+        toastTimers = {};
+        TOASTS = [];
+        if (toastUI) {
+            try { toastUI.ui.destroy(); } catch (error) { /* ignore */ }
+            toastUI = null;
+        }
+        if (toastHost && toastHost.parentNode) toastHost.parentNode.removeChild(toastHost);
+        toastHost = null;
     }
 
     function buildControls(container, inputs, viewer) {
@@ -5899,6 +5992,11 @@
 
         /* ---------------------------------------------------------- UI */
 
+        viewer.notify = function (level, message) {
+            if (notify(level, message)) return true;
+            viewer.setState(message, level === "error" ? "error" : level === "warning" ? "warn" : "");
+            return false;
+        };
         viewer.setState = function (message, kind) {
             viewer.statusText = message ? String(message) : "";
             viewer.statusKind = kind ? String(kind) : "";
@@ -5945,7 +6043,7 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            viewer.setState("Frame exported as " + link.download, "ok");
+            viewer.notify("success", "Frame exported as " + link.download);
         };
         viewer.copyLink = function () {
             // A self-contained fullscreen URL for OBS browser sources: it names
@@ -5976,7 +6074,7 @@
                 url.searchParams.delete("isf-values");
             }
             var link = url.toString();
-            var done = function () { viewer.setState("Fullscreen OBS link copied to the clipboard", "ok"); };
+            var done = function () { viewer.notify("success", "Fullscreen OBS link copied"); };
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(link).then(done, function () { window.prompt("Copy this link", link); });
             } else {
@@ -6113,6 +6211,7 @@
                 viewer.runtime.time = 0;
                 viewer.runtime.needsRender = true;
             }
+            if (viewer.notify) viewer.notify("info", "Parameters reset");
         };
         viewer.toggleFullscreen = function () {
             var fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
@@ -6235,7 +6334,7 @@
                 viewer.setParameter(input.name, value);
             }
             viewer.refreshParamControls();
-            viewer.setState("Parameters randomized", "");
+            viewer.notify("info", "Parameters randomized");
         };
         viewer.setParameter = function (name, value) {
             var input = viewer.inputByName && viewer.inputByName[name];
@@ -6323,7 +6422,7 @@
                 viewer.audioState = { context: context, stream: stream, analyser: analyser, data: new Uint8Array(analyser.frequencyBinCount) };
                 viewer.rebuildParams();
                 if (viewer.runtime) { viewer.runtime.needsRender = true; BUDGET.touch(viewer); }
-                viewer.setState("Microphone input enabled", "ok");
+                viewer.notify("success", "Microphone input enabled");
             }).catch(function (error) {
                 viewer.warn("Microphone unavailable: " + (error && error.message ? error.message : error));
             });
@@ -6337,7 +6436,7 @@
             viewer.audioState = null;
             viewer.rebuildParams();
             if (viewer.runtime) viewer.runtime.needsRender = true;
-            viewer.setState("Synthetic audio", "");
+            viewer.notify("info", "Synthetic audio");
         };
 
         /* -------------------------------------------------- params panel */
@@ -6446,11 +6545,11 @@
             }
             items.push({kind: "separator", label: ""});
             items.push({id: "play", label: viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause", call: "isf.play"});
-            items.push({id: "reset", label: "Reset parameters", call: "isf.reset", result: "Reset"});
+            items.push({id: "reset", label: "Reset parameters", call: "isf.reset"});
             items.push({kind: "separator", label: ""});
             items.push({id: "fullscreen", label: "Exit fullscreen", call: "isf.fullscreen"});
             items.push({id: "source", label: "Open source", call: "isf.source"});
-            if (config.share) items.push({id: "share", label: "Copy OBS link", call: "isf.share", result: "Link copied"});
+            if (config.share) items.push({id: "share", label: "Copy OBS link", call: "isf.share"});
             return {
                 format: "pupitre-ui",
                 version: 1,
@@ -6491,7 +6590,15 @@
             if (!host) return;
             var adapter = {
                 getValue: function (path) {
-                    return path === "/isf/status" ? (viewer.statusText || "") : undefined;
+                    if (path === "/isf/status") return viewer.statusText || "";
+                    if (path === "/isf/statusTone") {
+                        var kind = String(viewer.statusKind || "");
+                        if (/error/i.test(kind)) return "error";
+                        if (/warn/i.test(kind)) return "warning";
+                        if (/ok|success/i.test(kind)) return "success";
+                        return "info";
+                    }
+                    return undefined;
                 },
                 setValue: function () { return false; },
                 getPathMeta: function () { return {}; }
@@ -6508,8 +6615,9 @@
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-status", title: "Status", embedded: true, pages: [{id: "status", title: "Status", sections: [{
                     id: "status", title: "Status", blocks: [{
-                        kind: "statusbar", label: "Status", bind: "/isf/status",
-                        a11y: {name: "Status", live: "off"}
+                        kind: "statusbar", label: "Status",
+                        a11y: {name: "Status", live: "off"},
+                        items: [{bind: "/isf/status", label: "Status", tone_bind: "/isf/statusTone"}]
                     }]
                 }]}]}]
             };
@@ -7093,6 +7201,7 @@
         for (var i = 0; i < instances.length; i++) {
             try { instances[i].dispose(); } catch (err) { /* ignore */ }
         }
+        destroyToastUI();
     }
 
     function plugin(hook, vm) {

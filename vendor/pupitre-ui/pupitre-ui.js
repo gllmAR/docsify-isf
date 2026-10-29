@@ -3002,7 +3002,8 @@
       }
       render();
       if (open) {
-        var first = panel.querySelector("button, input, select, textarea");
+        var first = body.querySelector("button, input, select, textarea") ||
+          head.querySelector("button, input, select, textarea");
         if (first && first.focus) first.focus();
       } else {
         if (trigger.focus) trigger.focus();
@@ -5371,8 +5372,25 @@
     if (!name) return "";
     var icon = this.icons[name];
     if (icon === undefined && typeof this.adapter.getIcon === "function") icon = this.adapter.getIcon(name, item);
-    if (icon === undefined || icon === null) return String(name);
-    return String(icon);
+    if (typeof icon === "function") {
+      try { icon = icon(name, item); } catch (error) { icon = null; }
+    }
+    if (icon === undefined || icon === null) return "";
+    return icon;
+  };
+
+  Renderer.prototype.toolbarHasIcon = function (icon) {
+    return icon !== undefined && icon !== null && icon !== "";
+  };
+
+  Renderer.prototype.fillToolbarIcon = function (iconEl, icon) {
+    while (iconEl.firstChild) iconEl.removeChild(iconEl.firstChild);
+    if (this.toolbarHasIcon(icon) && typeof icon === "object" && typeof icon.cloneNode === "function") {
+      iconEl.appendChild(icon.cloneNode(true));
+    } else if (this.toolbarHasIcon(icon)) {
+      iconEl.textContent = String(icon);
+    }
+    iconEl.hidden = !this.toolbarHasIcon(icon);
   };
 
   Renderer.prototype.toolbarPressed = function (item) {
@@ -5403,22 +5421,20 @@
       return;
     }
     var icon = this.toolbarIcon(item);
+    var hasIcon = this.toolbarHasIcon(icon);
     var pressed = this.toolbarPressed(item);
     var badge = this.toolbarText(item, "badge");
-    if (rec.iconEl) {
-      rec.iconEl.textContent = icon;
-      rec.iconEl.hidden = !icon;
-    }
+    if (rec.iconEl) this.fillToolbarIcon(rec.iconEl, icon);
     if (rec.labelEl) {
       rec.labelEl.textContent = label;
-      rec.labelEl.hidden = !label || (item.icon_only && !!icon);
+      rec.labelEl.hidden = !label || (item.icon_only && hasIcon);
     }
     if (rec.badgeEl) {
       rec.badgeEl.textContent = badge;
       rec.badgeEl.hidden = !badge;
     }
     if (rec.button) {
-      if (item.icon_only && !icon) rec.button.setAttribute("aria-label", label);
+      if (item.icon_only && !hasIcon) rec.button.setAttribute("aria-label", label);
       else rec.button.removeAttribute("aria-label");
       if (title) rec.button.title = title;
       if (item.aria_controls) rec.button.setAttribute("aria-controls", String(item.aria_controls));
@@ -5429,11 +5445,12 @@
 
   Renderer.prototype.toolbarContent = function (item, root) {
     var icon = this.toolbarIcon(item);
+    var hasIcon = this.toolbarHasIcon(icon);
     var label = this.toolbarText(item, "label");
-    var iconEl = el("span", {class: "pui-toolbar-icon", "aria-hidden": "true", text: icon});
-    iconEl.hidden = !icon;
+    var iconEl = el("span", {class: "pui-toolbar-icon", "aria-hidden": "true"});
+    this.fillToolbarIcon(iconEl, icon);
     var labelEl = el("span", {class: "pui-toolbar-label", text: label});
-    labelEl.hidden = !label || (item.icon_only && !!icon);
+    labelEl.hidden = !label || (item.icon_only && hasIcon);
     var badge = this.toolbarText(item, "badge");
     var badgeEl = el("span", {class: "pui-toolbar-badge", text: badge});
     badgeEl.hidden = !badge;
@@ -5450,7 +5467,13 @@
     else if (block.a11y && block.a11y.name) root.setAttribute("aria-label", String(block.a11y.name));
     if (block.align) root.setAttribute("data-align", String(block.align));
     var items = isArray(block.items) ? block.items : [];
-    for (var i = 0; i < items.length; i++) {
+    var keep = items.length;
+    if (String(block.overflow || "") === "menu") {
+      keep = Number(block.overflow_after);
+      if (!isFinite(keep) || keep < 0) keep = 3;
+      keep = Math.min(items.length, Math.floor(keep));
+    }
+    for (var i = 0; i < keep; i++) {
       var item = items[i];
       if (!isObject(item)) continue;
       if (item.kind === "separator") {
@@ -5496,7 +5519,24 @@
       this.toolbarRecords.push(rec);
       this.toolbarRefresh(rec);
     }
+    if (keep < items.length) {
+      var overflowItems = items.slice(keep);
+      var menu = this.buildMenu({
+        kind: "menu",
+        id: String(block.id || "toolbar") + "-overflow",
+        label: String(block.overflow_label || "More"),
+        items: overflowItems
+      });
+      menu.classList.add("pui-toolbar-overflow");
+      root.appendChild(menu);
+    }
     var focusables = Array.prototype.slice.call(root.querySelectorAll("button, a[href]"));
+    focusables = focusables.filter(function (control) {
+      for (var node = control.parentNode; node && node !== root; node = node.parentNode) {
+        if (node.classList && node.classList.contains("pui-menu-popup")) return false;
+      }
+      return true;
+    });
     focusables.forEach(function (control, index) {
       control.tabIndex = index === 0 ? 0 : -1;
       control.addEventListener("focus", function () {

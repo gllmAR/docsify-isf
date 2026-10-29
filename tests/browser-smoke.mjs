@@ -210,12 +210,14 @@ try {
         });
         if (!bar) return null;
         const value = bar.querySelector(".pui-statusbar-value");
+        const item = bar.querySelector(".pui-statusbar-item");
         const style = value ? getComputedStyle(value) : null;
         const rect = bar.getBoundingClientRect();
         return {
             role: bar.getAttribute("role"),
             live: bar.getAttribute("aria-live"),
             value: value ? value.textContent : "",
+            tone: item ? item.getAttribute("data-tone") : null,
             height: Math.round(rect.height),
             padTop: style ? style.paddingTop : "",
             marginTop: style ? style.marginTop : ""
@@ -227,6 +229,9 @@ try {
         if (statusPUI.height > 60) problems.push("the PUI statusbar is too tall: " + JSON.stringify(statusPUI));
         if (statusPUI.padTop !== "0px" || statusPUI.marginTop !== "0px") {
             problems.push("PUI outputs inherit docsify's code-block styling: " + JSON.stringify(statusPUI));
+        }
+        if (["info", "success", "warning", "error"].indexOf(statusPUI.tone) < 0) {
+            problems.push("the statusbar is not using a PUI tone: " + JSON.stringify(statusPUI));
         }
     }
 
@@ -1111,6 +1116,26 @@ try {
         if (shared.searchParams.get("isf-quality") !== "auto") problems.push("the share URL lost the quality: " + shared.searchParams.get("isf-quality"));
         if (!shared.searchParams.get("isf-values")) problems.push("the share URL lost the parameter payload");
         if (!shared.searchParams.get("isf-shader")) problems.push("the share URL lost the shader");
+    }
+    const shareToast = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const find = () => Array.from(document.querySelectorAll(".isf-pui-toasts .pui-toast"))
+            .find((toast) => /OBS link copied/i.test(toast.textContent));
+        let toast = find();
+        for (let i = 0; i < 30 && !toast; i += 1) {
+            await sleep(50);
+            toast = find();
+        }
+        if (!toast) return null;
+        const record = {role: toast.getAttribute("role"), text: toast.textContent};
+        const close = toast.querySelector(".pui-toast-close");
+        if (close) close.click();
+        await sleep(250);
+        record.gone = !find();
+        return record;
+    });
+    if (!shareToast || shareToast.role !== "status" || !/OBS link copied/i.test(shareToast.text) || !shareToast.gone) {
+        problems.push("the share action did not use the PUI toast stack: " + JSON.stringify(shareToast));
     }
 
     // ── persistence: a resolution choice survives a reload ──
