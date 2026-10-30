@@ -5483,7 +5483,7 @@
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
-            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0;max-width:100%;flex:1 1 auto}",
+            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0}",
             ".isf-editor-folded-summary{display:none;flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-fold-btn{flex:0 0 auto;padding:.15rem .25rem}",
             ".isf-fold-btn .isf-icon{width:13px;height:13px;transition:transform .15s ease}",
