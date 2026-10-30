@@ -287,6 +287,7 @@
     this.meterRecords = [];
     this.keyCaptureRecords = [];
     this.dialogRecords = [];
+    this.schemaFormRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -390,6 +391,7 @@
     this.meterRecords = [];
     this.keyCaptureRecords = [];
     this.dialogRecords = [];
+    this.schemaFormRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -4650,14 +4652,9 @@
     return {fields: fields, groups: groups, raw: value};
   };
 
-  Renderer.prototype.buildSchemaForm = function (block) {
+  Renderer.prototype.schemaFormBuildFields = function (rec) {
     var self = this;
-    var path = String(block.bind || "");
-    var a11y = isObject(block.a11y) ? block.a11y : {};
-    var root = el("form", {class: "pui-schema-form", "data-pui-schema-form": path, role: "form"});
-    if (a11y.name || block.label) root.setAttribute("aria-label", String(a11y.name || block.label));
-    if (block.label) root.appendChild(el("h4", {class: "pui-schema-form-title", text: String(block.label)}));
-    var schema = this.schemaFormValue(block);
+    var schema = this.schemaFormValue(rec.block);
     var fields = schema.fields;
     var groups = schema.groups.slice();
     var seen = {};
@@ -4666,31 +4663,57 @@
       var id = String(field.group || "");
       if (id && !seen[id]) { groups.push({id: id, label: id}); seen[id] = true; }
     });
-    var fieldsRoot = el("div", {class: "pui-schema-form-fields", style: "grid-template-columns:repeat(" + Math.max(1, Math.min(4, Number(block.columns) || 1)) + ",minmax(0,1fr));"});
+    rec.fieldsRoot.textContent = "";
     var emitGroup = function (group) {
       var groupFields = fields.filter(function (field) { return String(field.group || "") === String(group.id); });
       if (!groupFields.length) return;
       var box = el("fieldset", {class: "pui-schema-form-group"});
       box.appendChild(el("legend", {text: String(group.label || group.id || "Group")}));
-      groupFields.forEach(function (field) { box.appendChild(self.buildBlock(field, {section: {id: String(block.id || "schemaForm")}})); });
-      fieldsRoot.appendChild(box);
+      groupFields.forEach(function (field) { box.appendChild(self.buildBlock(field, {section: {id: String(rec.block.id || "schemaForm")}})); });
+      rec.fieldsRoot.appendChild(box);
     };
-    if (groups.length) groups.forEach(emitGroup);
-    else {
-      fields.forEach(function (field) { fieldsRoot.appendChild(self.buildBlock(field, {section: {id: String(block.id || "schemaForm")}})); });
+    if (groups.length) {
+      groups.forEach(emitGroup);
+      fields.filter(function (field) { return !field.group; }).forEach(function (field) {
+        rec.fieldsRoot.appendChild(self.buildBlock(field, {section: {id: String(rec.block.id || "schemaForm")}}));
+      });
+    } else {
+      fields.forEach(function (field) { rec.fieldsRoot.appendChild(self.buildBlock(field, {section: {id: String(rec.block.id || "schemaForm")}})); });
     }
+    rec.block = Object.assign({}, rec.block, {fields: fields});
+    rec.value = schema.raw;
+    rec.fields = fields;
+    rec.groups = groups;
+    rec.signature = JSON.stringify({fields: fields, groups: groups});
+  };
+
+  Renderer.prototype.schemaFormRefresh = function (rec) {
+    var schema = this.schemaFormValue(rec.block);
+    var signature = JSON.stringify({fields: schema.fields, groups: schema.groups});
+    if (signature !== rec.signature) this.schemaFormBuildFields(rec);
+  };
+
+  Renderer.prototype.buildSchemaForm = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("form", {class: "pui-schema-form", "data-pui-schema-form": path, role: "form"});
+    if (a11y.name || block.label) root.setAttribute("aria-label", String(a11y.name || block.label));
+    if (block.label) root.appendChild(el("h4", {class: "pui-schema-form-title", text: String(block.label)}));
+    var fieldsRoot = el("div", {class: "pui-schema-form-fields", style: "grid-template-columns:repeat(" + Math.max(1, Math.min(4, Number(block.columns) || 1)) + ",minmax(0,1fr));"});
     root.appendChild(fieldsRoot);
     var status = el("p", {class: "pui-schema-form-status", role: "status", "aria-live": "polite"});
     root.appendChild(status);
-    var rec = {block: Object.assign({}, block, {fields: fields}), root: root, path: path, value: schema.raw, fields: fields, status: status,
+    var rec = {block: Object.assign({}, block), root: root, path: path, fieldsRoot: fieldsRoot, value: {}, fields: [], groups: [], signature: "", status: status,
       pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, visible: true, enabled: true, firstInvalid: null};
-    var submit = isObject(block.submit) ? block.submit : {label: "Apply"};
+    this.schemaFormBuildFields(rec);
+    var submit = isObject(block.submit) ? block.submit : {label: this.t("schemaForm.apply", "Apply")};
     var bar = el("div", {class: "pui-schema-form-actions"});
-    var submitButton = el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || "Apply")});
+    var submitButton = el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || this.t("schemaForm.apply", "Apply"))});
     bar.appendChild(submitButton);
     var cancel = isObject(block.cancel) ? block.cancel : null;
     if (cancel) {
-      var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || "Cancel")});
+      var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || this.t("schemaForm.cancel", "Cancel"))});
       cancelButton.addEventListener("click", function () {
         if (typeof self.adapter.schemaFormAction === "function") self.adapter.schemaFormAction({op: "cancel", values: self.formValues(rec.block)}, rec.value, block);
         else if (cancel.call) self.adapter.callAction(String(cancel.call), {values: self.formValues(rec.block)});
@@ -4698,19 +4721,18 @@
       bar.appendChild(cancelButton);
     }
     root.appendChild(bar);
-    var formFields = this.formFields(rec.block);
     root.addEventListener("submit", function (event) {
       event.preventDefault();
       if (!self.formValidate(rec)) return;
       var values = self.formValues(rec.block);
-      status.textContent = String(submit.pending || "Submitting…");
+      status.textContent = String(submit.pending || self.t("schemaForm.pending", "Submitting…"));
       status.className = "pui-schema-form-status is-busy";
       var result;
       if (typeof self.adapter.schemaFormAction === "function") result = self.adapter.schemaFormAction({op: "submit", values: values}, rec.value, block);
       else if (submit.call) result = self.adapter.callAction(String(submit.call), Object.assign({}, submit.args || {}, {values: values}));
       else result = true;
       var done = function (ok, message) {
-        status.textContent = ok ? String(submit.result || message || "") : String(message || "Submit failed");
+        status.textContent = ok ? String(submit.result || message || "") : String(message || self.t("schemaForm.failed", "Submit failed"));
         status.className = "pui-schema-form-status " + (ok ? "is-ok" : "is-error");
         if (ok && submit.result) self.adapter.announce("success", String(submit.result));
         else if (!ok) self.adapter.announce("error", status.textContent);
@@ -4719,18 +4741,19 @@
       if (result && typeof result.then === "function") result.then(function (value) { done(value !== false, value && value.error); }, function (error) { done(false, error && error.message || error); });
       else done(result !== false);
     });
+    this.schemaFormRecords.push(rec);
     return root;
   };
 
   Renderer.prototype.buildDialog = function (block) {
     var self = this;
     var root = el("section", {class: "pui-dialog-block", "data-pui-dialog": String(block.id || "")});
-    var trigger = el("button", {type: "button", class: "pui-button pui-dialog-trigger", text: String(block.trigger || block.label || "Open")});
+    var trigger = el("button", {type: "button", class: "pui-button pui-dialog-trigger", text: String(block.trigger || block.label || this.t("dialog.open", "Open"))});
     root.appendChild(trigger);
     var titleId = this.id("dialog-title");
     var dialog = el("dialog", {class: "pui-dialog pui-block-dialog", "aria-labelledby": titleId});
     var form = el("form", {method: "dialog"});
-    form.appendChild(el("h2", {id: titleId, text: String(block.label || "Dialog")}));
+    form.appendChild(el("h2", {id: titleId, text: String(block.label || this.t("dialog.title", "Dialog"))}));
     var body = el("div", {class: "pui-dialog-body"});
     var blocks = isArray(block.blocks) ? block.blocks : [];
     blocks.forEach(function (child) { if (isObject(child)) body.appendChild(self.buildBlock(child)); });
@@ -4739,10 +4762,10 @@
     form.appendChild(status);
     var bar = el("div", {class: "pui-dialog-actions"});
     var submit = isObject(block.submit) ? block.submit : null;
-    var cancel = isObject(block.cancel) ? block.cancel : {label: "Close"};
-    var submitButton = submit ? el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || "Apply")}) : null;
+    var cancel = isObject(block.cancel) ? block.cancel : {label: this.t("dialog.cancel", "Close")};
+    var submitButton = submit ? el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || this.t("dialog.submit", "Apply"))}) : null;
     if (submitButton) bar.appendChild(submitButton);
-    var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || "Close")});
+    var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || this.t("dialog.cancel", "Close"))});
     bar.appendChild(cancelButton);
     form.appendChild(bar);
     dialog.appendChild(form);
@@ -4754,11 +4777,20 @@
       if (block.open_bind) { var value = self.adapter.getValue(String(block.open_bind)); return value === true || value === 1 || value === "true"; }
       return !!rec.localOpen;
     };
+    var focusInside = function () {
+      var first = body.querySelector("button, input, select, textarea, [tabindex]");
+      if (first && first.focus) { first.focus(); return; }
+      if (dialog.focus) { if (!dialog.hasAttribute("tabindex")) dialog.setAttribute("tabindex", "-1"); dialog.focus(); }
+    };
     var render = function () {
       var open = readOpen();
+      var wasOpen = rec.wasOpen === true;
+      rec.wasOpen = open;
       trigger.setAttribute("aria-expanded", open ? "true" : "false");
       if (open && !dialog.open) { if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.open = true; }
       else if (!open && dialog.open) { if (typeof dialog.close === "function") dialog.close(); else dialog.open = false; }
+      if (open && !wasOpen) focusInside();
+      else if (!open && wasOpen) trigger.focus();
     };
     var setOpen = function (open) {
       if (block.open_bind) self.setPath(String(block.open_bind), !!open, block);
@@ -4777,13 +4809,13 @@
       if (submit) {
         if (!self.formValidate(rec)) return;
         var values = self.formValues(rec.block);
-        status.textContent = String(submit.pending || "Submitting…");
+        status.textContent = String(submit.pending || self.t("dialog.pending", "Submitting…"));
         var result;
         if (typeof self.adapter.dialogAction === "function") result = self.adapter.dialogAction({op: "submit", values: values}, rec.block, block);
         else if (submit.call) result = self.adapter.callAction(String(submit.call), Object.assign({}, submit.args || {}, {values: values}));
         else result = true;
-        if (result && typeof result.then === "function") result.then(function (ok) { status.textContent = String(ok === false ? "Submit failed" : submit.result || ""); if (ok !== false) setOpen(false); });
-        else { status.textContent = String(result === false ? "Submit failed" : submit.result || ""); if (result !== false) setOpen(false); }
+        if (result && typeof result.then === "function") result.then(function (ok) { status.textContent = String(ok === false ? self.t("dialog.failed", "Submit failed") : submit.result || ""); if (ok !== false) setOpen(false); });
+        else { status.textContent = String(result === false ? self.t("dialog.failed", "Submit failed") : submit.result || ""); if (result !== false) setOpen(false); }
       } else setOpen(false);
     });
     rec.render = render;
@@ -4829,7 +4861,7 @@
   Renderer.prototype.transportRefresh = function (rec) {
     var data = this.transportValue(rec);
     rec.value = data;
-    rec.play.textContent = data.playing ? "Pause" : "Play";
+    rec.play.textContent = data.playing ? rec.text("pause", "Pause") : rec.text("play", "Play");
     rec.play.disabled = data.playing ? !data.canPause : !data.canPlay;
     rec.stop.disabled = !data.canStop;
     rec.seek.max = String(data.duration);
@@ -4845,29 +4877,34 @@
   Renderer.prototype.buildTransport = function (block) {
     var self = this;
     var path = String(block.bind || "");
-    var root = el("section", {class: "pui-transport", "data-pui-transport": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Transport")});
-    var rec = {block: block, path: path, value: null, root: root};
+    var options = isObject(block.transport_options) ? block.transport_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("transport." + key, fallback)); };
+    var root = el("section", {class: "pui-transport", "data-pui-transport": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Transport"))});
+    var rec = {block: block, path: path, value: null, root: root, labels: labels, text: text};
     var head = el("div", {class: "pui-transport-head"});
-    head.appendChild(el("h4", {text: String(block.label || "Transport")}));
-    var play = el("button", {type: "button", class: "pui-button pui-primary", text: "Play"});
-    var stop = el("button", {type: "button", class: "pui-button", text: "Stop"});
+    head.appendChild(el("h4", {text: String(block.label || text("title", "Transport"))}));
+    var play = el("button", {type: "button", class: "pui-button pui-primary", text: text("play", "Play")});
+    var stop = el("button", {type: "button", class: "pui-button", text: text("stop", "Stop")});
     play.addEventListener("click", function () { self.transportAction(rec, {op: self.transportValue(rec).playing ? "pause" : "play"}); });
     stop.addEventListener("click", function () { self.transportAction(rec, {op: "stop"}); });
     head.appendChild(play); head.appendChild(stop);
     root.appendChild(head);
     var row = el("div", {class: "pui-transport-controls"});
-    var seek = el("input", {type: "range", min: "0", step: "0.01", "aria-label": "Seek"});
+    var seek = el("input", {type: "range", min: "0", step: "0.01", "aria-label": text("seek", "Seek")});
     seek.addEventListener("input", function () { self.transportAction(rec, {op: "seek", position: Number(seek.value)}); });
     row.appendChild(seek);
     var position = el("output", {class: "pui-transport-time"});
     row.appendChild(position);
     var loopLabel = el("label", {class: "pui-transport-loop"});
-    var loop = el("input", {type: "checkbox", "aria-label": "Loop"});
+    var loop = el("input", {type: "checkbox", "aria-label": text("loop", "Loop")});
     loop.addEventListener("change", function () { self.transportAction(rec, {op: "loop", value: loop.checked}); });
-    loopLabel.appendChild(loop); loopLabel.appendChild(el("span", {text: "Loop"}));
+    loopLabel.appendChild(loop); loopLabel.appendChild(el("span", {text: text("loop", "Loop")}));
     row.appendChild(loopLabel);
-    var rate = el("select", {"aria-label": "Playback rate"});
-    [0.25, 0.5, 1, 1.5, 2].forEach(function (value) { rate.appendChild(el("option", {value: String(value), text: value + "×"})); });
+    var rate = el("select", {"aria-label": text("rate", "Playback rate")});
+    var rates = isArray(options.rates) ? options.rates.map(Number).filter(function (value) { return isFinite(value) && value > 0; }) : [];
+    if (!rates.length) rates = [0.25, 0.5, 1, 1.5, 2];
+    rates.forEach(function (value) { rate.appendChild(el("option", {value: String(value), text: value + "×"})); });
     rate.addEventListener("change", function () { self.transportAction(rec, {op: "rate", value: Number(rate.value)}); });
     row.appendChild(rate);
     root.appendChild(row);
@@ -4880,8 +4917,13 @@
   Renderer.prototype.meterValue = function (rec) {
     var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
     if (!isObject(value)) value = {};
-    var clamp = function (v) { return Math.max(0, Math.min(1, Number(v) || 0)); };
-    return {label: String(value.label || rec.block.label || "Meter"), level: clamp(value.level), peak: clamp(value.peak), clip: value.clip === true, muted: value.muted === true, solo: value.solo === true, gain: clamp(value.gain === undefined ? 1 : value.gain), canMute: value.canMute !== false, canSolo: value.canSolo !== false, canGain: value.canGain !== false};
+    var clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, Number(v) || 0)); };
+    var options = rec.options || {};
+    var min = value.gainMin !== undefined ? Number(value.gainMin) : (options.gain_min !== undefined ? Number(options.gain_min) : 0);
+    var max = value.gainMax !== undefined ? Number(value.gainMax) : (options.gain_max !== undefined ? Number(options.gain_max) : 1);
+    if (!isFinite(min)) min = 0;
+    if (!isFinite(max) || max <= min) max = 1;
+    return {label: String(value.label || rec.block.label || rec.text("title", "Meter")), level: clamp(value.level, 0, 1), peak: clamp(value.peak, 0, 1), clip: value.clip === true, muted: value.muted === true, solo: value.solo === true, gain: clamp(value.gain === undefined ? 1 : value.gain, min, max), gainMin: min, gainMax: max, gainStep: Number(value.gainStep !== undefined ? value.gainStep : options.gain_step) || 0.01, canMute: value.canMute !== false, canSolo: value.canSolo !== false, canGain: value.canGain !== false};
   };
 
   Renderer.prototype.meterAction = function (rec, intent) {
@@ -4907,31 +4949,38 @@
     rec.solo.setAttribute("aria-pressed", data.solo ? "true" : "false");
     rec.mute.disabled = !data.canMute;
     rec.solo.disabled = !data.canSolo;
+    rec.gain.min = String(data.gainMin);
+    rec.gain.max = String(data.gainMax);
+    rec.gain.step = String(data.gainStep);
     rec.gain.value = String(data.gain);
     rec.gain.disabled = !data.canGain;
+    rec.gain.setAttribute("aria-valuetext", String(data.gain));
   };
 
   Renderer.prototype.buildMeter = function (block) {
     var self = this;
     var path = String(block.bind || "");
-    var root = el("section", {class: "pui-meter", "data-pui-meter": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Meter")});
+    var options = isObject(block.meter_options) ? block.meter_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("meter." + key, fallback)); };
+    var root = el("section", {class: "pui-meter", "data-pui-meter": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Meter"))});
     var head = el("div", {class: "pui-meter-head"});
     var label = el("span", {class: "pui-meter-label"});
-    var mute = el("button", {type: "button", class: "pui-button pui-meter-mute", text: "Mute", "aria-pressed": "false"});
-    var solo = el("button", {type: "button", class: "pui-button pui-meter-solo", text: "Solo", "aria-pressed": "false"});
+    var mute = el("button", {type: "button", class: "pui-button pui-meter-mute", text: text("mute", "Mute"), "aria-pressed": "false"});
+    var solo = el("button", {type: "button", class: "pui-button pui-meter-solo", text: text("solo", "Solo"), "aria-pressed": "false"});
     mute.addEventListener("click", function () { self.meterAction(rec, {op: "mute", value: !self.meterValue(rec).muted}); });
     solo.addEventListener("click", function () { self.meterAction(rec, {op: "solo", value: !self.meterValue(rec).solo}); });
     head.appendChild(label); head.appendChild(mute); head.appendChild(solo);
     root.appendChild(head);
-    var bar = el("div", {class: "pui-meter-bar", role: "meter", "aria-valuemin": "0", "aria-valuemax": "1", "aria-label": String(block.label || "Level")});
+    var bar = el("div", {class: "pui-meter-bar", role: "meter", "aria-valuemin": "0", "aria-valuemax": "1", "aria-label": String(block.label || text("level", "Level"))});
     var fill = el("span", {class: "pui-meter-fill"});
     var peakLine = el("span", {class: "pui-meter-peak"});
     bar.appendChild(fill); bar.appendChild(peakLine);
     root.appendChild(bar);
-    var gain = el("input", {type: "range", min: "0", max: "1", step: "0.01", "aria-label": "Gain"});
+    var gain = el("input", {type: "range", min: "0", max: "1", step: "0.01", "aria-label": text("gain", "Gain")});
     gain.addEventListener("input", function () { self.meterAction(rec, {op: "gain", value: Number(gain.value)}); });
     root.appendChild(gain);
-    var rec = {block: block, path: path, root: root, meterLabel: label, mute: mute, solo: solo, fill: fill, peakLine: peakLine, gain: gain, bar: bar, value: null, unsubscribe: null};
+    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, meterLabel: label, mute: mute, solo: solo, fill: fill, peakLine: peakLine, gain: gain, bar: bar, value: null, unsubscribe: null};
     if (typeof this.adapter.subscribeMeters === "function") {
       try { rec.unsubscribe = this.adapter.subscribeMeters(path, function (data) { if (isObject(data)) self.meterRefresh(rec, data); }); } catch (error) {}
     }
@@ -4943,7 +4992,7 @@
   Renderer.prototype.keyCaptureValue = function (rec) {
     var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
     if (!isObject(value)) value = {};
-    return {label: String(value.label || rec.block.label || "Shortcut"), sequence: String(value.sequence || ""), capturing: value.capturing === true, error: String(value.error || ""), conflict: String(value.conflict || ""), disabled: value.disabled === true};
+    return {label: String(value.label || rec.block.label || rec.text("title", "Shortcut")), sequence: String(value.sequence || ""), capturing: value.capturing === true, error: String(value.error || ""), conflict: String(value.conflict || ""), disabled: value.disabled === true};
   };
 
   Renderer.prototype.keyCaptureAction = function (rec, intent) {
@@ -4960,51 +5009,79 @@
     rec.value = data;
     rec.keyLabel.textContent = data.label;
     rec.display.textContent = data.capturing ? "Press a shortcut…" : (data.sequence || "Not set");
-    rec.display.setAttribute("data-state", data.capturing ? "capturing" : data.error || data.conflict ? "error" : "ready");
+    var error = data.error || data.conflict || rec.localError || "";
+    rec.display.setAttribute("data-state", data.capturing ? "capturing" : error ? "error" : "ready");
     rec.clear.disabled = data.disabled || !data.sequence;
     rec.capture.disabled = data.disabled;
-    rec.error.textContent = data.error || data.conflict;
-    rec.error.hidden = !rec.error.textContent;
+    rec.error.textContent = error;
+    rec.error.hidden = !error;
   };
 
   Renderer.prototype.buildKeyCapture = function (block) {
     var self = this;
     var path = String(block.bind || "");
-    var root = el("section", {class: "pui-keycapture", "data-pui-keycapture": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Shortcut")});
-    var rec = {block: block, path: path, root: root, value: null, handler: null};
+    var options = isObject(block.keycapture_options) ? block.keycapture_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("keycapture." + key, fallback)); };
+    var root = el("section", {class: "pui-keycapture", "data-pui-keycapture": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Shortcut"))});
+    var rec = {block: block, path: path, root: root, value: null, handler: null, options: options, labels: labels, text: text, localError: ""};
     var label = el("span", {class: "pui-keycapture-label"});
-    var display = el("output", {class: "pui-keycapture-display", "aria-live": "polite", text: "Not set"});
-    var capture = el("button", {type: "button", class: "pui-button pui-primary", text: "Capture"});
-    var clear = el("button", {type: "button", class: "pui-button", text: "Clear"});
+    var display = el("output", {class: "pui-keycapture-display", "aria-live": "polite", text: text("not_set", "Not set")});
+    var capture = el("button", {type: "button", class: "pui-button pui-primary", text: text("capture", "Capture")});
+    var clear = el("button", {type: "button", class: "pui-button", text: text("clear", "Clear")});
     var error = el("p", {class: "pui-keycapture-error", role: "alert", hidden: true});
     root.appendChild(label); root.appendChild(display); root.appendChild(capture); root.appendChild(clear); root.appendChild(error);
     var stop = function () {
       if (rec.handler) document.removeEventListener("keydown", rec.handler, true);
       rec.handler = null;
+      if (typeof capture.focus === "function") capture.focus();
+    };
+    var fail = function (sequence) {
+      rec.localError = text("plain_not_allowed", "Use a modifier key for this shortcut.");
+      keyCaptureAction(rec, {op: "invalid", key: sequence, error: rec.localError});
+      rec.error.textContent = rec.localError;
+      rec.error.hidden = false;
+      rec.display.setAttribute("data-state", "error");
+    };
+    var keyCaptureAction = function (record, intent) {
+      if (typeof self.adapter.keyCaptureAction === "function") {
+        try { return self.adapter.keyCaptureAction(intent, record.value, record.block); }
+        catch (err) { self.adapter.announce("error", "Key capture failed: " + String(err && err.message || err)); return false; }
+      }
+      return false;
     };
     var begin = function () {
       stop();
+      rec.localError = "";
       self.keyCaptureAction(rec, {op: "capture", capturing: true});
       rec.handler = function (event) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.key === "Escape") { stop(); self.keyCaptureAction(rec, {op: "cancel"}); return; }
-        if (event.key === "Backspace" || event.key === "Delete") { stop(); self.keyCaptureAction(rec, {op: "clear"}); return; }
+        if (event.repeat) return;
+        if (event.key === "Escape") { rec.localError = ""; stop(); self.keyCaptureAction(rec, {op: "cancel"}); return; }
+        if (event.key === "Backspace" || event.key === "Delete") { rec.localError = ""; stop(); self.keyCaptureAction(rec, {op: "clear"}); return; }
+        var hasModifier = !!(event.ctrlKey || event.metaKey || event.altKey || event.shiftKey);
+        var key = String(event.key || "");
+        if (["Control", "Meta", "Alt", "Shift"].indexOf(key) >= 0) return;
+        if (!key) return;
+        if (!hasModifier && rec.options.allowPlain === false) { fail(key); return; }
+        rec.localError = "";
         var parts = [];
         if (event.ctrlKey) parts.push("Ctrl");
         if (event.metaKey) parts.push("Meta");
         if (event.altKey) parts.push("Alt");
         if (event.shiftKey) parts.push("Shift");
-        var key = String(event.key || "");
-        if (["Control", "Meta", "Alt", "Shift"].indexOf(key) < 0) parts.push(key.length === 1 ? key.toUpperCase() : key);
-        if (!parts.length) return;
+        if (key === " ") key = "Space";
+        else if (key === "+") key = "Plus";
+        else if (key.length === 1) key = key.toUpperCase();
+        parts.push(key);
         stop();
         self.keyCaptureAction(rec, {op: "capture", sequence: parts.join("+")});
       };
       document.addEventListener("keydown", rec.handler, true);
     };
     capture.addEventListener("click", begin);
-    clear.addEventListener("click", function () { stop(); self.keyCaptureAction(rec, {op: "clear"}); });
+    clear.addEventListener("click", function () { rec.localError = ""; stop(); self.keyCaptureAction(rec, {op: "clear"}); });
     rec.keyLabel = label; rec.display = display; rec.capture = capture; rec.clear = clear; rec.error = error;
     this.keyCaptureRecords.push(rec);
     this.keyCaptureRefresh(rec);
@@ -5014,19 +5091,22 @@
   Renderer.prototype.previewValue = function (rec) {
     var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
     if (!isObject(value)) value = {};
-    var src = value.src || value.url || "";
+    var src = value.src || value.url || value.stream || "";
     var compare = isObject(value.compare) ? value.compare : null;
     return {
       kind: String(value.kind || "image").toLowerCase(),
       src: src ? String(src) : "",
+      poster: value.poster ? String(value.poster) : "",
+      loop: value.loop === true,
+      muted: value.muted !== false,
       width: Number(value.width) || 0,
       height: Number(value.height) || 0,
-      alt: String(value.alt || value.label || rec.block.label || "Preview"),
+      alt: String(value.alt || value.label || rec.block.label || rec.text("alt", "Preview")),
       caption: String(value.caption || ""),
       state: String(value.state || (src ? "ready" : "idle")).toLowerCase(),
       error: String(value.error || ""),
       fit: String(value.fit || "contain").toLowerCase(),
-      compare: compare ? {src: String(compare.src || compare.url || ""), label: String(compare.label || "Compare")} : null,
+      compare: compare ? {src: String(compare.src || compare.url || ""), label: String(compare.label || rec.text("compare", "Compare"))} : null,
       overlay: isObject(value.overlay) ? {src: String(value.overlay.src || value.overlay.url || ""), opacity: Number(value.overlay.opacity) || 0.5} : null
     };
   };
@@ -5040,23 +5120,45 @@
     return false;
   };
 
+  Renderer.prototype.previewSetMedia = function (rec, kind) {
+    kind = kind === "video" ? "video" : "image";
+    if (rec.mediaKind === kind) return;
+    var next = kind === "video"
+      ? el("video", {class: "pui-preview-media", preload: "metadata", playsinline: "", muted: ""})
+      : el("img", {class: "pui-preview-media", alt: rec.alt || rec.text("alt", "Preview")});
+    if (rec.media && rec.media.parentNode) rec.media.parentNode.replaceChild(next, rec.media);
+    else rec.viewport.insertBefore(next, rec.overlay);
+    rec.media = next;
+    rec.mediaKind = kind;
+  };
+
   Renderer.prototype.previewRefresh = function (rec, update) {
     var data = this.previewValue(rec);
     if (isObject(update)) data = Object.assign({}, data, update);
     rec.value = data;
-    rec.state.textContent = data.state === "error" ? (data.error || "Preview error") : data.state === "loading" ? "Loading…" : data.caption || data.state;
+    var comparing = rec.showCompare && data.compare && data.compare.src;
+    var kind = comparing ? "image" : (data.kind === "video" ? "video" : "image");
+    this.previewSetMedia(rec, kind);
+    var src = comparing ? data.compare.src : data.src;
+    rec.media.hidden = !src;
+    if (src) rec.media.setAttribute("src", src); else rec.media.removeAttribute("src");
+    if (kind === "video") {
+      rec.media.setAttribute("aria-label", data.alt);
+      rec.media.autoplay = true;
+      rec.media.loop = data.loop;
+      rec.media.muted = data.muted;
+      if (data.poster) rec.media.setAttribute("poster", data.poster); else rec.media.removeAttribute("poster");
+    } else {
+      rec.media.setAttribute("alt", data.alt);
+    }
+    rec.media.style.objectFit = data.fit === "cover" ? "cover" : data.fit === "actual" ? "none" : "contain";
+    rec.state.textContent = data.state === "error" ? (data.error || rec.text("error", "Preview error")) : data.state === "loading" ? rec.text("loading", "Loading…") : data.caption || data.state;
     rec.state.setAttribute("data-state", data.state);
     rec.state.hidden = !rec.state.textContent;
-    rec.media.hidden = !data.src;
-    rec.media.setAttribute("alt", data.alt);
-    if (rec.media.tagName === "IMG") rec.media.setAttribute("src", data.src);
-    else if (data.src) rec.media.setAttribute("src", data.src);
-    rec.media.style.objectFit = data.fit === "cover" ? "cover" : data.fit === "actual" ? "none" : "contain";
     rec.compareButton.hidden = !data.compare;
     if (data.compare) {
-      rec.compareButton.textContent = rec.showCompare ? "Show live" : data.compare.label;
+      rec.compareButton.textContent = rec.showCompare ? rec.text("live", "Show live") : (data.compare.label || rec.text("compare", "Compare"));
       rec.compareButton.setAttribute("aria-pressed", rec.showCompare ? "true" : "false");
-      rec.media.setAttribute("src", rec.showCompare && data.compare.src ? data.compare.src : data.src);
     }
     rec.overlay.hidden = !data.overlay || !data.overlay.src || rec.showCompare;
     if (data.overlay && data.overlay.src) {
@@ -5070,23 +5172,25 @@
     var self = this;
     var path = String(block.bind || "");
     var options = isObject(block.preview_options) ? block.preview_options : {};
-    var root = el("section", {class: "pui-preview", "data-pui-preview": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Preview")});
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("preview." + key, fallback)); };
+    var root = el("section", {class: "pui-preview", "data-pui-preview": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Preview"))});
     var head = el("div", {class: "pui-preview-head"});
-    head.appendChild(el("h4", {text: String(block.label || "Preview")}));
-    var fit = el("select", {"aria-label": "Preview fit"});
-    [["contain", "Fit"], ["cover", "Fill"], ["actual", "Actual"]].forEach(function (entry) { fit.appendChild(el("option", {value: entry[0], text: entry[1]})); });
-    var compareButton = el("button", {type: "button", class: "pui-button", text: "Compare"});
-    var refresh = el("button", {type: "button", class: "pui-button", text: "Refresh"});
+    head.appendChild(el("h4", {text: String(block.label || text("title", "Preview"))}));
+    var fit = el("select", {"aria-label": text("fit", "Preview fit")});
+    [["contain", text("contain", "Fit")], ["cover", text("cover", "Fill")], ["actual", text("actual", "Actual")]].forEach(function (entry) { fit.appendChild(el("option", {value: entry[0], text: entry[1]})); });
+    var compareButton = el("button", {type: "button", class: "pui-button", text: text("compare", "Compare")});
+    var refresh = el("button", {type: "button", class: "pui-button", text: text("refresh", "Refresh")});
     head.appendChild(fit); head.appendChild(compareButton); head.appendChild(refresh);
     root.appendChild(head);
     var viewport = el("figure", {class: "pui-preview-viewport"});
-    var media = el("img", {class: "pui-preview-media", alt: "Preview"});
+    var media = el("img", {class: "pui-preview-media", alt: text("alt", "Preview")});
     var overlay = el("img", {class: "pui-preview-overlay", alt: "", "aria-hidden": "true"});
     viewport.appendChild(media); viewport.appendChild(overlay);
     root.appendChild(viewport);
     var state = el("p", {class: "pui-preview-state", role: "status", "aria-live": "polite"});
     root.appendChild(state);
-    var rec = {block: block, path: path, value: null, root: root, media: media, overlay: overlay, state: state, fit: fit, compareButton: compareButton, refresh: refresh, showCompare: false, unsubscribe: null};
+    var rec = {block: block, path: path, value: null, root: root, viewport: viewport, media: media, mediaKind: "image", overlay: overlay, state: state, fit: fit, compareButton: compareButton, refresh: refresh, showCompare: false, unsubscribe: null, labels: labels, text: text, alt: text("alt", "Preview")};
     fit.addEventListener("change", function () { self.previewAction(rec, {op: "fit", value: fit.value}); });
     compareButton.addEventListener("click", function () {
       rec.showCompare = !rec.showCompare;
@@ -5138,10 +5242,10 @@
   Renderer.prototype.connectionRefresh = function (rec) {
     var data = this.connectionValue(rec);
     rec.value = data;
-    var labels = {connected: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…", offline: "Offline", error: "Error", disconnected: "Disconnected"};
-    rec.badge.textContent = labels[data.state] || data.state;
+    var states = {connected: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…", offline: "Offline", error: "Error", disconnected: "Disconnected"};
+    rec.badge.textContent = String(rec.stateLabels[data.state] || rec.text("state." + data.state, states[data.state] || data.state));
     rec.badge.setAttribute("data-state", data.state);
-    rec.status.textContent = data.error || (data.reconnectIn ? "Reconnect in " + data.reconnectIn + "s" : "");
+    rec.status.textContent = data.error || (data.reconnectIn ? rec.text("reconnect", "Reconnect in") + " " + data.reconnectIn + "s" : "");
     rec.status.hidden = !rec.status.textContent;
     rec.endpointInput.value = data.endpoint;
     rec.endpointInput.disabled = data.state === "connected" || data.state === "connecting" || data.state === "reconnecting";
@@ -5161,45 +5265,48 @@
     rec.target.hidden = !data.targets.length;
     rec.target.disabled = !data.targets.length || data.state === "offline";
     rec.backLink.hidden = !data.backLink;
-    if (data.backLink) { rec.backLink.setAttribute("href", data.backLink); rec.backLink.textContent = data.backLabel; }
+    if (data.backLink) { rec.backLink.setAttribute("href", data.backLink); rec.backLink.textContent = data.backLabel || rec.text("back", "Back"); }
   };
 
   Renderer.prototype.buildConnection = function (block) {
     var self = this;
     var path = String(block.bind || "");
     var options = isObject(block.connection_options) ? block.connection_options : {};
-    var root = el("section", {class: "pui-connection", "data-pui-connection": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Connection")});
-    var rec = {block: block, path: path, value: null, root: root};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var stateLabels = isObject(options.state_labels) ? options.state_labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("connection." + key, fallback)); };
+    var root = el("section", {class: "pui-connection", "data-pui-connection": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Connection"))});
+    var rec = {block: block, path: path, value: null, root: root, labels: labels, stateLabels: stateLabels, text: text};
     var head = el("div", {class: "pui-connection-head"});
-    head.appendChild(el("h4", {text: String(block.label || "Connection")}));
-    var badge = el("span", {class: "pui-connection-state", "data-state": "disconnected", text: "Disconnected"});
+    head.appendChild(el("h4", {text: String(block.label || text("title", "Connection"))}));
+    var badge = el("span", {class: "pui-connection-state", "data-state": "disconnected", text: text("state.disconnected", "Disconnected")});
     head.appendChild(badge);
     root.appendChild(head);
     var row = el("div", {class: "pui-connection-controls"});
-    var endpointInput = el("input", {type: "url", class: "pui-connection-endpoint", "aria-label": "OBS WebSocket URL", placeholder: "ws://127.0.0.1:4455"});
+    var endpointInput = el("input", {type: String(options.endpoint_type || "text"), class: "pui-connection-endpoint", "aria-label": text("endpoint", "Endpoint"), placeholder: String(options.endpoint_placeholder || "")});
     endpointInput.addEventListener("change", function () { self.connectionAction(rec, {op: "endpoint", value: endpointInput.value}); });
     if (options.endpoint === false) endpointInput.hidden = true;
     row.appendChild(endpointInput);
-    var target = el("select", {class: "pui-connection-target", "aria-label": "Connection target"});
+    var target = el("select", {class: "pui-connection-target", "aria-label": text("target", "Connection target")});
     target.addEventListener("change", function () { self.connectionAction(rec, {op: "target", value: target.value, target: target.value}); });
     row.appendChild(target);
-    var connect = el("button", {type: "button", class: "pui-button pui-primary", text: "Connect"});
-    var disconnect = el("button", {type: "button", class: "pui-button", text: "Disconnect"});
-    var reconnect = el("button", {type: "button", class: "pui-button", text: "Reconnect"});
-    var discover = el("button", {type: "button", class: "pui-button", text: "Discover"});
+    var connect = el("button", {type: "button", class: "pui-button pui-primary", text: text("connect", "Connect")});
+    var disconnect = el("button", {type: "button", class: "pui-button", text: text("disconnect", "Disconnect")});
+    var reconnect = el("button", {type: "button", class: "pui-button", text: text("reconnect", "Reconnect")});
+    var discover = el("button", {type: "button", class: "pui-button", text: text("discover", "Discover")});
     connect.addEventListener("click", function () { self.connectionAction(rec, {op: "connect", endpoint: endpointInput.value}); });
     disconnect.addEventListener("click", function () { self.connectionAction(rec, {op: "disconnect"}); });
     reconnect.addEventListener("click", function () { self.connectionAction(rec, {op: "reconnect"}); });
     discover.addEventListener("click", function () { self.connectionAction(rec, {op: "discover", endpoint: endpointInput.value}); });
     row.appendChild(connect); row.appendChild(disconnect); row.appendChild(reconnect);
     if (options.discover !== false) row.appendChild(discover);
-    var offline = el("input", {type: "checkbox", class: "pui-connection-offline", "aria-label": "Offline mode"});
+    var offline = el("input", {type: "checkbox", class: "pui-connection-offline", "aria-label": text("offline", "Offline mode")});
     offline.addEventListener("change", function () { self.connectionAction(rec, {op: "offline", value: offline.checked}); });
     if (options.offline !== false) {
-      var offlineLabel = el("label", {class: "pui-connection-offline-label"}, offline, el("span", {text: "Offline"}));
+      var offlineLabel = el("label", {class: "pui-connection-offline-label"}, offline, el("span", {text: text("offline", "Offline")}));
       row.appendChild(offlineLabel);
     }
-    var backLink = el("a", {class: "pui-connection-back", href: "#", target: "_self", text: "Back"});
+    var backLink = el("a", {class: "pui-connection-back", href: "#", target: "_self", text: text("back", "Back")});
     row.appendChild(backLink);
     root.appendChild(row);
     var status = el("p", {class: "pui-connection-status", role: "status", "aria-live": "polite"});
@@ -5444,6 +5551,8 @@
     if (!Tree || !rec || !rec.tree) return;
     rec.tree.textContent = "";
     rec.rows = {};
+    var labels = isObject(rec.options.labels) ? rec.options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("tree." + key, fallback)); };
     var makeRows = function (nodes) {
       if (!isArray(nodes)) return null;
       var group = el("div", {class: "pui-tree-group", role: "group"});
@@ -5460,7 +5569,7 @@
         row.setAttribute("aria-selected", rec.selected[id] ? "true" : "false");
         row.tabIndex = rec.focusId === id ? 0 : -1;
         if (children.length) {
-          var expander = el("button", {type: "button", class: "pui-tree-expander", text: isExpanded ? "▾" : "▸", "aria-label": (isExpanded ? "Collapse " : "Expand ") + String(node.label || id)});
+          var expander = el("button", {type: "button", class: "pui-tree-expander", text: isExpanded ? "▾" : "▸", "aria-label": (isExpanded ? text("collapse", "Collapse") : text("expand", "Expand")) + " " + String(node.label || id)});
           expander.tabIndex = -1;
           expander.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.treeToggle(rec, id); });
           row.appendChild(expander);
@@ -5477,13 +5586,13 @@
           var visible = node.visible !== false;
           var locked = node.locked === true;
           var eye = el("button", {type: "button", class: "pui-tree-row-action pui-tree-visibility", text: visible ? "◉" : "○"});
-          eye.setAttribute("aria-label", (visible ? "Hide " : "Show ") + String(node.label || id));
+          eye.setAttribute("aria-label", (visible ? text("hide", "Hide") : text("show", "Show")) + " " + String(node.label || id));
           eye.setAttribute("aria-pressed", visible ? "true" : "false");
           eye.tabIndex = -1;
           eye.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.treeRowAction(rec, id, {op: "tree.visibility", visible: !visible}); });
           row.appendChild(eye);
           var lock = el("button", {type: "button", class: "pui-tree-row-action pui-tree-lock", text: locked ? "▣" : "▢"});
-          lock.setAttribute("aria-label", (locked ? "Unlock " : "Lock ") + String(node.label || id));
+          lock.setAttribute("aria-label", (locked ? text("unlock", "Unlock") : text("lock", "Lock")) + " " + String(node.label || id));
           lock.setAttribute("aria-pressed", locked ? "true" : "false");
           lock.tabIndex = -1;
           lock.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.treeRowAction(rec, id, {op: "tree.lock", locked: !locked}); });
@@ -7009,6 +7118,7 @@
     }
     this.keyCaptureRecords = [];
     this.dialogRecords = [];
+    this.schemaFormRecords = [];
   };
 
   Renderer.prototype.disconnectPreviews = function () {
@@ -7024,6 +7134,7 @@
     this.meterRecords = [];
     this.keyCaptureRecords = [];
     this.dialogRecords = [];
+    this.schemaFormRecords = [];
   };
 
   Renderer.prototype.disconnectToolbarLayouts = function () {
@@ -9123,6 +9234,7 @@
   };
 
   Renderer.prototype.actionFormField = function (input, formId) {
+    var renderer = this;
     var id = formId + "-" + String(input.name || "arg");
     var label = el("label", {class: "pui-dialog-label", for: id, text: String(input.label || input.name || "Value")});
     var control;
@@ -9171,7 +9283,7 @@
       control.__puiFilesOf = filesOf;
       var updateFiles = function () {
         var files = filesOf();
-        fileHint.textContent = files.length ? files.map(function (file) { return String(file.name || file); }).join(", ") : "No file selected.";
+        fileHint.textContent = files.length ? files.map(function (file) { return String(file.name || file); }).join(", ") : renderer.t("field.no_file", "No file selected.");
       };
       control.addEventListener("change", updateFiles);
       updateFiles();
@@ -9436,6 +9548,9 @@
   };
 
   Renderer.prototype.apply = function () {
+    for (var sf = 0; sf < this.schemaFormRecords.length; sf++) {
+      this.schemaFormRefresh(this.schemaFormRecords[sf]);
+    }
     for (var i = 0; i < this.records.length; i++) {
       this.applyRecord(this.records[i]);
       this.applyStatus(this.records[i]);
