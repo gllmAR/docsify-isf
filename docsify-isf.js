@@ -5483,7 +5483,7 @@
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
-            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0}",
+            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0;max-width:100%;flex:1 1 auto}",
             ".isf-editor-folded-summary{display:none;flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-fold-btn{flex:0 0 auto;padding:.15rem .25rem}",
             ".isf-fold-btn .isf-icon{width:13px;height:13px;transition:transform .15s ease}",
@@ -5583,7 +5583,7 @@
             ".isf-editor-actions .isf-template-menu .pui-toolbar-label{color:inherit;font-size:.72rem;font-weight:500;padding:0}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-icon{min-width:12px}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-icon svg{width:12px;height:12px}",
-            ".isf-editor-actions .isf-template-menu .pui-menu-popup{min-width:200px;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
             ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
             ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button:hover{background:var(--isf-surface-2)}",
             ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
@@ -5624,7 +5624,7 @@
             // Auto-overflow headers stay on one measured row; the title may
             // shrink, while the stats pill and the More trigger stay inline.
             ".isf-pui-header .pui-toolbar.is-overflow-auto{flex-wrap:nowrap;row-gap:0}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 auto;order:0;min-width:0;max-width:none;font-size:.9rem}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:0 1 auto;order:0;min-width:0;max-width:50%;font-size:.9rem}",
             ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-spacer{display:none}",
             ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{order:0;margin-inline-start:0;flex:0 0 auto}",
             /* PUI bridge: loaded on demand, but the host palette is always
@@ -5639,6 +5639,7 @@
             ".isf-pui .pui-actions{justify-content:flex-start}",
             ".isf-pui .pui-button{font-size:.75rem;font-weight:500}",
             ".isf-pui .pui-field{padding:.4rem 0}",
+            ".isf-pui .pui-scrub{display:none}",
             ".isf-pui .pui-caption{font-size:.76rem;font-weight:500}",
             ".isf-pui .pui-switch input[type=checkbox]{appearance:none;-webkit-appearance:none;inline-size:36px;block-size:20px;border-radius:999px;border:1px solid var(--isf-border);background:var(--isf-surface-2);position:relative;cursor:pointer;transition:background .15s ease,border-color .15s ease}",
             ".isf-pui .pui-switch input[type=checkbox]::before{content:'';position:absolute;inline-size:14px;block-size:14px;border-radius:50%;background:var(--isf-muted);inset-block-start:2px;inset-inline-start:2px;transition:transform .15s ease,background .15s ease}",
@@ -6386,6 +6387,9 @@
         });
         templateSelect.appendChild(newGroup);
         var editorClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close editor", title: "Close", text: "×" });
+        var editorTitle = h("div", "isf-panel-title isf-editor-head");
+        editorTitle.appendChild(h("span", null, { text: "Source editor" }));
+        editorTitle.appendChild(editorClose);
         actions.appendChild(applyButton);
         actions.appendChild(revertButton);
         actions.appendChild(copyButton);
@@ -6394,7 +6398,6 @@
         actions.appendChild(templateSelect);
         var keysButton = h("button", "isf-btn isf-keys-btn", { type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts" });
         actions.appendChild(keysButton);
-        actions.appendChild(editorClose);
         keysButton.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
         editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
         importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
@@ -6431,6 +6434,7 @@
             "aria-label": "Resize the editor pane", tabindex: "0",
             title: "Drag to resize the editor — double-click to reset"
         });
+        wrap.appendChild(editorTitle);
         wrap.appendChild(toolbar);
         wrap.appendChild(resizeY);
         wrap.appendChild(editor);
