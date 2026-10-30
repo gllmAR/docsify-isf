@@ -12,6 +12,26 @@
     <style>
         :root {
             --theme-color: #d374d6;
+            /* The self-test is a viewer gallery: use a wider stage while
+               keeping prose at a readable measure. */
+            --content-max-width: 960px;
+            --content-margin-inline: clamp(18px, 4vw, 45px);
+            --sidebar-width: 268px;
+            --sidebar-font-size: 15px;
+            --sidebar-link-spacing: 0.55em;
+            --sidebar-name-font-size: var(--font-size-l);
+        }
+        .markdown-section > :is(p, ul, ol, blockquote, table, pre) {
+            max-width: 72ch;
+        }
+        .markdown-section > .isf-block,
+        .markdown-section > p:has(> .isf-block) {
+            max-width: none;
+        }
+        @media (max-width: 640px) {
+            :root {
+                --content-margin-inline: 16px;
+            }
         }
     </style>
 </head>
@@ -31,6 +51,7 @@
                 // the self-test page documents what it is exercising.
                 mode: 'replace',
                 lazy: 'visible',
+                aspectRatio: '16/9',
                 controls: true,
                 params: 'auto',
                 paramsOpenLimit: 6,

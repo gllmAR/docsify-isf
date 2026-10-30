@@ -117,6 +117,26 @@ try {
                 writeText: (text) => { window.__copied = String(text); return Promise.resolve(); }
             }
         });
+        window.isfOpenInspector = (block, tab) => {
+            if (!block) return null;
+            const drawer = block.querySelector(".isf-drawer-right");
+            if (!drawer || drawer.classList.contains("isf-drawer-closed")) {
+                const controls = block.querySelector('.isf-header [data-pui-item="controls"]') ||
+                    block.querySelector('.isf-header [data-pui-item="' + (tab === "editor" ? "editor" : "params") + '"]');
+                if (controls) controls.click();
+            }
+            const target = block.querySelector('.isf-inspector-tab[data-inspector-tab="' + (tab === "editor" ? "source" : (tab || "params")) + '"]');
+            if (target) target.click();
+            return drawer;
+        };
+        window.isfFooterAction = (block, id) => {
+            if (!block) return null;
+            window.isfOpenInspector(block, "params");
+            const action = block.querySelector('.isf-inspector-footer [data-pui-item="' + id + '"]') ||
+                block.querySelector('.isf-header [data-pui-item="' + id + '"]');
+            if (action) action.click();
+            return action;
+        };
     });
     page.on("console", (message) => {
         if (message.type() !== "error") return;
@@ -337,8 +357,7 @@ try {
         const blocks = Array.from(document.querySelectorAll(".isf-block"));
         const block = blocks.find((b) => /Plasma/i.test(b.textContent));
         if (!block) return null;
-        const editorButton = block.querySelector('.isf-header [data-pui-item="editor"]');
-        if (editorButton) editorButton.click();
+        window.isfOpenInspector(block, "editor");
         return true;
     });
     if (!plasma) problems.push("plasma viewer not found for editor test");
@@ -426,7 +445,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        window.isfOpenInspector(block, "editor");
         await wait(300);
         const textarea = block.querySelector(".isf-input");
         Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Vertex/i.test(t.textContent)).click();
@@ -462,7 +481,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        window.isfOpenInspector(block, "editor");
         await wait(250);
         byText(block, "Import").click();
         await wait(250);
@@ -516,7 +535,7 @@ try {
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-        const share = plasma.querySelector('.isf-header [data-pui-item="share"]');
+        const share = plasma.querySelector('.isf-inspector-footer [data-pui-item="share"]');
         const quality = plasma.querySelector('select[aria-label="Render scale"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
@@ -634,7 +653,7 @@ try {
         await wait(250);
         const randomized = before !== speedValue();
 
-        const timeRange = plasma.querySelector('.isf-transport .pui-transport-controls input[type="range"]') ||
+        const timeRange = plasma.querySelector('.isf-inspector-footer .pui-transport-controls input[type="range"]') ||
             plasma.querySelector('.isf-time-row input[type="range"]');
         timeRange.value = "12.5";
         timeRange.dispatchEvent(new Event("input", { bubbles: true }));
@@ -698,19 +717,21 @@ try {
     const lateralTabs = await page.$$eval(".isf-block .isf-edge-tab", (elements) => elements.length);
     if (lateralTabs !== 0) problems.push("lateral edge tabs should be gone, found " + lateralTabs);
 
-    await page.click('.isf-block .isf-header [data-pui-item="editor"]');
+    await page.evaluate(() => window.isfOpenInspector(document.querySelector(".isf-block"), "editor"));
     await new Promise((resolve) => setTimeout(resolve, 350));
     const toolbarToggle = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
-        const button = b.querySelector('.isf-header [data-pui-item="editor"]');
+        const controls = b.querySelector('.isf-header [data-pui-item="controls"]');
+        const source = b.querySelector('.isf-inspector-tab[data-inspector-tab="source"]');
         return {
             drawerOpen: !b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed"),
-            pressed: button.getAttribute("aria-pressed") === "true"
+            pressed: !!controls && controls.getAttribute("aria-pressed") === "true",
+            sourceSelected: !!source && source.getAttribute("aria-selected") === "true"
         };
     });
-    if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed) problems.push("toolbar editor button did not open the code drawer");
+    if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed || !toolbarToggle.sourceSelected) problems.push("header Controls did not open the Source inspector tab");
 
-    await page.click('.isf-block .isf-header [data-pui-item="params"]');
+    await page.evaluate(() => window.isfOpenInspector(document.querySelector(".isf-block"), "params"));
     await new Promise((resolve) => setTimeout(resolve, 350));
     const slider = await page.$('.isf-block [data-isf-param="scale"] input[type="range"]');
     if (slider) {
@@ -733,7 +754,7 @@ try {
     }
 
     // The inspector is tabbed now; switch back to Source before typing.
-    await page.click('.isf-block .isf-header [data-pui-item="editor"]');
+    await page.evaluate(() => window.isfOpenInspector(document.querySelector(".isf-block"), "editor"));
     await new Promise((resolve) => setTimeout(resolve, 350));
     const textareaHandle = await page.$(".isf-block .isf-input");
     if (textareaHandle) {
@@ -841,7 +862,7 @@ try {
     if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px) " + JSON.stringify({wide: phone.wide, layout: phone.layout}));
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
-    if (!phone.moreVisible) problems.push("mobile: the low-priority header actions did not collapse into More: " + JSON.stringify(phone));
+    if (phone.actionButtons > 1) problems.push("mobile: the header should expose only the inspector toggle: " + JSON.stringify(phone));
 
     // Wait for the target's controls: a budget-released viewer rebuilds them
     // when it resumes, and the test must click after that settled.
@@ -864,9 +885,9 @@ try {
             if (close) close.click();
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const button = b.querySelector('.isf-header [data-pui-item="params"]');
-        button.click();
+        window.isfOpenInspector(b, "params");
         await new Promise((resolve) => setTimeout(resolve, 350));
+        const button = b.querySelector('.isf-inspector-tab[data-inspector-tab="params"]');
         const drawer = b.querySelector(".isf-drawer-right");
         const stage = b.querySelector(".isf-stage");
         return {
@@ -874,11 +895,11 @@ try {
             drawerWidth: drawer.getBoundingClientRect().width,
             stageWidth: stage.getBoundingClientRect().width,
             title: (b.querySelector('.isf-header [data-pui-item="title"]') || {}).textContent || "",
-            pressed: button.getAttribute("aria-pressed")
+            pressed: button.getAttribute("aria-selected")
         };
     });
     if (!phoneParams.open || phoneParams.pressed !== "true") {
-        problems.push("mobile: parameters did not open from the toolbar (" +
+        problems.push("mobile: parameters did not open from the bottom inspector menu (" +
             JSON.stringify(phoneParams) + ")");
     }
     if (phoneParams.drawerWidth < phoneParams.stageWidth - 2) problems.push("mobile: parameters drawer should fill the stage width");
@@ -887,17 +908,29 @@ try {
         const b = Array.from(document.querySelectorAll(".isf-block"))
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
-        b.querySelector('.isf-header [data-pui-item="editor"]').click();
+        window.isfOpenInspector(b, "editor");
         await new Promise((resolve) => setTimeout(resolve, 350));
         const sourceTab = b.querySelector('.isf-inspector-tab[aria-controls$="-editor"]');
         const paramsPanel = b.querySelector(".isf-params");
+        const drawer = b.querySelector(".isf-drawer-right");
+        const editor = b.querySelector(".isf-editor");
+        const head = b.querySelector(".isf-inspector-head");
+        const bottom = b.querySelector(".isf-inspector-bottom");
         return {
-            editorOpen: !b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
+            editorOpen: !drawer.classList.contains("isf-drawer-closed") &&
                 !!sourceTab && sourceTab.getAttribute("aria-selected") === "true",
-            paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden")
+            paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden"),
+            compactChrome: getComputedStyle(b.querySelector(".isf-editor-status")).display === "none" &&
+                getComputedStyle(b.querySelector(".isf-editor-pos")).display === "none",
+            codeShare: editor.getBoundingClientRect().height / Math.max(1, drawer.getBoundingClientRect().height),
+            bottomMenu: !!head && !!bottom && bottom.contains(head) &&
+                getComputedStyle(head).justifyContent === "flex-end"
         };
     });
     if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
+    if (!phoneSwap.compactChrome) problems.push("mobile: the editor should drop the status/caret chrome");
+    if (phoneSwap.codeShare < 0.5) problems.push("mobile: the code pane got less than half the inspector: " + phoneSwap.codeShare.toFixed(2));
+    if (!phoneSwap.bottomMenu) problems.push("mobile: the Parameters/Source menu is not right-aligned in the bottom bar");
     await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
 
     const phoneFold = await page.evaluate(async () => {
@@ -957,7 +990,7 @@ try {
                 collapsed: toolbar.__puiToolbarLayout.collapsed,
                 main: toolbar.__puiToolbarLayout.main.map((entry) => ({id: entry.item.id, hidden: entry.node.hidden, w: Math.round(entry.node.getBoundingClientRect().width), p: entry.item.priority}))
             } : null,
-            unexpectedPressed: pressedItems.filter((id) => ["editor", "params", "fullscreen"].indexOf(id) < 0)
+            unexpectedPressed: pressedItems.filter((id) => ["controls", "fullscreen"].indexOf(id) < 0)
         };
     });
     if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
@@ -997,14 +1030,14 @@ try {
         problems.push("desktop header overflowed despite available width: " + JSON.stringify(badgeHome));
     }
     if (badgeHome.unexpectedPressed.length) {
-        problems.push("only the header toggles should expose aria-pressed: " + JSON.stringify(badgeHome));
+        problems.push("only real toggle controls should expose aria-pressed: " + JSON.stringify(badgeHome));
     }
 
     // ── UI: the code editor fills the drawer and follows a taller stage ──
     const editorFill = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = document.querySelector(".isf-block");
-        block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        window.isfOpenInspector(block, "editor");
         await sleep(400);
         // a stored manual height would pin the editor; reset to the flex fill
         block.querySelector(".isf-resize-y").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
@@ -1012,10 +1045,10 @@ try {
         const editor = block.querySelector(".isf-editor");
         const drawer = block.querySelector(".isf-drawer-right");
         const toolbar = block.querySelector(".isf-editor-toolbar");
-        const inspectorHead = block.querySelector(".isf-inspector-head");
+        const inspectorBottom = block.querySelector(".isf-inspector-bottom");
         const resize = block.querySelector(".isf-editor-wrap .isf-resize-y");
         const stage = block.querySelector(".isf-stage");
-        const chrome = (inspectorHead ? inspectorHead.getBoundingClientRect().height : 0) +
+        const chrome = (inspectorBottom ? inspectorBottom.getBoundingClientRect().height : 0) +
             (resize ? resize.getBoundingClientRect().height : 0) +
             toolbar.getBoundingClientRect().height;
         const measure = () => ({
@@ -1037,7 +1070,7 @@ try {
         problems.push("the editor did not follow the taller stage: " + JSON.stringify(editorFill));
     }
 
-    // ── resolution: SD by default, fullscreen is truly fullscreen ──
+    // ── resolution: SD by default, fullscreen is distraction-free with a hint ──
     const resolution = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
@@ -1063,9 +1096,8 @@ try {
             storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
         };
         const initialAspect = aspectOk(initial.buffer);
-        const fullscreenButton = block.querySelector('.isf-header [data-pui-item="fullscreen"]');
-        if (fullscreenButton) fullscreenButton.click();
-        await sleep(900);
+        window.isfFooterAction(block, "fullscreen");
+        await sleep(700);
         const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
         const viewport = { width: innerWidth, height: innerHeight };
         const fullscreen = {
@@ -1078,26 +1110,33 @@ try {
         };
         const fullscreenAspect = aspectOk(fullscreen.buffer);
         const header = block.querySelector(".isf-header");
+        const status = block.querySelector(".isf-status");
+        const hint = block.querySelector(".isf-fullscreen-hint");
+        const drawer = block.querySelector(".isf-drawer-right");
         const headerHidden = getComputedStyle(header).display === "none";
-        const toolbarTrigger = block.querySelector(".isf-pui-toolbar .pui-drawer-trigger");
-        const triggerVisible = !!toolbarTrigger && getComputedStyle(toolbarTrigger).display !== "none";
-        if (toolbarTrigger) toolbarTrigger.click();
+        const statusHidden = getComputedStyle(status).display === "none";
+        const inspectorClosed = drawer.classList.contains("isf-drawer-closed");
+        const legacyToolbar = !!block.querySelector(".isf-pui-toolbar");
+        const hintVisible = !!hint && !hint.classList.contains("isf-hidden") && getComputedStyle(hint).display !== "none";
+        // The hint is subtle and auto-hides after inactivity.
+        await sleep(2350);
+        const hintAutoHidden = !!hint && hint.classList.contains("isf-hidden");
+        document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 20, clientY: 20 }));
+        await sleep(150);
+        const hintRearmed = !!hint && !hint.classList.contains("isf-hidden");
+        // Clicking the hint is the single entry point to the inspector.
+        if (hint) hint.click();
         await sleep(450);
-        const toolbarPanel = block.querySelector(".isf-pui-toolbar .pui-drawer-panel");
-        const toolbar = {
-            trigger: triggerVisible,
-            panel: !!toolbarPanel && !toolbarPanel.hidden,
-            top: !!toolbarPanel && toolbarPanel.classList.contains("is-top"),
-            modal: toolbarPanel ? toolbarPanel.getAttribute("aria-modal") : "missing",
-            backdrop: !!block.querySelector(".isf-pui-toolbar .pui-drawer-backdrop"),
-            role: !!(toolbarPanel && toolbarPanel.querySelector('.pui-toolbar[role="toolbar"]')),
-            actions: toolbarPanel ? Array.from(toolbarPanel.querySelectorAll(".pui-button")).map((b) => b.textContent.trim()) : []
-        };
-        const rightDrawer = block.querySelector(".isf-drawer-right");
-        const paramsAction = toolbarPanel && Array.from(toolbarPanel.querySelectorAll(".pui-button")).find((b) => b.textContent.trim() === "Parameters");
-        if (paramsAction && rightDrawer.classList.contains("isf-drawer-closed")) paramsAction.click();
-        await sleep(500);
-        const paramsOpen = !rightDrawer.classList.contains("isf-drawer-closed");
+        const paramsOpen = !drawer.classList.contains("isf-drawer-closed") &&
+            !!block.querySelector('.isf-inspector-tab[data-inspector-tab="params"][aria-selected="true"]');
+        const footer = block.querySelector(".isf-inspector-footer");
+        const footerActions = footer ? Array.from(footer.querySelectorAll("[data-pui-item]")).map((el) => el.getAttribute("data-pui-item")) : [];
+        const footerLabels = footer ? Array.from(footer.querySelectorAll(".pui-button, .pui-toolbar-link")).map((el) => el.textContent.trim()) : [];
+        const tabs = Array.from(block.querySelectorAll(".isf-inspector-tab")).map((el) => el.textContent.trim());
+        const head = block.querySelector(".isf-inspector-head");
+        const bottom = block.querySelector(".isf-inspector-bottom");
+        const headAtBottom = !!head && !!bottom && bottom.contains(head);
+        const tabsRight = !!head && getComputedStyle(head).justifyContent === "flex-end";
         const select = block.querySelector('select[aria-label="Render resolution"]');
         const setResolution = async (value) => {
             if (!select) return;
@@ -1117,27 +1156,24 @@ try {
             buffer: buffer(),
             storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
         };
-        if (toolbarPanel && toolbarPanel.hidden) {
-            document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
-            await sleep(300);
-        }
-        if (toolbarPanel) toolbarPanel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        await sleep(300);
-        const escapeClosed = !!toolbarPanel && toolbarPanel.hidden;
+        // Escape closes the inspector and brings the hint back.
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(350);
+        const escapeClosed = drawer.classList.contains("isf-drawer-closed");
+        const hintAfterEscape = !!hint && !hint.classList.contains("isf-hidden");
+        // H reopens the inspector.
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
-        await sleep(300);
-        const hOpened = !!toolbarPanel && !toolbarPanel.hidden;
-        const exitAction = toolbarPanel && Array.from(toolbarPanel.querySelectorAll(".pui-button")).find((b) => b.textContent.trim() === "Exit fullscreen");
+        await sleep(350);
+        const hOpened = !drawer.classList.contains("isf-drawer-closed");
+        // The footer's fullscreen action is the only exit control.
+        const exitAction = block.querySelector('.isf-inspector-footer [data-pui-item="fullscreen"]');
         if (exitAction) exitAction.click();
-        else if (document.fullscreenElement || document.webkitFullscreenElement) {
-            const exit = document.exitFullscreen || document.webkitExitFullscreen;
-            if (exit) { try { await exit.call(document); } catch (error) { /* ignore */ } }
-        }
         await sleep(700);
         const afterExit = {
             fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
             headerDisplay: getComputedStyle(header).display,
-            toolbarDisplay: getComputedStyle(block.querySelector(".isf-pui-toolbar")).display
+            hintHidden: !!hint && hint.classList.contains("isf-hidden"),
+            legacyToolbar: !!block.querySelector(".isf-pui-toolbar")
         };
         return {
             missing: false,
@@ -1148,8 +1184,19 @@ try {
             initialAspect: initialAspect,
             fullscreenAspect: fullscreenAspect,
             headerHidden: headerHidden,
-            toolbar: toolbar,
+            statusHidden: statusHidden,
+            inspectorClosed: inspectorClosed,
+            legacyToolbar: legacyToolbar,
+            hintVisible: hintVisible,
+            hintAutoHidden: hintAutoHidden,
+            hintRearmed: hintRearmed,
+            hintAfterEscape: hintAfterEscape,
             paramsOpen: paramsOpen,
+            footerActions: footerActions,
+            footerLabels: footerLabels,
+            tabs: tabs,
+            headAtBottom: headAtBottom,
+            tabsRight: tabsRight,
             escapeClosed: escapeClosed,
             hOpened: hOpened,
             afterExit: afterExit
@@ -1164,25 +1211,33 @@ try {
             problems.push("fullscreen block does not fill the viewport: " + JSON.stringify(fs));
         }
         if (!resolution.headerHidden) problems.push("the fullscreen header is still visible");
-        if (!resolution.toolbar.trigger || !resolution.toolbar.panel || !resolution.toolbar.top) {
-            problems.push("the fullscreen PUI toolbar did not open: " + JSON.stringify(resolution.toolbar));
+        if (!resolution.statusHidden) problems.push("the fullscreen status bar is still visible");
+        if (!resolution.inspectorClosed) problems.push("fullscreen did not enter with the inspector closed");
+        if (resolution.legacyToolbar) problems.push("the retired fullscreen toolbox is still rendered");
+        if (!resolution.hintVisible) problems.push("the fullscreen inspector hint is not visible on entry");
+        if (!resolution.hintAutoHidden) problems.push("the fullscreen hint did not auto-hide after inactivity");
+        if (!resolution.hintRearmed) problems.push("pointer activity did not re-arm the fullscreen hint");
+        if (!resolution.paramsOpen) problems.push("clicking the fullscreen hint did not open Parameters");
+        if (resolution.footerActions.indexOf("fullscreen") < 0 ||
+            resolution.footerActions.indexOf("reset") < 0 ||
+            resolution.footerActions.indexOf("share") < 0) {
+            problems.push("the inspector footer is missing actions: " + JSON.stringify(resolution.footerActions));
         }
-        if (resolution.toolbar.modal !== null || resolution.toolbar.backdrop) {
-            problems.push("the fullscreen toolbar must be a non-modal top drawer: " + JSON.stringify(resolution.toolbar));
+        if (resolution.footerLabels.indexOf("Exit fullscreen") < 0) {
+            problems.push("the inspector footer does not expose Exit fullscreen: " + JSON.stringify(resolution.footerLabels));
         }
-        if (!resolution.toolbar.role) problems.push("the fullscreen controls are not a PUI toolbar");
-
-        ["Source editor", "Parameters", "Reset parameters", "Exit fullscreen", "Open source", "Copy OBS link"].forEach((label) => {
-            if (resolution.toolbar.actions.indexOf(label) < 0) {
-                problems.push("the fullscreen toolbar is missing the " + label + " action");
-            }
-        });
-        if (!resolution.paramsOpen) problems.push("the fullscreen toolbar did not open the parameters drawer");
-        if (!resolution.escapeClosed) problems.push("Escape did not close the fullscreen toolbar");
-        if (!resolution.hOpened) problems.push("H did not reopen the fullscreen toolbar");
-        if (resolution.afterExit.fullscreen) problems.push("the toolbar Exit fullscreen action did not exit");
+        if (resolution.tabs.join(",") !== "Parameters,Source") {
+            problems.push("the inspector menu is not Parameters,Source: " + JSON.stringify(resolution.tabs));
+        }
+        if (!resolution.headAtBottom) problems.push("the inspector menu is not in the bottom bar");
+        if (!resolution.tabsRight) problems.push("the inspector menu is not right-aligned");
+        if (!resolution.escapeClosed) problems.push("Escape did not close the fullscreen inspector");
+        if (!resolution.hintAfterEscape) problems.push("the hint did not return after closing the inspector");
+        if (!resolution.hOpened) problems.push("H did not reopen the fullscreen inspector");
+        if (resolution.afterExit.fullscreen) problems.push("the footer fullscreen action did not exit");
         if (resolution.afterExit.headerDisplay === "none") problems.push("the header did not return after fullscreen");
-        if (resolution.afterExit.toolbarDisplay !== "none") problems.push("the fullscreen toolbar is still visible after exit");
+        if (!resolution.afterExit.hintHidden) problems.push("the fullscreen hint is still visible after exit");
+        if (resolution.afterExit.legacyToolbar) problems.push("the retired fullscreen toolbox returned after exit");
         if (fs.stage.width < fs.viewport.width * 0.9 || fs.stage.height < fs.viewport.height * 0.9) {
             problems.push("fullscreen stage does not fill the block: " + JSON.stringify(fs.stage));
         }
@@ -1221,7 +1276,7 @@ try {
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(400);
-        const button = block.querySelector('.isf-header [data-pui-item="share"]');
+        const button = block.querySelector('.isf-inspector-footer [data-pui-item="share"]');
         if (!button) return null;
         button.click();
         await sleep(400);
@@ -1378,7 +1433,7 @@ try {
         reveal.click();
         await sleep(300);
         const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
-        block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        window.isfOpenInspector(block, "editor");
         await sleep(400);
         const editorOpen = !block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
             getComputedStyle(block.querySelector(".isf-drawer-right")).display !== "none";
@@ -1390,8 +1445,7 @@ try {
         const keyboardReveal = getComputedStyle(header).display !== "none";
         const more = block.querySelector('.isf-header [data-pui-item="more"]');
         if (more) more.click();
-        const reset = block.querySelector('.isf-header [data-pui-item="reset"]');
-        if (reset) reset.click();
+        window.isfFooterAction(block, "reset");
         await sleep(400);
         const speedRow = block.querySelector('[data-isf-param="speed"]');
         const speedRange = speedRow && speedRow.querySelector('input[type="range"]');

@@ -280,7 +280,7 @@ filters, transitions and sources all at 100 %.
 ### 5.9 Live controls and media
 
 - **Resolution** (Default/SD/HD/FHD/Native) and **Scale** (0.25×–2×/auto),
-  both persisted, the **transport footer** (play/seek), **Randomize** (constraint-respecting)
+  both persisted, the **inspector transport** (play/seek), **Randomize** (constraint-respecting)
   and **Export PNG** live in the Parameters tab.
 - **Microphone** capture for `audio`/`audioFFT` inputs (`getUserMedia` +
   `AnalyserNode`, time-domain and FFT data resampled to the declared `MAX`),
@@ -362,54 +362,62 @@ menu's **Default** clears the stored override and returns to the site config.
 ```
 .isf-block
 ├── .isf-header    host fallback (removed after PUI mounts)
-│   └── .isf-pui-header  PUI toolbar: title + ISF chip, stats,
-│                        editor/params/fullscreen/share/reset/source, More
+│   └── .isf-pui-header  PUI toolbar: inspector toggle,
+│                        source-link title + ISF chip, stats readout
 ├── .isf-body
 │   └── .isf-stage  canvas, overlay (loading/error/released)
 │       └── .isf-drawer-right.isf-inspector  single right dock:
-│           head tabs Parameters | Source + help/close;
-│           Parameters panel (intro, PUI fields, View section);
-│           Source panel (host editor, import sub-panel)
-├── .isf-transport  PUI transport: play/pause/stop + shader-time seek
+│           Parameters panel (intro, PUI fields, View section) |
+│           Source panel (host editor, import sub-panel); then
+│           .isf-inspector-bottom (sticky):
+│             PUI footer actions + transport;
+│             bottom menu Parameters | Source + help/close (right)
 └── .isf-status     PUI statusbar (host warnings / errors / info)
 ```
 
 The native fullscreen button (or a canvas double-click) puts the block in
 `requestFullscreen`; the `:fullscreen` rules make it fill the viewport. The
-header is hidden; a PUI **non-modal top drawer** (`side:"top"`, `modal:false`,
-trigger "Controls", **H**) sits at the top-left and carries Source editor,
-Parameters, Reset, Exit fullscreen, Open source and Copy OBS link. The transport stays at the bottom
-for play/seek, and the same right dock is the inspector. Opening Controls
-closes the inspector so the overlays never cover each other; Escape closes
-Controls and Editor/Parameters open the matching inspector tab. Without PUI the
-header and the host time scrubber remain as fallbacks. The Resolution/Scale cap
-still applies, so fullscreen does not silently quadruple the pixel cost.
+header and status line are hidden and the inspector starts closed. A single
+subtle inspector hint (`.isf-fullscreen-hint`, top-left, 32 px, low opacity)
+fades after ~2.2 s of inactivity and re-arms on pointer/key activity, hover or
+focus. Clicking it or pressing **H** opens the same right dock; **Escape**
+closes it and returns the hint. Exit fullscreen, Reset, Share and Open source
+live in the inspector footer, and the PUI transport in that footer owns
+play/seek. There is no second fullscreen toolbox. Without PUI the host header
+and time scrubber remain as fallbacks. The Resolution/Scale cap still applies,
+so fullscreen does not silently quadruple the pixel cost.
 
 The right dock is a single **inspector**, not two drawers: it never resizes the
 render, uses the translucent floating card, and exposes one tab at a time
-(Parameters or Source, plus the import sub-panel under Source). The tabs,
-keyboard help and close live in the inspector head; the panel titles are hidden
-so the tab is the single title. `params: auto|open|closed` controls the initial
-open state (auto opens up to `paramsOpenLimit` inputs) on the Parameters tab.
+(Parameters or Source, plus the import sub-panel under Source). The bottom
+stack is sticky: actions and transport first, then the Parameters/Source menu,
+keyboard help and close right-aligned, so the panel content keeps the top of
+the dock. The panel titles are hidden so the active tab is the single title.
+`params: auto|open|closed` controls the initial open state (auto opens up to
+`paramsOpenLimit` inputs) on the Parameters tab.
 
 | Surface | Control | Keys | Persisted |
 |---|---|---|---|
 | Inspector width | rail on its inner edge | ←/→ (Shift = ×4), Home/End; double-click resets | `paramsWidth` |
-| Parameters tab | sliders button / Ctrl-Cmd+K | tab strip arrows | `inspectorTab` is runtime state |
+| Inspector | header toggle / footer tab menu | H (fullscreen) | open state is runtime |
+| Parameters tab | Ctrl-Cmd+K | tab strip arrows | `inspectorTab` is runtime state |
 | Source tab | `</>` / Ctrl-Cmd+B | tab strip arrows | — |
 | Editor height | rail above the editor | ↑/↓, Home/End; double-click resets | `editorHeight` |
 | Editor toolbar | chevron / Ctrl-Cmd+Shift+B | — | `editorToolbar` |
 | Import | Import action | Escape returns to Source | — |
-| Playback | transport footer | — | — |
+| Playback | inspector footer transport | — | — |
 
-The inspector is opened from the top-bar/tab buttons only; the buttons keep
-`aria-pressed`/`aria-expanded` in sync with the active tab. Width is clamped to
-240 px…64 % of the stage; on viewports up to 600 px it takes the full stage and
-the horizontal rail is hidden. The editor toolbar folds to one row and the code
-pane grows by the freed height. Handles are `role="separator"` with
+The inspector opens from the header toggle, the fullscreen hint, H, or the
+footer Parameters/Source menu. The toggle keeps `aria-pressed` and
+`aria-controls`; the host tabs keep `aria-selected` and roving focus. Width is
+clamped to 240 px…64 % of the stage; on viewports up to 600 px it takes the
+full viewport and the horizontal rail is hidden, the editor status/caret
+readout is dropped, and the toolbar/footer controls compact so the code pane
+keeps most of the height. The editor toolbar still folds to one row and the
+code pane grows by the freed height. Handles are `role="separator"` with
 `aria-orientation`; persistence is opt-out via `persistLayout: false`. In
 fullscreen the inspector remains a floating card over the full-viewport render;
-on narrow screens it takes nearly the full width.
+on narrow screens it takes the full width.
 
 ### 7.2 Controls
 
@@ -428,9 +436,10 @@ behaviour, reset affordance, a11y and focus handling; the plugin owns values,
 clamping, media and events. PUI is the only parameter/actions renderer: the
 code editor and stage canvas stay host surfaces (a code editor is
 engine-specific, like a canvas); the main header is a PUI `toolbar` (the host
-title/actions are its fallback until it mounts); the transport footer is a PUI
-`transport` block, the status line is a PUI `statusbar` block, and both have
-plain-text/host fallbacks until the on-demand assets load.
+title/actions are its fallback until it mounts); the inspector footer carries
+the PUI `toolbar` actions and a `transport` block, the status line is a PUI
+`statusbar` block, and all have plain-text/host fallbacks until the on-demand
+assets load.
 
 The PUI document maps every normalised ISF input:
 
@@ -454,17 +463,17 @@ metadata default) and double-clicking a row still resets it. Every value path
 and both `point2D` axes, `color` stays in 0…1, and `long` values snap to the
 declared `VALUES`.
 
-The Parameters tab is one PUI surface. Its head tabs, shader description/
-credit/categories intro and floating card frame are host chrome; the fields
-are PUI. The plugin-owned view row (a **View** selector for pass targets, a
+The Parameters tab is one PUI surface. Its Parameters/Source menu (in the
+inspector bottom row), shader description/credit/categories intro and floating
+card frame are host chrome; the fields are PUI. The plugin-owned view row (a **View** selector for pass targets, a
 **Resolution** preset and a **Scale** multiplier persisted with the layout, and
 **Randomize** / **Export PNG**) is mounted as a PUI **host block** (`isf.view`,
 registered with `ui.registerBlock`) in the **last** section, after the parameter
 fields: render settings are secondary to the controls that define the look.
 While the on-demand assets load (or if they fail), the row stays a sibling of
 the panel. The view row uses PUI's control target sizes and palette. Time is
-not in the view row: the **transport footer** is a native PUI `transport` block
-bound to `/isf/transport`, with play/pause/stop and a shader-time seek. The host
+not in the view row: the **inspector footer** carries a native PUI `transport`
+block bound to `/isf/transport`, with play/pause/stop and a shader-time seek. The host
 adapter maps `play`/`pause`/`stop`/`seek` to the ISF clock; loop and rate are
 reported unsupported. `viewer.updateBadge()` calls the transport `apply()` so
 the footer time follows the running clock without rebuilds. The
@@ -485,27 +494,22 @@ cleared with the page instances. When PUI is unavailable the message falls
 back to the status line.
 
 The main header is another PUI surface: a `toolbar` block built once the
-normalised inputs are known. It carries the source-link title and an ISF chip,
-the Source/Parameters controls, the live FPS/size `readout`, and preview/
-utility actions with measured automatic overflow (`overflow:"auto"`). Content
-controls sit with the title on the left; the readout and utilities sit on the
-right. Source/Parameters have the highest priority, then fullscreen, then
-reset/source/share; when the row runs out of width the low-priority actions
-move into the More menu, while the title, content controls and readout stay
-put. Inspector-tab and fullscreen `pressed_bind`s reflect the host state, and
-the parameters action carries the input-count badge; playback lives in the
-transport footer. Every action calls back into the viewer; icon-only
-actions keep an `aria-label` and a native `title` tooltip, and the stats readout
-carries `a11y.name: "Render statistics"`. The host title/actions/stats badge
-are removed after a successful mount and remain as the fallback before the
-assets arrive or if the toolbar fails; the toolbar is refreshed when a source
-reload changes the available inputs.
+normalised inputs are known. It carries only the inspector toggle (with
+`pressed_bind` `/isf/ui/inspectorOpen` and `aria_controls`), the source-link
+title + ISF chip and the live FPS/size `readout`; no preview action duplicates
+the inspector footer. The title and toggle stay on the left, the readout on the
+right, and the stats readout carries `a11y.name: "Render statistics"`. The host
+title/actions/stats badge are removed after a successful mount and remain as
+the fallback before the assets arrive or if the toolbar fails; the toolbar is
+refreshed when a source reload changes the available inputs.
 
-The fullscreen toolbox is another PUI surface: a floating top, non-modal
-`drawer` block holding a native PUI `toolbar` block, whose `open_bind` maps to
-`viewer.toolbarOpen`. Opening it closes the inspector, so the Controls card and
-the inspector never overlap. The transport footer remains available below,
-and the host block boundary only applies to the editor/stage themselves.
+The inspector footer is a PUI `toolbar` (fullscreen/reset/share/source link)
+plus a native PUI `transport`, followed by the host Parameters/Source menu,
+help and close in the bottom row. The footer action fullscreen is a real toggle
+with `pressed_bind`; icon-only items keep an `aria-label` and a native `title`.
+All actions call back into the viewer. Playback lives only here, not in the
+header. The separate fullscreen toolbox was removed: fullscreen uses the same
+inspector and footer.
 
 ### 7.3 Editor
 
@@ -615,7 +619,7 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens in the Source tab, highlights, reports `Ln x, Col y`, shows the active line, closes from the inspector ×, the editor and inspector resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), the main header is a measured PUI toolbar whose icon actions open the Parameters/Source inspector tabs, expose pressed states and the input-count badge, and drive reset/fullscreen/share; the PUI transport footer drives play/stop/seek; the title/stats stay in place while low-priority actions collapse into More, and the stats readout has an accessible name; fullscreen hides the header, keeps the transport and opens the non-modal PUI Controls drawer (top, no backdrop, H/Escape, actions, exit, header returns), HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, structural PUI re-renders keep focus on the same item hook, the editor Templates picker is a PUI menu with a native fallback, no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: 10 viewers get a WebGL context and controls, positive samples reach a non-error state, negative samples show mapped errors, the editor opens in the Source tab, highlights, reports `Ln x, Col y`, shows the active line, closes from the inspector ×, the editor and inspector resize from the keyboard and persist, an out-of-range typed parameter clamps to `MAX`, transition progress animates, a released viewer resumes via the budget, the Shadertoy importer converts/applies/reverts and the pointer extension compiles, the vertex tab applies, Ctrl+/ comments and Ctrl+= zooms, the View/Resolution/Scale/Export controls work, the default buffer is capped at SD (aspect preserved), the header is a PUI toolbar with one inspector toggle, the source title and an accessible stats readout; the inspector footer drives reset/fullscreen/share and a native PUI transport; the Parameters/Source menu lives in the bottom row, right-aligned, and the editor fills the drawer above it; on phones the header keeps the toggle/title, the inspector fills the viewport, the editor status is hidden and the code pane keeps most of the height; fullscreen hides the header/status, enters with the inspector closed, shows a subtle auto-hiding/re-arming hint, opens the same inspector on hint/H, closes it on Escape, exits from the footer and returns the header; HD is selectable/persisted/cleared by Default, the share URL carries values + resolution + scale, the bare OBS URL honours `isf-res`, reset returns to the shader defaults, the status line is a PUI statusbar with a tone and no docsify `output` box styling, and transient actions use a dismissible PUI toast stack, structural PUI re-renders keep focus on the same item hook, the editor Templates picker is a PUI menu with a native fallback, no unexpected console errors |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

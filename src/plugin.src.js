@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.26.1
+ * docsify-isf v1.27.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.26.1";
+    var VERSION = "1.27.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3548,6 +3548,7 @@
             ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;min-width:0}",
             "@media (max-width:600px){.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;order:0;font-size:.9rem}}",
             "@media (pointer:coarse){.isf-pui-header .pui-toolbar > .pui-button,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger{min-width:36px;min-height:36px}.isf-pui-header .pui-menu-popup .pui-button{min-height:36px}.isf-view select,.isf-view .isf-btn{min-height:36px}}",
+            "@media (max-width:600px){.isf-header > .isf-title{flex:1 1 auto;min-width:0}.isf-header > .isf-actions{flex:0 1 auto;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:1px}.isf-header > .isf-actions .isf-btn{flex:0 0 auto}}",
             ".isf-btn[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-count{font-variant-numeric:tabular-nums;font-size:.68rem;opacity:.75}",
@@ -3568,8 +3569,9 @@
             ".isf-drawer-left.isf-drawer-closed{transform:translateX(-12px)}",
             ".isf-drawer-right.isf-drawer-closed{transform:translateX(12px)}",
             ".isf-drawer-inner{flex:1 1 auto;min-height:0;overflow:auto}",
-            ".isf-inspector-head{display:flex;align-items:center;gap:.35rem;padding:.4rem .55rem;border-bottom:1px solid var(--isf-border);background:color-mix(in srgb,var(--isf-surface) 92%,transparent);position:sticky;top:0;z-index:4;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
-            ".isf-inspector-tabs{display:flex;gap:.15rem;flex:1 1 auto;min-width:0}",
+            ".isf-inspector-bottom{position:sticky;bottom:0;z-index:7;display:flex;flex-direction:column;background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
+            ".isf-inspector-head{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:.3rem .5rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 92%,transparent)}",
+            ".isf-inspector-tabs{display:flex;gap:.15rem;flex:0 1 auto;min-width:0}",
             ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",
             ".isf-inspector-tab:hover{color:var(--isf-text);background:var(--isf-surface-2)}",
             ".isf-inspector-tab[aria-selected=true]{background:var(--isf-surface-2);border-color:var(--isf-border);color:var(--isf-text)}",
@@ -3595,19 +3597,23 @@
             ".isf-status.is-error{color:var(--isf-danger)}",
             ".isf-status.is-warn{color:#b7791f}",
             ".isf-status.is-pui{padding:0;border:0;background:transparent;white-space:normal}",
-            ".isf-transport{background:var(--isf-surface);border-top:1px solid var(--isf-border);padding:.3rem max(.55rem,env(safe-area-inset-left)) .3rem max(.55rem,env(safe-area-inset-right));position:relative;z-index:6}",
-            ".isf-transport .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-transport .pui-panel,.isf-transport .pui-page,.isf-transport .pui-section,.isf-transport .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
-            ".isf-transport .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.5rem;padding:0;border:0;border-radius:0;background:transparent}",
-            ".isf-transport .pui-transport-head{flex:0 0 auto;gap:.35rem}",
-            ".isf-transport .pui-transport-head h4{display:none}",
-            ".isf-transport .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
-            ".isf-transport .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.45rem}",
-            ".isf-transport .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
-            ".isf-transport .pui-transport-time{color:var(--isf-muted);font-size:.7rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
-            ".isf-transport .pui-transport-loop,.isf-transport .pui-transport select{display:none}",
-            ".isf-bare:not(.isf-revealed) .isf-transport{display:none}",
-            "@media (pointer:coarse){.isf-transport .pui-transport-head .pui-button{min-height:36px}.isf-transport .pui-transport-controls input[type=range]{min-height:36px}}",
+            ".isf-inspector-footer{display:flex;flex-direction:column;gap:.25rem;padding:.3rem .5rem;background:var(--isf-surface)}",
+            ".isf-inspector-footer .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
+            ".isf-inspector-footer .pui-panel,.isf-inspector-footer .pui-page,.isf-inspector-footer .pui-section,.isf-inspector-footer .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
+            ".isf-inspector-footer .pui-toolbar{border:0;background:transparent;padding:0;min-height:0;gap:.25rem;justify-content:flex-end}",
+            ".isf-inspector-footer .pui-toolbar .pui-button{min-width:28px;min-height:28px;padding:.15rem .25rem;background:transparent;border-color:transparent;color:var(--isf-text)}",
+            ".isf-inspector-footer .pui-toolbar .pui-button:hover{background:var(--isf-surface-2);border-color:var(--isf-border)}",
+            ".isf-inspector-footer .pui-toolbar .pui-button[aria-pressed=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
+            ".isf-inspector-footer .pui-toolbar-icon svg{width:16px;height:16px;display:block}",
+            ".isf-inspector-footer .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.45rem;padding:0;border:0;border-radius:0;background:transparent}",
+            ".isf-inspector-footer .pui-transport-head{flex:0 0 auto;gap:.3rem}",
+            ".isf-inspector-footer .pui-transport-head h4{display:none}",
+            ".isf-inspector-footer .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
+            ".isf-inspector-footer .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.4rem}",
+            ".isf-inspector-footer .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
+            ".isf-inspector-footer .pui-transport-time{color:var(--isf-muted);font-size:.68rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
+            ".isf-inspector-footer .pui-transport-loop,.isf-inspector-footer .pui-transport select{display:none}",
+            "@media (pointer:coarse){.isf-inspector-footer .pui-toolbar .pui-button{min-width:36px;min-height:36px}.isf-inspector-footer .pui-transport-head .pui-button{min-height:36px}.isf-inspector-footer .pui-transport-controls input[type=range]{min-height:36px}}",
             ".isf-pui-statusbar{background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
             ".isf-pui-statusbar .pui{width:100%;padding:0;background:transparent;border-radius:0;font-size:.74rem;color:var(--isf-muted)}",
             ".isf-pui-statusbar .pui-panel,.isf-pui-statusbar .pui-page,.isf-pui-statusbar .pui-section,.isf-pui-statusbar .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
@@ -3621,11 +3627,11 @@
             ".isf-pui-statusbar .pui-statusbar-item[data-tone=error]::before{background:var(--isf-danger)}",
             ".isf-pui-statusbar .pui-statusbar-item[data-tone=info]::before{background:var(--isf-accent)}",
             ".isf-editor-wrap{display:flex;flex-direction:column;min-height:0;height:100%}",
-            ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
+            ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
-            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0;max-width:100%;flex:1 1 auto}",
+            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0;max-width:100%;flex:1 1 100%}",
             ".isf-editor-folded-summary{display:none;flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-fold-btn{flex:0 0 auto;padding:.15rem .25rem}",
             ".isf-fold-btn .isf-icon{width:13px;height:13px;transition:transform .15s ease}",
@@ -3661,29 +3667,17 @@
             ".isf-block:fullscreen .isf-header .isf-btn{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:#f0f1f3}",
             ".isf-block:fullscreen .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
             ".isf-block:fullscreen .isf-stage{height:100%;min-height:0}",
+            ".isf-block:fullscreen .isf-header,.isf-block.isf-fullscreen .isf-header{display:none}",
+            ".isf-block:fullscreen .isf-status,.isf-block.isf-fullscreen .isf-status{display:none}",
+            ".isf-fullscreen-hint{position:absolute;top:max(10px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));z-index:2147483001;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);border-radius:50%;background:var(--isf-drawer-bg);color:var(--isf-text);opacity:.42;cursor:pointer;transition:opacity .2s ease,background .12s ease;box-shadow:0 6px 18px rgba(0,0,0,.24);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+            ".isf-fullscreen-hint:hover,.isf-fullscreen-hint:focus-visible{opacity:.95;background:var(--isf-surface)}",
+            ".isf-fullscreen-hint .isf-icon{width:16px;height:16px}",
             ".isf-block:fullscreen .isf-stage{height:100%!important;min-height:0}",
             ".isf-block:fullscreen .isf-drawer{top:0;bottom:0;width:min(480px,44vw)}",
             ".isf-block:fullscreen .isf-editor{min-height:220px}",
             ".isf-block:fullscreen .isf-status{color:var(--isf-muted);background:rgba(20,22,26,.92);border-color:rgba(255,255,255,.1);flex:0 0 auto}",
             ".isf-block:fullscreen .isf-pui-statusbar,.isf-block.isf-fullscreen .isf-pui-statusbar{background:rgba(20,22,26,.92);border-top-color:rgba(255,255,255,.1)}",
             ".isf-block:fullscreen .isf-pui-statusbar .pui-statusbar-value,.isf-block.isf-fullscreen .isf-pui-statusbar .pui-statusbar-value{color:var(--isf-muted)}",
-            ".isf-pui-toolbar{display:none}",
-            ".isf-block:fullscreen.isf-has-pui-toolbar .isf-header,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-header{display:none}",
-            ".isf-block:fullscreen.isf-has-pui-toolbar .isf-pui-toolbar,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-pui-toolbar{display:block}",
-            ".isf-pui-toolbar .pui{padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));right:auto;transform:none;z-index:2147483001;min-height:34px;padding:.38rem .8rem;border:1px solid color-mix(in srgb,var(--isf-border) 80%,transparent);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.74rem;font-weight:600;letter-spacing:.02em;box-shadow:0 8px 22px rgba(0,0,0,.28);-webkit-backdrop-filter:blur(14px) saturate(150%);backdrop-filter:blur(14px) saturate(150%);transition:background .12s ease,border-color .12s ease}",
-            ".isf-pui-toolbar .pui-drawer-trigger::before{content:'☰';margin-inline-end:.45rem;font-size:.9rem;opacity:.8}",
-            ".isf-pui-toolbar .pui-drawer.is-open .pui-drawer-trigger{display:none}",
-            "@media (max-width:760px){.isf-block.isf-drawer-open .isf-pui-toolbar .pui-drawer-trigger{display:none}}",
-            ".isf-pui-toolbar .pui-drawer-panel{background:var(--isf-drawer-bg);color:var(--isf-text);border-color:var(--isf-border);-webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%)}",
-            ".isf-pui-toolbar .pui-drawer-panel.is-top{top:max(54px,calc(env(safe-area-inset-top) + 50px));left:max(12px,env(safe-area-inset-left));right:auto;transform:none;width:min(560px,calc(100vw - 24px));border:1px solid var(--isf-border);border-radius:12px;overflow:hidden;box-shadow:0 18px 46px rgba(0,0,0,.42)}",
-            ".isf-pui-toolbar .pui-drawer-head{border-color:var(--isf-border);padding:.45rem .7rem}",
-            ".isf-pui-toolbar .pui-drawer-head h4{font-size:.8rem;color:var(--isf-text)}",
-            ".isf-pui-toolbar .pui-drawer-close{color:var(--isf-muted);font-size:1rem}",
-            ".isf-pui-toolbar .pui-drawer-body{padding:.55rem .7rem}",
-            ".isf-pui-toolbar .pui-toolbar{border-bottom:0;background:transparent;padding:0;min-height:0}",
-            ".isf-pui-toolbar .pui-actions{gap:.4rem}",
-            ".isf-pui-toolbar .pui-button{font-size:.75rem;background:var(--isf-surface);border-color:var(--isf-border);color:var(--isf-text)}",
             ".isf-pui-toasts{position:fixed;inset:0;z-index:2147483002;pointer-events:none}",
             ".isf-pui-toasts .pui{padding:0;background:transparent;border-radius:0;pointer-events:none}",
             ".isf-pui-toasts .pui-toast-region{pointer-events:none}",
@@ -3765,7 +3759,7 @@
             "@keyframes isf-spin{to{transform:rotate(360deg)}}",
             "@media (pointer:coarse){.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
-            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:wrap;row-gap:.3rem}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 100%;order:-1;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{order:2;margin-inline-start:auto}.isf-drawer{top:0;bottom:0;left:0;right:0;width:100%!important;max-width:100vw;border-radius:0;border:0}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}}",
+            "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:nowrap;row-gap:0}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 auto;order:0;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{display:none}.isf-stage{height:auto!important;aspect-ratio:16/9}.isf-drawer{top:0;bottom:0;left:0;right:0;width:100%!important;max-width:100vw;border-radius:0;border:0}.isf-block.isf-drawer-open{contain:none;overflow:visible}.isf-block.isf-drawer-open .isf-drawer{position:fixed;inset:0;z-index:2147483001;height:100dvh;max-height:100dvh;background:var(--isf-drawer-bg)}body:has(.isf-block.isf-drawer-open){overflow:hidden}.isf-drawer-right.isf-drawer-closed{transform:none}.isf-resize-x{display:none}.isf-editor-wrap > .isf-resize-y{display:none}.isf-editor-wrap .isf-editor{height:auto!important;flex:1 1 auto!important;min-height:0}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{display:none}.isf-editor-pos{display:none}.isf-editor-toolbar{padding:.22rem .35rem;gap:.25rem}.isf-editor-tabs{gap:.15rem}.isf-editor-actions{gap:.2rem}.isf-editor-actions .isf-btn{padding:.2rem .35rem}.isf-panel-title{padding:.45rem .6rem}.isf-inspector-head{padding:.25rem .4rem}.isf-inspector-footer{padding:.25rem .4rem;gap:.2rem}.isf-inspector-footer .pui-toolbar .pui-button{min-width:32px;min-height:32px}.isf-inspector-footer .pui-transport-time{font-size:.64rem}}",
             ".isf-editor-head{padding-inline-start:1rem}",
             // Auto-overflow headers stay on one measured row; the title may
             // shrink, while the stats pill and the More trigger stay inline.
@@ -3835,10 +3829,11 @@
         check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         eye: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
         chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
-        more: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>'
+        more: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>',
+        inspector: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9 4v16" stroke="currentColor" stroke-width="2"/></svg>'
     };
 
-    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more"];
+    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more", "inspector"];
     var HEADER_ICONS = {};
     HEADER_ICON_NAMES.forEach(function (name) {
         HEADER_ICONS[name] = function () {
@@ -5901,14 +5896,14 @@
         var inspectorTabs = h("div", "isf-inspector-tabs", { role: "tablist", "aria-label": "Inspector" });
         var paramsTab = h("button", "isf-inspector-tab is-active", {
             type: "button", role: "tab", id: uid + "-tab-params", "aria-selected": "true",
-            "aria-controls": uid + "-params", text: "Parameters"
+            "aria-controls": uid + "-params", "data-inspector-tab": "params", text: "Parameters"
         });
         inspectorTabs.appendChild(paramsTab);
         var sourceTab = null;
         if (config.editor) {
             sourceTab = h("button", "isf-inspector-tab", {
                 type: "button", role: "tab", id: uid + "-tab-source", "aria-selected": "false",
-                "aria-controls": uid + "-editor", text: "Source"
+                "aria-controls": uid + "-editor", "data-inspector-tab": "source", text: "Source"
             });
             inspectorTabs.appendChild(sourceTab);
         }
@@ -5921,7 +5916,6 @@
         });
         inspectorHead.appendChild(inspectorHelp);
         inspectorHead.appendChild(inspectorClose);
-        rightInner.appendChild(inspectorHead);
         rightInner.appendChild(paramsPanel);
 
         var editor = null;
@@ -5953,12 +5947,31 @@
         importPanel.appendChild(importActions);
         rightInner.appendChild(importPanel);
 
-        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-inspector isf-drawer-closed");
+        var inspectorFooterHost = h("div", "isf-inspector-footer isf-pui isf-hidden");
+        var inspectorBottom = h("div", "isf-inspector-bottom");
+        inspectorBottom.appendChild(inspectorFooterHost);
+        inspectorBottom.appendChild(inspectorHead);
+        rightInner.appendChild(inspectorBottom);
+
+        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-inspector isf-drawer-closed", { id: uid + "-inspector" });
         rightDrawer.appendChild(rightResize);
         rightDrawer.appendChild(rightInner);
 
         stage.appendChild(rightDrawer);
+        var fullscreenHint = h("button", "isf-fullscreen-hint isf-hidden", {
+            type: "button", html: ICONS.inspector, title: "Show inspector (H)",
+            "aria-label": "Show inspector", "aria-pressed": "false"
+        });
         updateDrawerButtons();
+        fullscreenHint.addEventListener("click", function () {
+            viewer.hideFullscreenHint();
+            openInspector(viewer.inspectorTab || "params");
+            if (viewer.editor && viewer.inspectorTab === "source") viewer.editor.focus();
+        });
+        fullscreenHint.addEventListener("pointerenter", clearHintTimer);
+        fullscreenHint.addEventListener("pointerleave", function () { viewer.showFullscreenHint(); });
+        fullscreenHint.addEventListener("focus", clearHintTimer);
+        fullscreenHint.addEventListener("blur", function () { viewer.showFullscreenHint(); });
         paramsTab.addEventListener("click", function () { viewer.setInspectorTab("params"); });
         if (sourceTab) sourceTab.addEventListener("click", function () { showEditorPanel(); });
         inspectorClose.addEventListener("click", function () { closeInspector(); });
@@ -5981,11 +5994,10 @@
         status.appendChild(statusText);
         var statusPUIHost = h("div", "isf-pui isf-pui-statusbar");
         status.appendChild(statusPUIHost);
-        var transportHost = h("div", "isf-transport isf-pui isf-hidden");
         block.appendChild(header);
         block.appendChild(body);
-        block.appendChild(transportHost);
         block.appendChild(status);
+        block.appendChild(fullscreenHint);
 
         viewer.dom = {
             block: block,
@@ -6023,7 +6035,9 @@
             statusText: statusText,
             statusPUIHost: statusPUIHost,
             headerPUIHost: headerPUIHost,
-            transportHost: transportHost
+            inspectorFooterHost: inspectorFooterHost,
+            fullscreenHint: fullscreenHint,
+            inspectorBottom: inspectorBottom
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -6267,6 +6281,27 @@
             }
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
         }
+        var hintTimer = null;
+        function clearHintTimer() {
+            if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
+        }
+        viewer.hideFullscreenHint = function () {
+            clearHintTimer();
+            fullscreenHint.classList.add("isf-hidden");
+            fullscreenHint.setAttribute("aria-pressed", "false");
+        };
+        viewer.showFullscreenHint = function () {
+            if (!isFullscreenActive() || config.bare) return;
+            if (viewer.isInspectorOpen()) { viewer.hideFullscreenHint(); return; }
+            fullscreenHint.classList.remove("isf-hidden");
+            fullscreenHint.setAttribute("aria-pressed", "true");
+            clearHintTimer();
+            hintTimer = setTimeout(function () { viewer.hideFullscreenHint(); }, 2200);
+        };
+        viewer.armFullscreenHint = function () {
+            if (!isFullscreenActive() || config.bare) return;
+            viewer.showFullscreenHint();
+        };
         function openInspector(tab) {
             viewer.inspectorTab = tab === "source" && viewer.editor ? "source" : (tab || viewer.inspectorTab || "params");
             viewer.inspectorImport = false;
@@ -6275,11 +6310,13 @@
             clampDrawerWidths();
             setInspectorPanel();
             updateDrawerButtons();
+            if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
         }
         function closeInspector() {
             rightDrawer.classList.add("isf-drawer-closed");
             block.classList.remove("isf-drawer-open");
             updateDrawerButtons();
+            if (viewer.showFullscreenHint) viewer.showFullscreenHint();
         }
         function showEditorPanel() {
             if (!viewer.editor) { openInspector("params"); return; }
@@ -6450,7 +6487,6 @@
             viewer.updateBadge(playing ? "" : "paused");
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
             if (viewer.applyPUITransport) viewer.applyPUITransport();
-            if (viewer.refreshPUIFullscreenToolbar) viewer.refreshPUIFullscreenToolbar();
         };
         viewer.resetAll = function () {
             viewer.resetParameters();
@@ -6478,9 +6514,15 @@
             viewer.dom.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
             applyStageLayout();
             if (viewer.runtime) viewer.runtime.resize(true);
-            if (active) viewer.setState("");
-            else if (viewer.toolbarOpen) viewer.setToolbarOpen(false);
+            if (active) {
+                viewer.setState("");
+                if (!isDrawerClosed(rightDrawer)) closeInspector();
+                if (viewer.showFullscreenHint) viewer.showFullscreenHint();
+            } else if (viewer.hideFullscreenHint) {
+                viewer.hideFullscreenHint();
+            }
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+            if (viewer.applyPUITransport) viewer.applyPUITransport();
         };
 
         paramsButton.addEventListener("click", viewer.toggleParams);
@@ -6490,26 +6532,36 @@
         fullscreenButton.addEventListener("click", viewer.toggleFullscreen);
         var fullscreenHandler = function () { viewer.syncFullscreen(); };
         var fullscreenKeyHandler = function (event) {
-            if (!isFullscreenActive() || !viewer.puiToolbar) return;
+            if (!isFullscreenActive()) return;
             if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
             var target = event.target;
             if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" ||
                 target.tagName === "SELECT" || target.isContentEditable)) return;
             if (event.key === "h" || event.key === "H") {
                 event.preventDefault();
-                viewer.setToolbarOpen(!viewer.toolbarOpen);
-            } else if (event.key === "Escape" && viewer.toolbarOpen) {
+                if (viewer.isInspectorOpen()) closeInspector();
+                else openInspector(viewer.inspectorTab || "params");
+            } else if (event.key === "Escape" && viewer.isInspectorOpen()) {
                 event.preventDefault();
-                viewer.setToolbarOpen(false);
+                closeInspector();
             }
         };
         document.addEventListener("keydown", fullscreenKeyHandler);
         viewer.listeners.push(function () { document.removeEventListener("keydown", fullscreenKeyHandler); });
         document.addEventListener("fullscreenchange", fullscreenHandler);
         document.addEventListener("webkitfullscreenchange", fullscreenHandler);
+        var hintActivity = function () { viewer.armFullscreenHint(); };
+        document.addEventListener("pointermove", hintActivity, { passive: true });
+        document.addEventListener("pointerdown", hintActivity, { passive: true });
+        document.addEventListener("touchstart", hintActivity, { passive: true });
+        document.addEventListener("keydown", hintActivity);
         viewer.listeners.push(function () {
             document.removeEventListener("fullscreenchange", fullscreenHandler);
             document.removeEventListener("webkitfullscreenchange", fullscreenHandler);
+            document.removeEventListener("pointermove", hintActivity);
+            document.removeEventListener("pointerdown", hintActivity);
+            document.removeEventListener("touchstart", hintActivity);
+            document.removeEventListener("keydown", hintActivity);
         });
 
         /* ------------------------------------------------- parameter APIs */
@@ -6783,57 +6835,6 @@
             return section;
         };
 
-        /* -------------------------------------- PUI fullscreen toolbar */
-
-        // In native fullscreen the header would take layout space; PUI owns a
-        // non-modal top drawer instead so the shader gets the whole viewport.
-        viewer.buildPUIFullscreenToolbarDocument = function () {
-            var items = [];
-            if (config.editor) items.push({id: "editor", label: "Source editor", call: "isf.editor"});
-            if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
-                items.push({id: "params", label: "Parameters", call: "isf.params"});
-            }
-            items.push({kind: "separator", label: ""});
-            items.push({id: "reset", label: "Reset parameters", call: "isf.reset"});
-            items.push({kind: "separator", label: ""});
-            items.push({id: "fullscreen", label: "Exit fullscreen", call: "isf.fullscreen"});
-            items.push({id: "source", label: "Open source", call: "isf.source"});
-            if (config.share) items.push({id: "share", label: "Copy OBS link", call: "isf.share"});
-            return {
-                format: "pupitre-ui",
-                version: 1,
-                host: "docsify-isf",
-                panels: [{
-                    id: "isf-toolbar",
-                    title: "Controls",
-                    embedded: true,
-                    pages: [{id: "toolbar", title: "Controls", sections: [{
-                        id: "toolbar",
-                        title: "Controls",
-                        blocks: [{
-                            kind: "drawer",
-                            id: "isf-toolbar",
-                            label: "Controls",
-                            trigger: "Controls",
-                            side: "top",
-                            modal: false,
-                            height: 320,
-                            open_bind: "/isf/ui/toolbarOpen",
-                            blocks: [{kind: "toolbar", label: "Fullscreen controls", align: "start", items: items}]
-                        }]
-                    }]}]
-                }]
-            };
-        };
-        viewer.refreshPUIFullscreenToolbar = function () {
-            if (!viewer.puiToolbar) return;
-            try { viewer.puiToolbar.ui.render(viewer.buildPUIFullscreenToolbarDocument()); } catch (error) { /* ignore */ }
-        };
-        viewer.setToolbarOpen = function (open, fromPUI) {
-            viewer.toolbarOpen = !!open;
-            if (open && !isDrawerClosed(rightDrawer)) closeInspector();
-            if (!fromPUI && viewer.puiToolbar) viewer.puiToolbar.ui.apply();
-        };
         viewer.mountPUIStatusbar = function () {
             if (viewer.puiStatus || viewer.disposed || !puiAvailable()) return;
             var host = viewer.dom.statusPUIHost;
@@ -6917,7 +6918,6 @@
                 viewer.updateBadge("paused");
                 viewer.applyPUIHeader();
                 viewer.applyPUITransport();
-                viewer.refreshPUIFullscreenToolbar();
                 return true;
             }
             if (op === "seek") {
@@ -6934,14 +6934,22 @@
         };
         viewer.mountPUITransport = function () {
             if (viewer.puiTransport || viewer.disposed || !puiAvailable()) return;
-            var host = viewer.dom.transportHost;
+            var host = viewer.dom.inspectorFooterHost;
             if (!host) return;
             var adapter = {
                 getValue: function (path) {
-                    return path === "/isf/transport" ? viewer.transportValue() : undefined;
+                    if (path === "/isf/transport") return viewer.transportValue();
+                    if (path === "/isf/ui/fullscreen") return isFullscreenActive();
+                    if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
+                    return undefined;
                 },
                 setValue: function () { return false; },
-                callAction: function () { return false; },
+                callAction: function (name) {
+                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
+                    if (name === "isf.reset") { viewer.resetAll(); return true; }
+                    if (name === "isf.share") { viewer.copyLink(); return true; }
+                    return false;
+                },
                 getPathMeta: function () { return {}; },
                 transportAction: function (intent) { return viewer.transportAction(intent); },
                 announce: function (level, message) {
@@ -6952,6 +6960,7 @@
             var ui = PupitreUI.create({
                 mount: host,
                 density: "compact",
+                icons: HEADER_ICONS,
                 getValue: adapter.getValue,
                 setValue: adapter.setValue,
                 callAction: adapter.callAction,
@@ -6962,20 +6971,23 @@
             });
             var doc = {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-transport", title: "Playback", embedded: true, pages: [{id: "transport", title: "Playback", sections: [{
-                    id: "transport", title: "Playback", blocks: [{
-                        kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport",
-                        a11y: {name: "Shader playback"},
-                        transport_options: {rates: [1], labels: {
-                            title: "Playback", play: "Play", pause: "Pause", stop: "Stop",
-                            seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
-                        }}
-                    }]
+                panels: [{id: "isf-inspector-footer", title: "Inspector", embedded: true, pages: [{id: "footer", title: "Inspector", sections: [{
+                    id: "footer", title: "Inspector", blocks: [
+                        {kind: "toolbar", id: "isf-inspector-actions", label: "Inspector actions", align: "end", items: [
+                            {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen", icon_only: true, call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen"},
+                            {id: "reset", label: "Reset parameters", icon: "reset", icon_only: true, title: "Reset parameters and time", call: "isf.reset"},
+                            {id: "share", label: "Copy OBS link", icon: "share", icon_only: true, title: "Copy a fullscreen link for OBS", call: "isf.share"},
+                            {kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source", icon_only: true, title: "Open source file"}
+                        ]},
+                        {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"}, transport_options: {rates: [1], labels: {
+                            title: "Playback", play: "Play", pause: "Pause", stop: "Stop", seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
+                        }}}
+                    ]
                 }]}]}]
             };
             try { ui.render(doc); } catch (error) {
                 try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                viewer.warn("Playback transport unavailable: " + (error && error.message ? error.message : error));
+                viewer.warn("Inspector footer unavailable: " + (error && error.message ? error.message : error));
                 return;
             }
             viewer.puiTransport = {ui: ui, host: host};
@@ -6984,66 +6996,14 @@
             viewer.applyPUITransport();
         };
 
-        viewer.mountPUIFullscreenToolbar = function () {
-            if (viewer.puiToolbar || viewer.disposed || !block || !puiAvailable()) return;
-            var host = h("div", "isf-pui isf-pui-toolbar");
-            block.appendChild(host);
-            var adapter = {
-                getValue: function (path) {
-                    return path === "/isf/ui/toolbarOpen" ? !!viewer.toolbarOpen : undefined;
-                },
-                setValue: function (path, value) {
-                    if (path !== "/isf/ui/toolbarOpen") return false;
-                    viewer.setToolbarOpen(!!value, true);
-                    return true;
-                },
-                callAction: function (name) {
-                    // Opening a side drawer closes the top toolbar so the drawer
-                    // header/close is never covered by the top panel.
-                    if (name === "isf.editor") { viewer.toggleEditor(); viewer.setToolbarOpen(false); return true; }
-                    if (name === "isf.params") { viewer.toggleParams(); viewer.setToolbarOpen(false); return true; }
-                    if (name === "isf.play") { viewer.togglePlay(); return true; }
-                    if (name === "isf.reset") { viewer.resetAll(); return true; }
-                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
-                    if (name === "isf.source") {
-                        try { window.open(viewer.url, "_blank", "noopener"); } catch (error) { /* ignore */ }
-                        return true;
-                    }
-                    if (name === "isf.share") { viewer.copyLink(); return true; }
-                    return false;
-                },
-                getPathMeta: function () { return {}; },
-                announce: function (level, message) {
-                    if (level === "error") viewer.warn(message);
-                    else viewer.setState(message, level === "success" ? "ok" : "");
-                }
-            };
-            var ui = PupitreUI.create({
-                mount: host,
-                density: "compact",
-                getValue: adapter.getValue,
-                setValue: adapter.setValue,
-                callAction: adapter.callAction,
-                getPathMeta: adapter.getPathMeta,
-                announce: adapter.announce,
-                translate: function (key, fallback) { return fallback; }
-            });
-            try {
-                ui.render(viewer.buildPUIFullscreenToolbarDocument());
-            } catch (error) {
-                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                if (host.parentNode) host.parentNode.removeChild(host);
-                viewer.warn("Fullscreen toolbar unavailable: " + (error && error.message ? error.message : error));
-                return;
-            }
-            viewer.puiToolbar = {ui: ui, host: host};
-            block.classList.add("isf-has-pui-toolbar");
-        };
-
         /* --------------------------------------- PUI header toolbar */
 
         viewer.buildPUIHeaderDocument = function () {
             var items = [{
+                id: "controls", label: "Inspector", icon: "inspector", icon_only: true,
+                title: "Show inspector", call: "isf.inspector",
+                pressed_bind: "/isf/ui/inspectorOpen", aria_controls: uid + "-inspector", collapse: false
+            }, {
                 kind: "link",
                 id: "title",
                 href: viewer.url || "#",
@@ -7053,56 +7013,16 @@
                 title: "Open " + String(viewer.title || "shader") + " source",
                 badge: "ISF",
                 collapse: false
-            }];
-            if (config.editor) {
-                items.push({
-                    id: "editor", label: "Source editor", icon: "editor", icon_only: true,
-                    title: "Source editor", call: "isf.editor", pressed_bind: "/isf/ui/editorOpen",
-                    aria_controls: uid + "-editor", priority: 100
-                });
-            }
-            if (config.controls && viewer.built && viewer.built.inputs && viewer.built.inputs.length) {
-                items.push({
-                    id: "params", label: "Parameters", icon: "params", icon_only: true,
-                    title: "Parameters", call: "isf.params", pressed_bind: "/isf/ui/paramsOpen",
-                    badge_bind: "/isf/ui/inputCount", aria_controls: uid + "-params", priority: 100
-                });
-            }
-            items.push({kind: "separator"});
-            items.push({kind: "spacer"});
-            items.push({
+            }, {kind: "spacer"}, {
                 kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
                 a11y: {name: "Render statistics"},
                 collapse: false
-            });
-            items.push({kind: "separator"});
-            items.push({
-                id: "fullscreen", label: "Fullscreen", icon: "fullscreen", icon_only: true,
-                title: "Fullscreen", call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen", priority: 70
-            });
-            if (config.share !== false) {
-                items.push({
-                    id: "share", label: "Copy OBS link",
-                    icon: "share", icon_only: true,
-                    title: "Copy a fullscreen link for OBS (current parameters)", call: "isf.share", priority: 20
-                });
-            }
-            items.push({
-                id: "reset", label: "Reset parameters", icon: "reset", icon_only: true,
-                title: "Reset parameters and time", call: "isf.reset", priority: 30
-            });
-            if (config.showSource) {
-                items.push({
-                    kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener",
-                    label: "Open source file", icon: "source", icon_only: true, title: "Open source file", priority: 20
-                });
-            }
+            }];
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-header", title: String(viewer.title || "ISF viewer"), embedded: true, pages: [{id: "header", title: "Header", sections: [{
                     id: "header", title: "Header", blocks: [{
-                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start",
-                        overflow: "auto", overflow_label: "More", items: items
+                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start", items: items
                     }]
                 }]}]}]
             };
@@ -7121,19 +7041,22 @@
             if (!host) return;
             var adapter = {
                 getValue: function (path) {
-                    if (path === "/isf/ui/editorOpen") return viewer.isDrawerOpen(rightDrawer) && viewer.inspectorTab === "source";
-                    if (path === "/isf/ui/paramsOpen") return viewer.isDrawerOpen(rightDrawer) && viewer.inspectorTab === "params";
+                    if (path === "/isf/ui/inspectorOpen") return viewer.isInspectorOpen();
                     if (path === "/isf/ui/fullscreen") return isFullscreenActive();
                     if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
                     if (path === "/isf/ui/playLabel") return viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause";
                     if (path === "/isf/ui/playIcon") return viewer.runtime && !viewer.runtime.playing ? "play" : "pause";
+                    if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
                     if (path === "/isf/ui/badge") return viewer.badgeText || "";
                     return undefined;
                 },
                 setValue: function () { return false; },
                 callAction: function (name) {
-                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
-                    if (name === "isf.params") { viewer.toggleParams(); return true; }
+                    if (name === "isf.inspector") {
+                        if (viewer.isInspectorOpen()) closeInspector();
+                        else openInspector(viewer.inspectorTab || "params");
+                        return true;
+                    }
                     if (name === "isf.play") { viewer.togglePlay(); return true; }
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
@@ -7202,7 +7125,6 @@
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
             if (puiAvailable()) {
-                viewer.mountPUIFullscreenToolbar();
                 viewer.mountPUIStatusbar();
                 viewer.mountPUITransport();
                 viewer.mountPUIHeader();
@@ -7562,11 +7484,6 @@
             if (viewer.pui) {
                 try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.pui = null;
-            }
-            if (viewer.puiToolbar) {
-                try { viewer.puiToolbar.ui.destroy(); } catch (error) { /* ignore */ }
-                viewer.puiToolbar = null;
-                block.classList.remove("isf-has-pui-toolbar");
             }
             if (viewer.puiStatus) {
                 try { viewer.puiStatus.ui.destroy(); } catch (error) { /* ignore */ }
