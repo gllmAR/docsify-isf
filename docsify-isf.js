@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.25.0
+ * docsify-isf v1.25.1
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.25.0";
+    var VERSION = "1.25.1";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5483,7 +5483,7 @@
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-editor-status.is-error{color:var(--isf-danger)}",
             ".isf-editor-status.is-ok{color:#3f9142}",
-            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0}",
+            ".isf-editor-actions{display:flex;flex-wrap:wrap;gap:.25rem;min-width:0;max-width:100%;flex:1 1 auto}",
             ".isf-editor-folded-summary{display:none;flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-fold-btn{flex:0 0 auto;padding:.15rem .25rem}",
             ".isf-fold-btn .isf-icon{width:13px;height:13px;transition:transform .15s ease}",
@@ -5578,6 +5578,8 @@
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-template-select{border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;padding:.18rem .25rem;max-width:9.5rem}",
             ".isf-editor-actions .isf-template-menu{display:inline-flex;flex:0 0 auto}",
+            ".isf-editor-head{padding-inline-start:.75rem}",
+            ".isf-editor-head > span:first-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
             ".isf-editor-actions .isf-template-menu .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
             ".isf-editor-actions .isf-template-menu .pui-menu-trigger:hover{background:var(--isf-surface-2)}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-label{color:inherit;font-size:.72rem;font-weight:500;padding:0}",
@@ -5621,12 +5623,14 @@
             "@media (pointer:coarse){.isf-import textarea,.isf-template-select{font-size:16px}.isf-btn{min-width:36px;min-height:36px;padding:.42rem .55rem}.isf-btn .isf-icon{width:17px;height:17px}.isf-panel-close{min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}}",
             "@media (prefers-reduced-motion:reduce){.isf-spinner{animation:none}.isf-btn{transition:none}.isf-block *{scroll-behavior:auto}}",
             "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:wrap;row-gap:.3rem}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 100%;order:-1;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{order:2;margin-inline-start:auto}.isf-drawer{top:0;bottom:0;left:0;right:0;width:100%!important;max-width:100vw;border-radius:0;border:0}.isf-resize-x{display:none}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{flex:1 1 100%}.isf-editor-pos{display:none}.isf-panel-title{padding:.45rem .6rem}}",
+            ".isf-editor-head{padding-inline-start:1rem}",
             // Auto-overflow headers stay on one measured row; the title may
             // shrink, while the stats pill and the More trigger stay inline.
             ".isf-pui-header .pui-toolbar.is-overflow-auto{flex-wrap:nowrap;row-gap:0}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:0 1 auto;order:0;min-width:0;max-width:50%;font-size:.9rem}",
+            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:0 0 auto;order:0;min-width:0;max-width:46%;font-size:.9rem}",
             ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-spacer{display:none}",
             ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{order:0;margin-inline-start:0;flex:0 0 auto}",
+            "@media (max-width:600px){.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{display:none}.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title] .pui-toolbar-badge{display:none}}",
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
@@ -6397,7 +6401,7 @@
         actions.appendChild(templateMenuHost);
         actions.appendChild(templateSelect);
         var keysButton = h("button", "isf-btn isf-keys-btn", { type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts" });
-        actions.appendChild(keysButton);
+        editorTitle.insertBefore(keysButton, editorClose);
         keysButton.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
         editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
         importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
@@ -6789,7 +6793,7 @@
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-editor-menu", title: "Editor templates", embedded: true, pages: [{id: "menu", title: "Templates", sections: [{
                     id: "menu", title: "Templates", blocks: [{
-                        kind: "menu", id: "templates", label: "Templates", icon: "chevron", items: menuItems
+                        kind: "menu", id: "templates", label: "Templates", icon: "chevron", icon_only: true, items: menuItems
                     }]
                 }]}]}]
             };
@@ -8778,13 +8782,13 @@
             });
             if (config.share !== false) {
                 items.push({
-                    id: "share", label: "Copy a fullscreen link for OBS (current parameters)",
+                    id: "share", label: "Copy OBS link",
                     icon: "share", icon_only: true,
                     title: "Copy a fullscreen link for OBS (current parameters)", call: "isf.share", priority: 20
                 });
             }
             items.push({
-                id: "reset", label: "Reset parameters and time", icon: "reset", icon_only: true,
+                id: "reset", label: "Reset parameters", icon: "reset", icon_only: true,
                 title: "Reset parameters and time", call: "isf.reset", priority: 30
             });
             if (config.showSource) {

@@ -1001,10 +1001,15 @@ try {
         const editor = block.querySelector(".isf-editor");
         const drawer = block.querySelector(".isf-drawer-left");
         const toolbar = block.querySelector(".isf-editor-toolbar");
+        const title = block.querySelector(".isf-editor-head");
+        const resize = block.querySelector(".isf-editor-wrap .isf-resize-y");
         const stage = block.querySelector(".isf-stage");
+        const chrome = (title ? title.getBoundingClientRect().height : 0) +
+            (resize ? resize.getBoundingClientRect().height : 0) +
+            toolbar.getBoundingClientRect().height;
         const measure = () => ({
             editor: Math.round(editor.getBoundingClientRect().height),
-            available: Math.round(drawer.getBoundingClientRect().height - toolbar.getBoundingClientRect().height)
+            available: Math.round(drawer.getBoundingClientRect().height - chrome)
         });
         const first = measure();
         stage.style.height = "620px";
