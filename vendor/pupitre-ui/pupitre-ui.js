@@ -219,6 +219,7 @@
       curveAction: options.curveAction || null,
       drawerAction: options.drawerAction || null,
       workflowAction: options.workflowAction || null,
+      graphNodeBody: options.graphNodeBody || null,
       getValueFor: options.getValueFor || null,
       setValueFor: options.setValueFor || null,
       getIcon: options.getIcon || null,
@@ -1388,6 +1389,17 @@
         });
         nodeEl.appendChild(paramsEl);
         rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
+      }
+      if (typeof self.adapter.graphNodeBody === "function") {
+        try {
+          var customBody = self.adapter.graphNodeBody(node, type, rec.block, self);
+          if (customBody && (customBody.nodeType || typeof customBody.tagName === "string")) {
+            customBody.classList.add("pui-graph-node-body");
+            nodeEl.appendChild(customBody);
+          }
+        } catch (error) {
+          self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
+        }
       }
       var subgraphPath = typeof node.subgraph === "string" ? node.subgraph : "";
       if (subgraphPath) {
@@ -3094,6 +3106,7 @@
     var value = path ? this.adapter.getValue(path) : null;
     if (!Curve) return el("p", {class: "pui-missing", text: "(curve model PupitreCurve is not loaded)"});
     if (!isObject(value)) return el("p", {class: "pui-missing", text: "(curve value is missing)"});
+    if (isArray(value.series)) return this.buildSeriesCurve(block, value);
     var root = el("section", {class: "pui-curve", "data-pui-curve": path});
     var head = el("div", {class: "pui-curve-head"});
     head.appendChild(el("h4", {text: String(block.label || block.id || "Envelope")}));
@@ -3193,6 +3206,174 @@
     if (reset) reset.addEventListener("click", function () { rec.value = Object.assign({}, block.default); update(); self.curveWrite(rec, {op: "curve.reset"}); });
     update();
     return root;
+  };
+
+  Renderer.prototype.buildSeriesCurve = function (block, value) {
+    var self = this;
+    var path = String(block.bind || "");
+    var Series = global.PupitreCurve;
+    var options = isObject(block.curve_options) ? block.curve_options : {};
+    var series = value.series.map(function (entry, index) {
+      if (!isObject(entry)) return {id: "s" + index, label: "Series " + (index + 1), points: []};
+      return {
+        id: String(entry.id || "s" + index),
+        label: String(entry.label || entry.id || "Series " + (index + 1)),
+        color: entry.color,
+        points: isArray(entry.points) ? entry.points.filter(isObject).map(function (point) {
+          return {x: Number(point.x) || 0, y: Number(point.y) || 0};
+        }) : []
+      };
+    });
+    var root = el("section", {class: "pui-curve pui-series-curve", "data-pui-curve": path});
+    var head = el("div", {class: "pui-curve-head"});
+    head.appendChild(el("h4", {text: String(block.label || block.id || "Curves")}));
+    var activeSeries = 0;
+    var seriesSelect = null;
+    if (series.length > 1) {
+      seriesSelect = el("select", {"aria-label": "Curve series"});
+      series.forEach(function (entry, index) { seriesSelect.appendChild(el("option", {value: String(index), text: entry.label})); });
+      seriesSelect.addEventListener("change", function () { activeSeries = Number(seriesSelect.value) || 0; self.seriesCurveRefresh(rec); });
+      head.appendChild(seriesSelect);
+    }
+    if (!block.readonly) {
+      var addPoint = el("button", {type: "button", class: "pui-button", text: "Add point"});
+      addPoint.addEventListener("click", function () {
+        var entry = series[activeSeries];
+        if (!entry) return;
+        var last = entry.points[entry.points.length - 1];
+        var x = last ? Math.min(1, last.x + 0.1) : 0.5;
+        entry.points.push({x: x, y: last ? last.y : 0.5});
+        self.seriesCurveRefresh(rec);
+        self.curveWrite(rec, {op: "series.add", series: entry.id, index: entry.points.length - 1});
+      });
+      head.appendChild(addPoint);
+    }
+    root.appendChild(head);
+    var chart = el("div", {class: "pui-curve-chart pui-series-chart", style: "height:" + String(block.height || 260) + "px;", role: "group", "aria-label": String(block.label || "Curve series")});
+    var svg = svgEl("svg", {class: "pui-curve-svg", viewBox: "0 0 1000 260", preserveAspectRatio: "none", "aria-hidden": "true"});
+    var grid = svgEl("g", {class: "pui-series-grid"});
+    for (var g = 1; g < 4; g++) {
+      grid.appendChild(svgEl("line", {x1: 0, y1: 65 * g, x2: 1000, y2: 65 * g}));
+    }
+    svg.appendChild(grid);
+    var pathEls = [];
+    series.forEach(function (entry, index) {
+      var pathEl = svgEl("path", {class: "pui-curve-path", "data-series": entry.id, style: entry.color ? "stroke:" + entry.color + ";" : ""});
+      svg.appendChild(pathEl);
+      pathEls.push(pathEl);
+    });
+    chart.appendChild(svg);
+    root.appendChild(chart);
+    value.series = series;
+    var rec = {block: block, path: path, value: value, series: series, root: root, chart: chart, svg: svg, pathEls: pathEls,
+      activeSeries: activeSeries, selected: null, drag: null, options: options, seriesSelect: seriesSelect,
+      pointEls: [], intent: "series.edit"};
+    var bounds = function () {
+      var points = [];
+      series.forEach(function (entry) { points = points.concat(entry.points); });
+      var xMin = Number(options.x_min); if (!isFinite(xMin)) xMin = 0;
+      var xMax = Number(options.x_max); if (!isFinite(xMax)) xMax = 1;
+      var yMin = Number(options.y_min); if (!isFinite(yMin)) yMin = 0;
+      var yMax = Number(options.y_max); if (!isFinite(yMax)) yMax = 1;
+      return {xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax};
+    };
+    var toSvg = function (point) {
+      var b = bounds();
+      var x = ((point.x - b.xMin) / Math.max(0.000001, b.xMax - b.xMin)) * 1000;
+      var y = 260 - ((point.y - b.yMin) / Math.max(0.000001, b.yMax - b.yMin)) * 260;
+      return {x: Math.max(0, Math.min(1000, x)), y: Math.max(0, Math.min(260, y))};
+    };
+    var fromEvent = function (event) {
+      var box = chart.getBoundingClientRect ? chart.getBoundingClientRect() : {left: 0, top: 0, width: 1, height: 1};
+      var b = bounds();
+      return {
+        x: b.xMin + ((Number(event.clientX) - box.left) / Math.max(1, box.width)) * (b.xMax - b.xMin),
+        y: b.yMin + (1 - (Number(event.clientY) - box.top) / Math.max(1, box.height)) * (b.yMax - b.yMin)
+      };
+    };
+    var update = function () {
+      series.forEach(function (entry, index) {
+        var points = entry.points.map(toSvg);
+        var d = points.length ? "M " + points.map(function (p) { return p.x + " " + p.y; }).join(" L ") : "";
+        pathEls[index].setAttribute("d", d);
+      });
+      if (rec.pointsLayer && rec.pointsLayer.parentNode) rec.pointsLayer.parentNode.removeChild(rec.pointsLayer);
+      var layer = svgEl("g", {class: "pui-series-points"});
+      rec.pointEls = [];
+      series.forEach(function (entry, sIndex) {
+        entry.points.forEach(function (point, pIndex) {
+          var at = toSvg(point);
+          var dot = svgEl("circle", {cx: at.x, cy: at.y, r: 7, class: "pui-curve-point", tabindex: "0", role: "button", "data-series": entry.id, "data-point": String(pIndex), "aria-label": entry.label + " point " + (pIndex + 1) + " at " + point.x + ", " + point.y});
+          dot.addEventListener("focus", function () { rec.selected = {series: sIndex, point: pIndex}; });
+          dot.addEventListener("pointerdown", function (event) {
+            if (event.stopPropagation) event.stopPropagation();
+            event.preventDefault && event.preventDefault();
+            rec.selected = {series: sIndex, point: pIndex};
+            rec.drag = {series: sIndex, point: pIndex, start: {x: point.x, y: point.y}};
+            if (chart.setPointerCapture) chart.setPointerCapture(event.pointerId || 1);
+          });
+          dot.addEventListener("keydown", function (event) {
+            if (event.key === "Delete" || event.key === "Backspace") {
+              if (!block.readonly && entry.points.length > 1) {
+                event.preventDefault();
+                entry.points.splice(pIndex, 1);
+                rec.selected = null;
+                update();
+                self.curveWrite(rec, {op: "series.remove", series: entry.id});
+              }
+            } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(event.key) >= 0) {
+              event.preventDefault();
+              var step = event.shiftKey ? 0.1 : event.altKey ? 0.001 : 0.01;
+              if (event.key === "ArrowLeft") point.x -= step;
+              if (event.key === "ArrowRight") point.x += step;
+              if (event.key === "ArrowUp") point.y += step;
+              if (event.key === "ArrowDown") point.y -= step;
+              point.x = Math.max(bounds().xMin, Math.min(bounds().xMax, point.x));
+              point.y = Math.max(bounds().yMin, Math.min(bounds().yMax, point.y));
+              update();
+              self.curveWrite(rec, {op: "series.edit", series: entry.id});
+            }
+          });
+          layer.appendChild(dot);
+          rec.pointEls.push(dot);
+        });
+      });
+      svg.appendChild(layer);
+      rec.pointsLayer = layer;
+      if (seriesSelect) seriesSelect.value = String(rec.activeSeries || 0);
+    };
+    rec.refresh = update;
+    var move = function (event) {
+      if (!rec.drag) return;
+      var point = series[rec.drag.series].points[rec.drag.point];
+      var next = fromEvent(event);
+      point.x = Math.max(bounds().xMin, Math.min(bounds().xMax, next.x));
+      point.y = Math.max(bounds().yMin, Math.min(bounds().yMax, next.y));
+      update();
+    };
+    var up = function () {
+      if (!rec.drag) return;
+      var drag = rec.drag;
+      rec.drag = null;
+      self.curveWrite(rec, {op: "series.edit", series: series[drag.series].id, point: drag.point});
+    };
+    chart.addEventListener("pointermove", move);
+    chart.addEventListener("pointerup", up);
+    chart.addEventListener("pointercancel", up);
+    chart.addEventListener("dblclick", function (event) {
+      if (block.readonly || !series[activeSeries]) return;
+      var point = fromEvent(event);
+      series[activeSeries].points.push({x: point.x, y: point.y});
+      series[activeSeries].points.sort(function (a, b) { return a.x - b.x; });
+      update();
+      self.curveWrite(rec, {op: "series.add", series: series[activeSeries].id});
+    });
+    update();
+    return root;
+  };
+
+  Renderer.prototype.seriesCurveRefresh = function (rec) {
+    if (rec && typeof rec.refresh === "function") rec.refresh();
   };
 
   Renderer.prototype.curveWrite = function (rec, intent) {
@@ -3466,8 +3647,10 @@
     if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
     var rec = {block: block, path: path, value: value, root: root, options: options,
       view: isObject(value.view) ? {zoom: Number(value.view.zoom) > 0 ? Number(value.view.zoom) : 1, panX: Number(value.view.panX) || 0, panY: Number(value.view.panY) || 0} : {zoom: 1, panX: 0, panY: 0},
-      selected: {}, drag: null, pan: null, marquee: null, undo: [], redo: [], handleEls: {}, layerEls: []};
+      selected: {}, selectedRegion: "", drag: null, pan: null, marquee: null, regionDrag: null,
+      undo: [], redo: [], handleEls: {}, layerEls: [], regionEls: [], regionPaintEls: {}, paintMap: "alpha"};
     (isArray(value.selected) ? value.selected : []).forEach(function (id) { rec.selected[String(id)] = true; });
+    if (value.selected_region) rec.selectedRegion = String(value.selected_region);
     var head = el("div", {class: "pui-canvas-head"});
     head.appendChild(el("h4", {text: label}));
     var count = el("span", {class: "pui-canvas-count", text: (value.handles || []).length + " handles · " + (value.layers || []).length + " layers"});
@@ -3496,7 +3679,10 @@
         adopt.addEventListener("click", function () { self.canvasAdoptSource(rec); });
         tools.appendChild(adopt);
       }
-      if (isObject(value.paint)) {
+      var hasRegionMaps = (value.regions || []).some(function (region) {
+        return isObject(region) && (isObject(region.alpha) || isObject(region.beta));
+      });
+      if (isObject(value.paint) || hasRegionMaps) {
         var paint = el("button", {type: "button", class: "pui-button pui-canvas-paint-toggle", text: "Paint", "aria-pressed": "false"});
         paint.addEventListener("click", function () {
           rec.paintMode = !rec.paintMode;
@@ -3512,6 +3698,35 @@
         tool.value = rec.paintTool || "lower";
         tool.addEventListener("change", function () { rec.paintTool = tool.value; });
         tools.appendChild(tool);
+        if (hasRegionMaps) {
+          var mapSelect = el("select", {"aria-label": "Blend map"});
+          [["alpha", "Alpha"], ["beta", "Beta"]].forEach(function (entry) { mapSelect.appendChild(el("option", {value: entry[0], text: entry[1]})); });
+          mapSelect.value = rec.paintMap;
+          mapSelect.addEventListener("change", function () { rec.paintMap = mapSelect.value; });
+          tools.appendChild(mapSelect);
+        }
+      }
+      if (isArray(value.regions) && value.regions.length) {
+        var regionTools = el("div", {class: "pui-canvas-regions", role: "group", "aria-label": "Regions"});
+        value.regions.forEach(function (region) {
+          if (!isObject(region)) return;
+          var regionButton = el("button", {type: "button", class: "pui-button pui-canvas-region-button", text: String(region.label || region.id || "Region"), "aria-pressed": "false"});
+          regionButton.setAttribute("data-pui-region", String(region.id || ""));
+          regionButton.addEventListener("click", function () { self.canvasSelectRegion(rec, String(region.id || ""), true); });
+          regionTools.appendChild(regionButton);
+        });
+        head.appendChild(regionTools);
+      }
+      if (isArray(value.groups) && value.groups.length) {
+        var groupTools = el("div", {class: "pui-canvas-groups", role: "group", "aria-label": "Canvas groups"});
+        value.groups.forEach(function (group) {
+          if (!isObject(group) || !isArray(group.handles)) return;
+          var groupButton = el("button", {type: "button", class: "pui-button pui-canvas-group", text: String(group.label || group.id || "Group"), "aria-pressed": "false"});
+          groupButton.setAttribute("data-pui-group", String(group.id || ""));
+          groupButton.addEventListener("click", function () { self.canvasSelectGroup(rec, group); });
+          groupTools.appendChild(groupButton);
+        });
+        head.appendChild(groupTools);
       }
       head.appendChild(tools);
     }
@@ -3591,6 +3806,49 @@
       }
       rec.svg.appendChild(paintGroup);
     }
+    rec.regionEls = [];
+    rec.regionPaintEls = {};
+    var regionGroup = svgEl("g", {class: "pui-canvas-regions"});
+    (rec.value.regions || []).forEach(function (region) {
+      if (!isObject(region)) return;
+      var regionId = String(region.id || "");
+      var rect = svgEl("rect", {class: "pui-canvas-region" + (rec.selectedRegion === regionId ? " is-selected" : ""), "data-region-id": regionId,
+        x: Number(region.x) || 0, y: Number(region.y) || 0, width: Math.max(1, Number(region.w) || 1), height: Math.max(1, Number(region.h) || 1)});
+      rect.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        if (event.preventDefault) event.preventDefault();
+        self.canvasSelectRegion(rec, regionId, false);
+        if (rec.paintMode && !rec.block.readonly) {
+          rec.paint = {start: deepClone(rec.value), region: regionId, map: rec.paintMap};
+          self.canvasPaintAt(rec, self.canvasClientToCanvas(rec, event));
+          return;
+        }
+        rec.regionDrag = {id: regionId, mode: "move", start: deepClone(rec.value), x: event.clientX || 0, y: event.clientY || 0, moved: false};
+      });
+      regionGroup.appendChild(rect);
+      rec.regionEls.push({rect: rect, region: region});
+      ["alpha", "beta"].forEach(function (channel) {
+        var map = region[channel];
+        if (!isObject(map) || !isArray(map.data) || Number(map.width) <= 0 || Number(map.height) <= 0) return;
+        var cells = svgEl("g", {class: "pui-canvas-blend is-" + channel});
+        var cw = Number(rect.getAttribute("width")) / Number(map.width);
+        var ch = Number(rect.getAttribute("height")) / Number(map.height);
+        var key = regionId + ":" + channel;
+        rec.regionPaintEls[key] = [];
+        for (var my = 0; my < Number(map.height); my++) {
+          for (var mx = 0; mx < Number(map.width); mx++) {
+            var index = my * Number(map.width) + mx;
+            var cell = Number(map.data[index] || 0);
+            var cellRect = svgEl("rect", {class: "pui-canvas-paint-cell", x: Number(region.x) + mx * cw, y: Number(region.y) + my * ch,
+              width: cw, height: ch, "fill-opacity": String(cell / 255)});
+            cells.appendChild(cellRect);
+            rec.regionPaintEls[key][index] = cellRect;
+          }
+        }
+        regionGroup.appendChild(cells);
+      });
+    });
+    rec.svg.appendChild(regionGroup);
     (rec.value.layers || []).forEach(function (layer) {
       if (!isObject(layer)) return;
       var points = Canvas.layerHandles(rec.value, layer);
@@ -3618,8 +3876,34 @@
       handles.appendChild(button);
       rec.handleEls[id] = button;
     });
+    (rec.value.regions || []).forEach(function (region) {
+      if (!isObject(region)) return;
+      var regionId = String(region.id || "");
+      var rw = Math.max(1, Number(region.w) || 1);
+      var rh = Math.max(1, Number(region.h) || 1);
+      [["nw", region.x, region.y], ["ne", Number(region.x) + rw, region.y],
+        ["sw", region.x, Number(region.y) + rh], ["se", Number(region.x) + rw, Number(region.y) + rh]].forEach(function (entry) {
+        var handle = el("button", {type: "button", class: "pui-canvas-region-handle is-" + entry[0], "data-region-id": regionId, "data-corner": entry[0], style: "left:" + entry[1] + "px;top:" + entry[2] + "px;"});
+        handle.setAttribute("aria-label", "Resize region " + regionId + " " + entry[0]);
+        handle.addEventListener("pointerdown", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          if (event.preventDefault) event.preventDefault();
+          self.canvasSelectRegion(rec, regionId, false);
+          rec.regionDrag = {id: regionId, mode: "resize", corner: entry[0], start: deepClone(rec.value), x: event.clientX || 0, y: event.clientY || 0, moved: false};
+        });
+        handles.appendChild(handle);
+      });
+    });
     rec.content.appendChild(handles);
     rec.handlesEl = handles;
+    Array.prototype.forEach.call(rec.root.querySelectorAll(".pui-canvas-region-button"), function (button) {
+      button.setAttribute("aria-pressed", button.getAttribute("data-pui-region") === rec.selectedRegion ? "true" : "false");
+    });
+    Array.prototype.forEach.call(rec.root.querySelectorAll(".pui-canvas-group"), function (button) {
+      var group = (rec.value.groups || []).find(function (entry) { return String(entry.id || "") === button.getAttribute("data-pui-group"); });
+      var on = !!group && isArray(group.handles) && group.handles.length > 0 && group.handles.every(function (id) { return !!rec.selected[String(id)]; });
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+    });
     this.canvasApplyView(rec);
   };
 
@@ -3655,6 +3939,17 @@
     if (!ids.length) ids = [id];
     rec.drag = {start: deepClone(rec.value), ids: ids, x: event.clientX || 0, y: event.clientY || 0, moved: false};
     if (event.preventDefault) event.preventDefault();
+  };
+
+  Renderer.prototype.canvasSelectGroup = function (rec, group, additive) {
+    if (!rec || !isObject(group) || !isArray(group.handles)) return false;
+    var selected = additive ? Object.assign({}, rec.selected) : {};
+    group.handles.forEach(function (id) { if (rec.handleEls[String(id)]) selected[String(id)] = true; });
+    rec.selected = selected;
+    Object.keys(rec.handleEls || {}).forEach(function (id) { rec.handleEls[id].classList.toggle("is-selected", !!rec.selected[id]); });
+    rec.value.selected = Object.keys(rec.selected);
+    this.writeCanvas(rec, {op: "selection.set", ids: rec.value.selected, group: String(group.id || "")});
+    return rec.value.selected.length > 0;
   };
 
   Renderer.prototype.canvasAlign = function (rec, axis, mode) {
@@ -3693,11 +3988,31 @@
     return true;
   };
 
+  Renderer.prototype.canvasRegion = function (rec, id) {
+    return (rec.value.regions || []).find(function (region) { return isObject(region) && String(region.id || "") === String(id); }) || null;
+  };
+
+  Renderer.prototype.canvasSelectRegion = function (rec, id, writeIntent) {
+    if (!rec) return false;
+    rec.selectedRegion = String(id || "");
+    rec.value.selected_region = rec.selectedRegion;
+    this.canvasRender(rec);
+    if (writeIntent !== false) this.writeCanvas(rec, {op: "region.select", region: rec.selectedRegion});
+    return true;
+  };
+
   Renderer.prototype.canvasPaintAt = function (rec, point) {
-    if (!isObject(rec.value.paint) || !isArray(rec.value.paint.data)) return;
-    var paint = rec.value.paint;
-    var cellX = Math.floor(point.x / (Number(rec.value.width) / Number(paint.width)));
-    var cellY = Math.floor(point.y / (Number(rec.value.height) / Number(paint.height)));
+    var region = rec.selectedRegion ? this.canvasRegion(rec, rec.selectedRegion) : null;
+    var paint = region && isObject(region[rec.paintMap]) ? region[rec.paintMap] : rec.value.paint;
+    if (!isObject(paint) || !isArray(paint.data)) return;
+    var originX = region ? Number(region.x) || 0 : 0;
+    var originY = region ? Number(region.y) || 0 : 0;
+    var extentW = region ? Math.max(1, Number(region.w) || 1) : Number(rec.value.width);
+    var extentH = region ? Math.max(1, Number(region.h) || 1) : Number(rec.value.height);
+    var cellX = Math.floor((point.x - originX) / (extentW / Number(paint.width)));
+    var cellY = Math.floor((point.y - originY) / (extentH / Number(paint.height)));
+    var paintEls = region ? (rec.regionPaintEls[String(region.id || "") + ":" + rec.paintMap] || []) : rec.paintEls;
+    rec.paint = {start: rec.paint && rec.paint.start ? rec.paint.start : deepClone(rec.value), region: region ? String(region.id || "") : "", map: region ? rec.paintMap : ""};
     var tool = rec.paintTool || "lower";
     var radius = Math.max(0, Math.floor(Number(rec.options.brush) || 1));
     for (var y = cellY - radius; y <= cellY + radius; y++) {
@@ -3717,7 +4032,7 @@
           next = Math.round(sum / Math.max(1, count));
         }
         paint.data[index] = Math.max(0, Math.min(255, next));
-        if (rec.paintEls[index]) rec.paintEls[index].setAttribute("fill-opacity", String(paint.data[index] / 255));
+        if (paintEls[index]) paintEls[index].setAttribute("fill-opacity", String(paint.data[index] / 255));
       }
     }
   };
@@ -3746,6 +4061,28 @@
   Renderer.prototype.canvasPointerMove = function (rec, event) {
     if (rec.paint) {
       this.canvasPaintAt(rec, this.canvasClientToCanvas(rec, event));
+      return;
+    }
+    if (rec.regionDrag) {
+      var region = this.canvasRegion(rec, rec.regionDrag.id);
+      if (!region) { rec.regionDrag = null; return; }
+      var rdx = ((event.clientX || 0) - rec.regionDrag.x) / rec.view.zoom;
+      var rdy = ((event.clientY || 0) - rec.regionDrag.y) / rec.view.zoom;
+      if (!rec.regionDrag.moved && Math.abs(rdx) + Math.abs(rdy) < 2) return;
+      rec.regionDrag.moved = true;
+      var startRegion = (rec.regionDrag.start.regions || []).find(function (entry) { return String(entry.id || "") === rec.regionDrag.id; });
+      if (!startRegion) return;
+      var sx = Number(startRegion.x) || 0, sy = Number(startRegion.y) || 0, sw = Math.max(1, Number(startRegion.w) || 1), sh = Math.max(1, Number(startRegion.h) || 1);
+      if (rec.regionDrag.mode === "move") { region.x = sx + rdx; region.y = sy + rdy; }
+      else {
+        var corner = rec.regionDrag.corner;
+        if (corner.indexOf("w") >= 0) { region.x = sx + rdx; region.w = sw - rdx; }
+        if (corner.indexOf("e") >= 0) region.w = sw + rdx;
+        if (corner.indexOf("n") >= 0) { region.y = sy + rdy; region.h = sh - rdy; }
+        if (corner.indexOf("s") >= 0) region.h = sh + rdy;
+        region.w = Math.max(1, Number(region.w) || 1); region.h = Math.max(1, Number(region.h) || 1);
+      }
+      this.canvasRender(rec);
       return;
     }
     if (rec.drag) {
@@ -3783,7 +4120,16 @@
       var stroke = rec.paint;
       rec.paint = null;
       this.canvasPushUndo(rec, stroke.start);
-      this.writeCanvas(rec, {op: "paint.stroke"});
+      this.writeCanvas(rec, {op: "paint.stroke", region: stroke.region || "", map: stroke.map || ""});
+      return;
+    }
+    if (rec.regionDrag) {
+      var regionDrag = rec.regionDrag;
+      rec.regionDrag = null;
+      if (regionDrag.moved) {
+        this.canvasPushUndo(rec, regionDrag.start);
+        this.writeCanvas(rec, {op: regionDrag.mode === "resize" ? "region.resize" : "region.move", region: regionDrag.id});
+      }
       return;
     }
     if (rec.drag) {
@@ -7769,6 +8115,12 @@
       control = el("textarea", {id: id, name: String(input.name || ""), rows: 3});
     } else if (type === "checkbox") {
       control = el("input", {type: "checkbox", id: id, name: String(input.name || "")});
+    } else if (type === "file" || type === "media") {
+      control = el("input", {type: "file", id: id, name: String(input.name || "")});
+      control.accept = String(input.accept || (type === "media" ? "image/*,audio/*,video/*" : ""));
+      if (input.multiple) { control.multiple = true; control.setAttribute("multiple", ""); }
+      if (input.capture) control.setAttribute("capture", String(input.capture));
+      if (input.directory) control.setAttribute("webkitdirectory", "");
     } else {
       var inputType = type === "number" || type === "integer" ? "number" : type === "color" ? "color" : "text";
       control = el("input", {type: inputType, id: id, name: String(input.name || "")});
@@ -7779,9 +8131,24 @@
     }
     if (input.required) control.required = true;
     if (input.placeholder && control.setAttribute) control.setAttribute("placeholder", String(input.placeholder));
-    if (input.value !== undefined && type !== "checkbox") control.value = String(input.value);
+    if (input.value !== undefined && type !== "checkbox" && type !== "file" && type !== "media") control.value = String(input.value);
     if (type === "checkbox") control.checked = !!input.value;
-    return {label: label, control: control};
+    var fileHint = null;
+    if (type === "file" || type === "media") {
+      fileHint = el("span", {class: "pui-file-name", role: "status", "aria-live": "polite"});
+      var filesOf = function () {
+        if (control.files && typeof control.files.length === "number") return Array.prototype.slice.call(control.files);
+        return isArray(control.__puiFiles) ? control.__puiFiles : [];
+      };
+      control.__puiFilesOf = filesOf;
+      var updateFiles = function () {
+        var files = filesOf();
+        fileHint.textContent = files.length ? files.map(function (file) { return String(file.name || file); }).join(", ") : "No file selected.";
+      };
+      control.addEventListener("change", updateFiles);
+      updateFiles();
+    }
+    return {label: label, control: control, hint: fileHint, filesOf: control.__puiFilesOf};
   };
 
   Renderer.prototype.openActionForm = function (item, button) {
@@ -7795,7 +8162,8 @@
       var made = this.actionFormField(item.inputs[i], formId);
       form.appendChild(made.label);
       form.appendChild(made.control);
-      fields.push({input: item.inputs[i], control: made.control});
+      if (made.hint) form.appendChild(made.hint);
+      fields.push({input: item.inputs[i], control: made.control, filesOf: made.filesOf});
     }
     var status = el("p", {class: "pui-status", role: "alert", hidden: true});
     form.appendChild(status);
@@ -7810,6 +8178,16 @@
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       if (typeof form.reportValidity === "function" && !form.reportValidity()) return;
+      var missingFile = fields.some(function (field) {
+        var type = String(field.input.type || "text");
+        if (type !== "file" && type !== "media") return false;
+        return !!field.input.required && !(field.filesOf ? field.filesOf().length : (field.control.files && field.control.files.length));
+      });
+      if (missingFile) {
+        status.textContent = "Please select the required file.";
+        status.hidden = false;
+        return;
+      }
       var values = {};
       fields.forEach(function (field) {
         var control = field.control;
@@ -7818,6 +8196,10 @@
         else if (type === "select" && control.__puiOptions) {
           var selected = control.__puiOptions[control.selectedIndex];
           values[String(field.input.name || "")] = selected ? selected.value : control.value;
+        } else if (type === "file" || type === "media") {
+          var files = field.filesOf ? field.filesOf() : (control.files ? Array.prototype.slice.call(control.files) : []);
+          if (field.input.required && !files.length) values[String(field.input.name || "")] = null;
+          else values[String(field.input.name || "")] = field.input.multiple ? files : (files[0] || null);
         } else if (type === "number" || type === "integer") values[String(field.input.name || "")] = Number(control.value);
         else values[String(field.input.name || "")] = control.value;
       });

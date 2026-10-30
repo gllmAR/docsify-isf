@@ -324,6 +324,7 @@
 .pui-dialog form { display: flex; flex-direction: column; gap: 10px; }
 .pui-dialog h2 { margin: 0 0 4px; font-size: 1.05rem; }
 .pui-dialog-label { font-size: 0.85rem; font-weight: 600; color: var(--pui-muted); }
+.pui-file-name { display: block; margin-top: 2px; color: var(--pui-muted); font-size: 0.74rem; }
 .pui-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .pui-action-status { font-size: 0.82rem; color: var(--pui-muted); }
 .pui-button[style*="--pui-action-color"] { border-left: 4px solid var(--pui-action-color); }
@@ -669,6 +670,20 @@
 .pui-canvas-paint-toggle.is-active { border-color: var(--pui-warning); color: var(--pui-warning); }
 .pui-canvas-viewport.is-painting { cursor: crosshair; }
 .pui-canvas-paint-cell { fill: var(--pui-warning); pointer-events: none; }
+.pui-canvas-regions, .pui-canvas-region-button { display: flex; gap: 4px; flex-wrap: wrap; }
+.pui-canvas-region { fill: color-mix(in srgb, var(--pui-accent) 5%, transparent); stroke: var(--pui-muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; pointer-events: auto; cursor: move; }
+.pui-canvas-region.is-selected { fill: color-mix(in srgb, var(--pui-accent) 12%, transparent); stroke: var(--pui-accent); stroke-width: 2.5; }
+.pui-canvas-blend.is-alpha .pui-canvas-paint-cell { fill: var(--pui-danger); }
+.pui-canvas-blend.is-beta .pui-canvas-paint-cell { fill: var(--pui-success, #56c596); }
+.pui-canvas-region-handle { position: absolute; width: 12px; height: 12px; transform: translate(-50%, -50%); border: 2px solid var(--pui-surface); border-radius: 2px; background: var(--pui-accent); padding: 0; pointer-events: auto; cursor: nwse-resize; }
+.pui-canvas-region-handle:focus-visible { outline: 3px solid var(--pui-warning); outline-offset: 2px; }
+.pui-canvas-region-handle.is-ne, .pui-canvas-region-handle.is-sw { cursor: nesw-resize; }
+.pui-series-chart { cursor: crosshair; }
+.pui-series-grid line { stroke: var(--pui-border); stroke-width: 1; opacity: 0.5; vector-effect: non-scaling-stroke; }
+.pui-curve-point { fill: var(--pui-accent); stroke: var(--pui-surface); stroke-width: 2; pointer-events: all; cursor: grab; }
+.pui-curve-point:focus-visible { outline: 3px solid var(--pui-warning); outline-offset: 2px; }
+.pui-series-points { pointer-events: none; }
+.pui-series-points .pui-curve-point { pointer-events: all; }
 .pui-workflow { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px; }
 .pui-workflow-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pui-workflow-head h4 { margin: 0; font-size: 0.9rem; }
