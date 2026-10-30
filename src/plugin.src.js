@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.26.0
+ * docsify-isf v1.26.1
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.26.0";
+    var VERSION = "1.26.1";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3671,11 +3671,12 @@
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-header,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-header{display:none}",
             ".isf-block:fullscreen.isf-has-pui-toolbar .isf-pui-toolbar,.isf-block.isf-fullscreen.isf-has-pui-toolbar .isf-pui-toolbar{display:block}",
             ".isf-pui-toolbar .pui{padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;right:auto;transform:translateX(-50%);z-index:2147483001;min-height:34px;padding:.38rem .8rem;border:1px solid color-mix(in srgb,var(--isf-border) 80%,transparent);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.74rem;font-weight:600;letter-spacing:.02em;box-shadow:0 8px 22px rgba(0,0,0,.28);-webkit-backdrop-filter:blur(14px) saturate(150%);backdrop-filter:blur(14px) saturate(150%);transition:background .12s ease,border-color .12s ease}",
+            ".isf-pui-toolbar .pui-drawer-trigger{position:fixed;top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));right:auto;transform:none;z-index:2147483001;min-height:34px;padding:.38rem .8rem;border:1px solid color-mix(in srgb,var(--isf-border) 80%,transparent);border-radius:999px;background:var(--isf-drawer-bg);color:var(--isf-text);font-size:.74rem;font-weight:600;letter-spacing:.02em;box-shadow:0 8px 22px rgba(0,0,0,.28);-webkit-backdrop-filter:blur(14px) saturate(150%);backdrop-filter:blur(14px) saturate(150%);transition:background .12s ease,border-color .12s ease}",
+            ".isf-pui-toolbar .pui-drawer-trigger::before{content:'☰';margin-inline-end:.45rem;font-size:.9rem;opacity:.8}",
             ".isf-pui-toolbar .pui-drawer.is-open .pui-drawer-trigger{display:none}",
             "@media (max-width:760px){.isf-block.isf-drawer-open .isf-pui-toolbar .pui-drawer-trigger{display:none}}",
             ".isf-pui-toolbar .pui-drawer-panel{background:var(--isf-drawer-bg);color:var(--isf-text);border-color:var(--isf-border);-webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%)}",
-            ".isf-pui-toolbar .pui-drawer-panel.is-top{top:max(10px,env(safe-area-inset-top));left:50%;right:auto;transform:translateX(-50%);width:min(760px,calc(100vw - 24px));border:1px solid var(--isf-border);border-radius:12px;overflow:hidden;box-shadow:0 18px 46px rgba(0,0,0,.42)}",
+            ".isf-pui-toolbar .pui-drawer-panel.is-top{top:max(54px,calc(env(safe-area-inset-top) + 50px));left:max(12px,env(safe-area-inset-left));right:auto;transform:none;width:min(560px,calc(100vw - 24px));border:1px solid var(--isf-border);border-radius:12px;overflow:hidden;box-shadow:0 18px 46px rgba(0,0,0,.42)}",
             ".isf-pui-toolbar .pui-drawer-head{border-color:var(--isf-border);padding:.45rem .7rem}",
             ".isf-pui-toolbar .pui-drawer-head h4{font-size:.8rem;color:var(--isf-text)}",
             ".isf-pui-toolbar .pui-drawer-close{color:var(--isf-muted);font-size:1rem}",
@@ -7052,11 +7053,7 @@
                 title: "Open " + String(viewer.title || "shader") + " source",
                 badge: "ISF",
                 collapse: false
-            }, {kind: "spacer"}, {
-                kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
-                a11y: {name: "Render statistics"},
-                collapse: false
-            }, {kind: "separator"}];
+            }];
             if (config.editor) {
                 items.push({
                     id: "editor", label: "Source editor", icon: "editor", icon_only: true,
@@ -7071,6 +7068,13 @@
                     badge_bind: "/isf/ui/inputCount", aria_controls: uid + "-params", priority: 100
                 });
             }
+            items.push({kind: "separator"});
+            items.push({kind: "spacer"});
+            items.push({
+                kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
+                a11y: {name: "Render statistics"},
+                collapse: false
+            });
             items.push({kind: "separator"});
             items.push({
                 id: "fullscreen", label: "Fullscreen", icon: "fullscreen", icon_only: true,

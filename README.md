@@ -251,10 +251,10 @@ View/Resolution/Scale/Randomize/Export section below the fields. The Source tab
 is the host GLSL editor. The fullscreen Controls toolbox is a PUI toolbar in a
 non-modal top drawer, the bottom status line is a PUI statusbar with a tone,
 and transient action feedback uses a dismissible PUI toast stack. The header is
-a measured PUI `toolbar` with the source-link title and ISF chip, the live
-FPS/size readout, and grouped icon actions. The toolbar collapses its
-lowest-priority actions into More when space is tight, keeping the title and
-stats in place. Pressed states, the input-count badge and the transport are
+a measured PUI `toolbar`: the source-link title and ISF chip sit with the
+Source/Parameters controls on the left; the live FPS/size readout and
+preview/utility actions sit on the right. The toolbar collapses its lowest-priority actions into More when space is tight,
+keeping the title, content controls and stats in place. Pressed states, the input-count badge and the transport are
 driven through PUI bindings. The host header stays as the pre-load/failure
 fallback; the code editor and stage remain host surfaces.
 
@@ -292,7 +292,7 @@ the cap to the site default. The bare viewer never writes local storage.
 
 The in-page fullscreen button (or double-clicking the canvas) makes the whole
 viewer block fill the display. The header is hidden: a PUI **Controls** drawer
-is revealed by the pill at the top centre (or **H**). It carries Source
+is revealed by the pill at the top-left (or **H**). It carries Source
 editor, Parameters, Reset, Exit fullscreen, Open source and Copy OBS link; the
 **transport footer** remains at the bottom for play and seek. The inspector
 opens in the same right dock with its tabs, and opening Controls closes it so

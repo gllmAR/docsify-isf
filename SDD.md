@@ -377,8 +377,8 @@ menu's **Default** clears the stored override and returns to the site config.
 The native fullscreen button (or a canvas double-click) puts the block in
 `requestFullscreen`; the `:fullscreen` rules make it fill the viewport. The
 header is hidden; a PUI **non-modal top drawer** (`side:"top"`, `modal:false`,
-trigger "Controls", **H**) carries Source editor, Parameters, Reset, Exit
-fullscreen, Open source and Copy OBS link. The transport stays at the bottom
+trigger "Controls", **H**) sits at the top-left and carries Source editor,
+Parameters, Reset, Exit fullscreen, Open source and Copy OBS link. The transport stays at the bottom
 for play/seek, and the same right dock is the inspector. Opening Controls
 closes the inspector so the overlays never cover each other; Escape closes
 Controls and Editor/Parameters open the matching inspector tab. Without PUI the
@@ -486,13 +486,15 @@ back to the status line.
 
 The main header is another PUI surface: a `toolbar` block built once the
 normalised inputs are known. It carries the source-link title and an ISF chip,
-the live FPS/size `readout`, and grouped icon actions with measured automatic
-overflow (`overflow:"auto"`). Editor/parameters have the highest priority,
-then play/fullscreen, then reset/source/share; when the row runs out of width
-the low-priority actions move into the More menu, while the title and readout
-stay put. Drawer and fullscreen `pressed_bind`s reflect the host state, the
-parameters action carries the input-count badge, and play swaps its label and
-icon through the adapter. Every action calls back into the viewer; icon-only
+the Source/Parameters controls, the live FPS/size `readout`, and preview/
+utility actions with measured automatic overflow (`overflow:"auto"`). Content
+controls sit with the title on the left; the readout and utilities sit on the
+right. Source/Parameters have the highest priority, then fullscreen, then
+reset/source/share; when the row runs out of width the low-priority actions
+move into the More menu, while the title, content controls and readout stay
+put. Inspector-tab and fullscreen `pressed_bind`s reflect the host state, and
+the parameters action carries the input-count badge; playback lives in the
+transport footer. Every action calls back into the viewer; icon-only
 actions keep an `aria-label` and a native `title` tooltip, and the stats readout
 carries `a11y.name: "Render statistics"`. The host title/actions/stats badge
 are removed after a successful mount and remain as the fallback before the
