@@ -247,6 +247,10 @@
       undoLabel: options.undoLabel || null,
       redoLabel: options.redoLabel || null,
       historyAction: options.historyAction || null,
+      connectionAction: options.connectionAction || null,
+      previewAction: options.previewAction || null,
+      subscribePreview: options.subscribePreview || null,
+      schemaFormAction: options.schemaFormAction || null,
       historyCheckpoint: options.historyCheckpoint || null,
       graphInspector: options.graphInspector || null,
       subscribe: options.subscribe || function () { return function () {}; },
@@ -272,6 +276,8 @@
     this.toastRecords = [];
     this.graphRecords = [];
     this.historyRecords = [];
+    this.connectionRecords = [];
+    this.previewRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -344,6 +350,7 @@
     }
     this.menuRecords = [];
     this.destroySlots();
+    this.disconnectPreviews();
     this.disconnectToolbarLayouts();
     this.doc = doc;
     this.loadPreferences();
@@ -367,6 +374,8 @@
     this.toastRecords = [];
     this.graphRecords = [];
     this.historyRecords = [];
+    this.connectionRecords = [];
+    this.previewRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -1143,6 +1152,9 @@
     if (kind === "stage") return this.buildStage(block);
     if (kind === "tree") return this.buildTree(block);
     if (kind === "history") return this.buildHistory(block);
+    if (kind === "connection") return this.buildConnection(block);
+    if (kind === "preview") return this.buildPreview(block);
+    if (kind === "schemaForm") return this.buildSchemaForm(block);
     if (kind === "commandlog") return this.buildCommandLog(block);
     if (kind === "selection") return this.buildSelection(block);
     if (kind === "disclosure") return this.buildDisclosure(block);
@@ -4609,6 +4621,290 @@
     return root;
   };
 
+  Renderer.prototype.schemaFormValue = function (block) {
+    var path = String(block.bind || "");
+    var value = path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(path, block) : this.adapter.getValue(path)) : null;
+    if (!isObject(value)) value = {};
+    var fields = (isArray(value.fields) ? value.fields : []).filter(isObject).map(function (field) {
+      return Object.assign({kind: "field"}, field);
+    });
+    var groups = isArray(value.groups) ? value.groups.filter(isObject) : [];
+    return {fields: fields, groups: groups, raw: value};
+  };
+
+  Renderer.prototype.buildSchemaForm = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var a11y = isObject(block.a11y) ? block.a11y : {};
+    var root = el("form", {class: "pui-schema-form", "data-pui-schema-form": path, role: "form"});
+    if (a11y.name || block.label) root.setAttribute("aria-label", String(a11y.name || block.label));
+    if (block.label) root.appendChild(el("h4", {class: "pui-schema-form-title", text: String(block.label)}));
+    var schema = this.schemaFormValue(block);
+    var fields = schema.fields;
+    var groups = schema.groups.slice();
+    var seen = {};
+    groups.forEach(function (group) { seen[String(group.id)] = true; });
+    fields.forEach(function (field) {
+      var id = String(field.group || "");
+      if (id && !seen[id]) { groups.push({id: id, label: id}); seen[id] = true; }
+    });
+    var fieldsRoot = el("div", {class: "pui-schema-form-fields", style: "grid-template-columns:repeat(" + Math.max(1, Math.min(4, Number(block.columns) || 1)) + ",minmax(0,1fr));"});
+    var emitGroup = function (group) {
+      var groupFields = fields.filter(function (field) { return String(field.group || "") === String(group.id); });
+      if (!groupFields.length) return;
+      var box = el("fieldset", {class: "pui-schema-form-group"});
+      box.appendChild(el("legend", {text: String(group.label || group.id || "Group")}));
+      groupFields.forEach(function (field) { box.appendChild(self.buildBlock(field, {section: {id: String(block.id || "schemaForm")}})); });
+      fieldsRoot.appendChild(box);
+    };
+    if (groups.length) groups.forEach(emitGroup);
+    else {
+      fields.forEach(function (field) { fieldsRoot.appendChild(self.buildBlock(field, {section: {id: String(block.id || "schemaForm")}})); });
+    }
+    root.appendChild(fieldsRoot);
+    var status = el("p", {class: "pui-schema-form-status", role: "status", "aria-live": "polite"});
+    root.appendChild(status);
+    var rec = {block: Object.assign({}, block, {fields: fields}), root: root, path: path, value: schema.raw, fields: fields, status: status,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, visible: true, enabled: true, firstInvalid: null};
+    var submit = isObject(block.submit) ? block.submit : {label: "Apply"};
+    var bar = el("div", {class: "pui-schema-form-actions"});
+    var submitButton = el("button", {type: "submit", class: "pui-button pui-primary", text: String(submit.label || "Apply")});
+    bar.appendChild(submitButton);
+    var cancel = isObject(block.cancel) ? block.cancel : null;
+    if (cancel) {
+      var cancelButton = el("button", {type: "button", class: "pui-button", text: String(cancel.label || "Cancel")});
+      cancelButton.addEventListener("click", function () {
+        if (typeof self.adapter.schemaFormAction === "function") self.adapter.schemaFormAction({op: "cancel", values: self.formValues(rec.block)}, rec.value, block);
+        else if (cancel.call) self.adapter.callAction(String(cancel.call), {values: self.formValues(rec.block)});
+      });
+      bar.appendChild(cancelButton);
+    }
+    root.appendChild(bar);
+    var formFields = this.formFields(rec.block);
+    root.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!self.formValidate(rec)) return;
+      var values = self.formValues(rec.block);
+      status.textContent = String(submit.pending || "Submitting…");
+      status.className = "pui-schema-form-status is-busy";
+      var result;
+      if (typeof self.adapter.schemaFormAction === "function") result = self.adapter.schemaFormAction({op: "submit", values: values}, rec.value, block);
+      else if (submit.call) result = self.adapter.callAction(String(submit.call), Object.assign({}, submit.args || {}, {values: values}));
+      else result = true;
+      var done = function (ok, message) {
+        status.textContent = ok ? String(submit.result || message || "") : String(message || "Submit failed");
+        status.className = "pui-schema-form-status " + (ok ? "is-ok" : "is-error");
+        if (ok && submit.result) self.adapter.announce("success", String(submit.result));
+        else if (!ok) self.adapter.announce("error", status.textContent);
+        self.apply();
+      };
+      if (result && typeof result.then === "function") result.then(function (value) { done(value !== false, value && value.error); }, function (error) { done(false, error && error.message || error); });
+      else done(result !== false);
+    });
+    return root;
+  };
+
+  Renderer.prototype.previewValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    var src = value.src || value.url || "";
+    var compare = isObject(value.compare) ? value.compare : null;
+    return {
+      kind: String(value.kind || "image").toLowerCase(),
+      src: src ? String(src) : "",
+      width: Number(value.width) || 0,
+      height: Number(value.height) || 0,
+      alt: String(value.alt || value.label || rec.block.label || "Preview"),
+      caption: String(value.caption || ""),
+      state: String(value.state || (src ? "ready" : "idle")).toLowerCase(),
+      error: String(value.error || ""),
+      fit: String(value.fit || "contain").toLowerCase(),
+      compare: compare ? {src: String(compare.src || compare.url || ""), label: String(compare.label || "Compare")} : null,
+      overlay: isObject(value.overlay) ? {src: String(value.overlay.src || value.overlay.url || ""), opacity: Number(value.overlay.opacity) || 0.5} : null
+    };
+  };
+
+  Renderer.prototype.previewAction = function (rec, intent) {
+    if (typeof this.adapter.previewAction === "function") {
+      try { return this.adapter.previewAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Preview action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose preview actions.");
+    return false;
+  };
+
+  Renderer.prototype.previewRefresh = function (rec, update) {
+    var data = this.previewValue(rec);
+    if (isObject(update)) data = Object.assign({}, data, update);
+    rec.value = data;
+    rec.state.textContent = data.state === "error" ? (data.error || "Preview error") : data.state === "loading" ? "Loading…" : data.caption || data.state;
+    rec.state.setAttribute("data-state", data.state);
+    rec.state.hidden = !rec.state.textContent;
+    rec.media.hidden = !data.src;
+    rec.media.setAttribute("alt", data.alt);
+    if (rec.media.tagName === "IMG") rec.media.setAttribute("src", data.src);
+    else if (data.src) rec.media.setAttribute("src", data.src);
+    rec.media.style.objectFit = data.fit === "cover" ? "cover" : data.fit === "actual" ? "none" : "contain";
+    rec.compareButton.hidden = !data.compare;
+    if (data.compare) {
+      rec.compareButton.textContent = rec.showCompare ? "Show live" : data.compare.label;
+      rec.compareButton.setAttribute("aria-pressed", rec.showCompare ? "true" : "false");
+      rec.media.setAttribute("src", rec.showCompare && data.compare.src ? data.compare.src : data.src);
+    }
+    rec.overlay.hidden = !data.overlay || !data.overlay.src || rec.showCompare;
+    if (data.overlay && data.overlay.src) {
+      rec.overlay.setAttribute("src", data.overlay.src);
+      rec.overlay.style.opacity = String(data.overlay.opacity);
+    }
+    rec.fit.value = data.fit;
+  };
+
+  Renderer.prototype.buildPreview = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.preview_options) ? block.preview_options : {};
+    var root = el("section", {class: "pui-preview", "data-pui-preview": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Preview")});
+    var head = el("div", {class: "pui-preview-head"});
+    head.appendChild(el("h4", {text: String(block.label || "Preview")}));
+    var fit = el("select", {"aria-label": "Preview fit"});
+    [["contain", "Fit"], ["cover", "Fill"], ["actual", "Actual"]].forEach(function (entry) { fit.appendChild(el("option", {value: entry[0], text: entry[1]})); });
+    var compareButton = el("button", {type: "button", class: "pui-button", text: "Compare"});
+    var refresh = el("button", {type: "button", class: "pui-button", text: "Refresh"});
+    head.appendChild(fit); head.appendChild(compareButton); head.appendChild(refresh);
+    root.appendChild(head);
+    var viewport = el("figure", {class: "pui-preview-viewport"});
+    var media = el("img", {class: "pui-preview-media", alt: "Preview"});
+    var overlay = el("img", {class: "pui-preview-overlay", alt: "", "aria-hidden": "true"});
+    viewport.appendChild(media); viewport.appendChild(overlay);
+    root.appendChild(viewport);
+    var state = el("p", {class: "pui-preview-state", role: "status", "aria-live": "polite"});
+    root.appendChild(state);
+    var rec = {block: block, path: path, value: null, root: root, media: media, overlay: overlay, state: state, fit: fit, compareButton: compareButton, refresh: refresh, showCompare: false, unsubscribe: null};
+    fit.addEventListener("change", function () { self.previewAction(rec, {op: "fit", value: fit.value}); });
+    compareButton.addEventListener("click", function () {
+      rec.showCompare = !rec.showCompare;
+      self.previewRefresh(rec);
+      self.previewAction(rec, {op: "compare", value: rec.showCompare});
+    });
+    refresh.addEventListener("click", function () { self.previewAction(rec, {op: "refresh"}); });
+    if (typeof this.adapter.subscribePreview === "function") {
+      try {
+        rec.unsubscribe = this.adapter.subscribePreview(path, function (data) {
+          if (isObject(data)) self.previewRefresh(rec, data);
+        });
+      } catch (error) { /* host preview channel is optional */ }
+    }
+    this.previewRecords.push(rec);
+    this.previewRefresh(rec);
+    return root;
+  };
+
+  Renderer.prototype.connectionValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    return {
+      state: String(value.state || "disconnected").toLowerCase(),
+      target: value.target === undefined || value.target === null ? "" : String(value.target),
+      targets: isArray(value.targets) ? value.targets.filter(isObject) : [],
+      endpoint: value.endpoint === undefined ? "" : String(value.endpoint),
+      error: value.error === undefined ? "" : String(value.error),
+      reconnectIn: value.reconnectIn === undefined ? "" : String(value.reconnectIn),
+      backLink: value.backLink ? String(value.backLink) : "",
+      backLabel: value.backLabel ? String(value.backLabel) : "Back",
+      offline: value.offline === true,
+      canConnect: value.canConnect !== false,
+      canDisconnect: value.canDisconnect !== false,
+      canReconnect: value.canReconnect !== false,
+      canDiscover: value.canDiscover !== false
+    };
+  };
+
+  Renderer.prototype.connectionAction = function (rec, intent) {
+    if (typeof this.adapter.connectionAction === "function") {
+      try { return this.adapter.connectionAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Connection action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose connection actions.");
+    return false;
+  };
+
+  Renderer.prototype.connectionRefresh = function (rec) {
+    var data = this.connectionValue(rec);
+    rec.value = data;
+    var labels = {connected: "Connected", connecting: "Connecting…", reconnecting: "Reconnecting…", offline: "Offline", error: "Error", disconnected: "Disconnected"};
+    rec.badge.textContent = labels[data.state] || data.state;
+    rec.badge.setAttribute("data-state", data.state);
+    rec.status.textContent = data.error || (data.reconnectIn ? "Reconnect in " + data.reconnectIn + "s" : "");
+    rec.status.hidden = !rec.status.textContent;
+    rec.endpointInput.value = data.endpoint;
+    rec.endpointInput.disabled = data.state === "connected" || data.state === "connecting" || data.state === "reconnecting";
+    rec.offline.checked = data.offline;
+    rec.connect.disabled = !data.canConnect || data.state === "connected" || data.state === "connecting" || data.state === "reconnecting";
+    rec.disconnect.disabled = !data.canDisconnect || data.state === "disconnected" || data.state === "offline";
+    rec.reconnect.disabled = !data.canReconnect;
+    rec.discover.disabled = !data.canDiscover || data.state === "offline";
+    rec.target.textContent = "";
+    data.targets.forEach(function (target) {
+      var value = String(target.id === undefined ? target.value : target.id);
+      var option = el("option", {value: value, text: String(target.label || target.name || value)});
+      if (value === data.target) option.selected = true;
+      rec.target.appendChild(option);
+    });
+    if (data.target) rec.target.value = data.target;
+    rec.target.hidden = !data.targets.length;
+    rec.target.disabled = !data.targets.length || data.state === "offline";
+    rec.backLink.hidden = !data.backLink;
+    if (data.backLink) { rec.backLink.setAttribute("href", data.backLink); rec.backLink.textContent = data.backLabel; }
+  };
+
+  Renderer.prototype.buildConnection = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.connection_options) ? block.connection_options : {};
+    var root = el("section", {class: "pui-connection", "data-pui-connection": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || "Connection")});
+    var rec = {block: block, path: path, value: null, root: root};
+    var head = el("div", {class: "pui-connection-head"});
+    head.appendChild(el("h4", {text: String(block.label || "Connection")}));
+    var badge = el("span", {class: "pui-connection-state", "data-state": "disconnected", text: "Disconnected"});
+    head.appendChild(badge);
+    root.appendChild(head);
+    var row = el("div", {class: "pui-connection-controls"});
+    var endpointInput = el("input", {type: "url", class: "pui-connection-endpoint", "aria-label": "OBS WebSocket URL", placeholder: "ws://127.0.0.1:4455"});
+    endpointInput.addEventListener("change", function () { self.connectionAction(rec, {op: "endpoint", value: endpointInput.value}); });
+    if (options.endpoint === false) endpointInput.hidden = true;
+    row.appendChild(endpointInput);
+    var target = el("select", {class: "pui-connection-target", "aria-label": "Connection target"});
+    target.addEventListener("change", function () { self.connectionAction(rec, {op: "target", value: target.value, target: target.value}); });
+    row.appendChild(target);
+    var connect = el("button", {type: "button", class: "pui-button pui-primary", text: "Connect"});
+    var disconnect = el("button", {type: "button", class: "pui-button", text: "Disconnect"});
+    var reconnect = el("button", {type: "button", class: "pui-button", text: "Reconnect"});
+    var discover = el("button", {type: "button", class: "pui-button", text: "Discover"});
+    connect.addEventListener("click", function () { self.connectionAction(rec, {op: "connect", endpoint: endpointInput.value}); });
+    disconnect.addEventListener("click", function () { self.connectionAction(rec, {op: "disconnect"}); });
+    reconnect.addEventListener("click", function () { self.connectionAction(rec, {op: "reconnect"}); });
+    discover.addEventListener("click", function () { self.connectionAction(rec, {op: "discover", endpoint: endpointInput.value}); });
+    row.appendChild(connect); row.appendChild(disconnect); row.appendChild(reconnect);
+    if (options.discover !== false) row.appendChild(discover);
+    var offline = el("input", {type: "checkbox", class: "pui-connection-offline", "aria-label": "Offline mode"});
+    offline.addEventListener("change", function () { self.connectionAction(rec, {op: "offline", value: offline.checked}); });
+    if (options.offline !== false) {
+      var offlineLabel = el("label", {class: "pui-connection-offline-label"}, offline, el("span", {text: "Offline"}));
+      row.appendChild(offlineLabel);
+    }
+    var backLink = el("a", {class: "pui-connection-back", href: "#", target: "_self", text: "Back"});
+    row.appendChild(backLink);
+    root.appendChild(row);
+    var status = el("p", {class: "pui-connection-status", role: "status", "aria-live": "polite"});
+    root.appendChild(status);
+    rec.badge = badge; rec.status = status; rec.endpointInput = endpointInput; rec.target = target;
+    rec.connect = connect; rec.disconnect = disconnect; rec.reconnect = reconnect; rec.discover = discover;
+    rec.offline = offline; rec.backLink = backLink;
+    this.connectionRecords.push(rec);
+    this.connectionRefresh(rec);
+    return root;
+  };
+
   /** Labelled host history: the host owns the stack, PUI owns entries/jump,
    * current position and undo/redo presentation. No renderer-local history. */
   Renderer.prototype.buildHistory = function (block) {
@@ -6333,6 +6629,17 @@
     this.toolbarRecords.push(rec);
     this.toolbarRefresh(rec);
     return node;
+  };
+
+  Renderer.prototype.disconnectPreviews = function () {
+    for (var i = 0; i < this.previewRecords.length; i++) {
+      var rec = this.previewRecords[i];
+      if (typeof rec.unsubscribe === "function") {
+        try { rec.unsubscribe(); } catch (error) { /* host cleanup */ }
+        rec.unsubscribe = null;
+      }
+    }
+    this.previewRecords = [];
   };
 
   Renderer.prototype.disconnectToolbarLayouts = function () {
@@ -8123,6 +8430,7 @@
   };
 
   Renderer.prototype.destroy = function () {
+    this.disconnectPreviews();
     this.disconnectToolbarLayouts();
     this.unbindShortcuts();
     this.unbindPaletteShortcut();
@@ -8767,6 +9075,12 @@
     }
     for (var hr = 0; hr < this.historyRecords.length; hr++) {
       this.historyRefresh(this.historyRecords[hr]);
+    }
+    for (var cn = 0; cn < this.connectionRecords.length; cn++) {
+      this.connectionRefresh(this.connectionRecords[cn]);
+    }
+    for (var pv = 0; pv < this.previewRecords.length; pv++) {
+      this.previewRefresh(this.previewRecords[pv]);
     }
     for (var c = 0; c < this.commandLogRecords.length; c++) {
       if (this.commandLogRecords[c].refresh) this.commandLogRecords[c].refresh();
