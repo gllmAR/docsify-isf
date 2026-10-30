@@ -5088,6 +5088,79 @@
     return root;
   };
 
+  Renderer.prototype.scrubHandle = function (rec, field, read, write, label) {
+    var self = this;
+    var precision = numericPrecision(field);
+    var step = Number(field.step) || (precision !== null ? Math.pow(10, -precision) : 1);
+    var handle = el("button", {
+      type: "button", class: "pui-scrub", role: "slider", tabindex: "0",
+      "aria-label": "Drag to adjust " + String(label || this.labelText(field))
+    });
+    if (field.min !== undefined) handle.setAttribute("aria-valuemin", String(field.min));
+    if (field.max !== undefined) handle.setAttribute("aria-valuemax", String(field.max));
+    var update = function () {
+      var value = Number(read());
+      if (!isNaN(value)) {
+        handle.setAttribute("aria-valuenow", String(value));
+        handle.setAttribute("aria-valuetext", valueText(value, field));
+        handle.setAttribute("aria-valuenow", String(value));
+      }
+    };
+    var apply = function (value, final) {
+      var next = quantizeNumeric(value, field);
+      if (field.min !== undefined) next = Math.max(Number(field.min), next);
+      if (field.max !== undefined) next = Math.min(Number(field.max), next);
+      write(next, final);
+      update();
+    };
+    var drag = null;
+    var move = function (event) {
+      if (!drag) return;
+      var factor = event.shiftKey ? 10 : (event.altKey ? 0.1 : 1);
+      apply(drag.value + (Number(event.clientX) - drag.x) * drag.step * factor, false);
+    };
+    var end = function () {
+      if (!drag) return;
+      var value = Number(read());
+      drag = null;
+      rec.dragging = false;
+      if (typeof document !== "undefined" && document.removeEventListener) {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", end);
+        document.removeEventListener("pointercancel", end);
+      }
+      if (!isNaN(value)) write(value, true);
+      update();
+    };
+    handle.addEventListener("pointerdown", function (event) {
+      if (event.button !== undefined && event.button !== 0) return;
+      event.preventDefault();
+      if (handle.focus) handle.focus();
+      drag = {x: Number(event.clientX), value: Number(read()), step: step};
+      rec.dragging = true;
+      if (typeof document !== "undefined" && document.addEventListener) {
+        document.addEventListener("pointermove", move);
+        document.addEventListener("pointerup", end);
+        document.addEventListener("pointercancel", end);
+      }
+    });
+    handle.addEventListener("keydown", function (event) {
+      var key = String(event.key || "");
+      if (["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", "Home", "End"].indexOf(key) < 0) return;
+      event.preventDefault();
+      var current = Number(read());
+      if (key === "Home" && field.min !== undefined) apply(Number(field.min), true);
+      else if (key === "End" && field.max !== undefined) apply(Number(field.max), true);
+      else {
+        var factor = event.shiftKey ? 10 : (event.altKey ? 0.1 : 1);
+        var direction = key === "ArrowUp" || key === "ArrowRight" ? 1 : -1;
+        apply(current + direction * step * factor, true);
+      }
+    });
+    update();
+    return handle;
+  };
+
   Renderer.prototype.controlFor = function (field, widget, id, rec) {
     var self = this;
     var path = rec.path;
@@ -5154,8 +5227,9 @@
       range.addEventListener("pointerdown", function () { rec.dragging = true; });
       range.addEventListener("pointerup", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
       range.addEventListener("blur", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
-      row.appendChild(range); row.appendChild(number);
-      rec.inputs = [range, number];
+      var rangeScrub = this.scrubHandle(rec, field, function () { return Number(range.value); }, function (value, final) { emit(value, final); }, this.labelText(field));
+      row.appendChild(range); row.appendChild(number); row.appendChild(rangeScrub);
+      rec.inputs = [range, number, rangeScrub];
       rec.range = range; rec.number = number;
       rec.control = range;
       return row;
@@ -5179,10 +5253,22 @@
         spin.value = formatNumeric(next, field);
         self.writeRecord(rec, next);
       };
+      var spinEmit = function (value, final) {
+        var next = quantizeNumeric(value, field);
+        if (field.min !== undefined) next = Math.max(Number(field.min), next);
+        if (field.max !== undefined) next = Math.min(Number(field.max), next);
+        spin.value = formatNumeric(next, field);
+        self.writeRecord(rec, next);
+      };
       spin.addEventListener("wheel", function (event) { spinNudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
-      spin.addEventListener("change", function () { self.writeRecord(rec, quantizeNumeric(Number(spin.value), field)); });
-      rec.inputs = [spin];
-      return spin;
+      spin.addEventListener("change", function () { spinEmit(Number(spin.value), true); });
+      var numberBox = el("div", {class: "pui-number"});
+      numberBox.appendChild(spin);
+      var spinScrub = this.scrubHandle(rec, field, function () { return Number(spin.value); }, spinEmit, this.labelText(field));
+      numberBox.appendChild(spinScrub);
+      rec.control = spin;
+      rec.inputs = [spin, spinScrub];
+      return numberBox;
     }
     if (widget === "select") {
       var select = el("select", {id: id, "data-pui-bind": path});

@@ -92,6 +92,11 @@
 .pui-switch { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: var(--pui-touch); font-size: 0.78rem; font-weight: 600; }
 .pui-switch input { inline-size: 36px; block-size: 20px; }
 .pui-range { display: flex; align-items: center; gap: 5px; width: 100%; }
+.pui-number { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
+.pui-number input[type="number"] { flex: 1 1 auto; min-width: 0; }
+.pui-scrub { flex: 0 0 auto; width: 20px; min-height: 28px; padding: 0; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface-2); color: var(--pui-muted); font: inherit; font-size: 0.8rem; line-height: 1; cursor: ew-resize; touch-action: none; }
+.pui-scrub::before { content: "↔"; }
+.pui-scrub:hover, .pui-scrub:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
 .pui-range input[type="range"] { flex: 1 1 auto; }
 .pui-number-input { max-width: 6.5em; text-align: end; font-variant-numeric: tabular-nums; }
 .pui-unit { color: var(--pui-muted); font-size: 0.72rem; white-space: nowrap; }
