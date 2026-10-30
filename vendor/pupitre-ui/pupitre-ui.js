@@ -236,6 +236,12 @@
       validateValue: options.validateValue || null,
       getPreferences: options.getPreferences || null,
       setPreferences: options.setPreferences || null,
+      undo: options.undo || null,
+      redo: options.redo || null,
+      canUndo: options.canUndo || null,
+      canRedo: options.canRedo || null,
+      undoLabel: options.undoLabel || null,
+      redoLabel: options.redoLabel || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: options.announce || function () {},
@@ -290,6 +296,7 @@
     this._routeHistory = [];
     this.currentRoute = null;
     this.preferences = {favorites: [], recent: []};
+    this._historyKeyHandler = null;
   }
 
   Renderer.prototype.render = function (doc) {
@@ -394,6 +401,7 @@
     this.apply();
     this.bindShortcuts();
     this.bindPaletteShortcut();
+    this.bindHistoryShortcut();
     this.applyRoute();
     if (focusSnapshot) {
       var candidates = this.mount.querySelectorAll("[" + focusSnapshot.attr + "]");
@@ -7118,6 +7126,7 @@
     this.disconnectToolbarLayouts();
     this.unbindShortcuts();
     this.unbindPaletteShortcut();
+    this.unbindHistoryShortcut();
     if (this._hashHandler && typeof window !== "undefined" && window.removeEventListener) window.removeEventListener("hashchange", this._hashHandler);
     this._hashHandler = null;
     if (this._palette) this._palette.close();
@@ -7906,6 +7915,81 @@
     }).map(function (entry) { return entry.command; });
   };
 
+  Renderer.prototype.historyLabel = function (kind) {
+    var value = kind === "undo" ? this.adapter.undoLabel : this.adapter.redoLabel;
+    if (typeof value === "function") {
+      try { value = value(); } catch (error) { value = null; }
+    }
+    if (value === undefined || value === null || value === "") value = kind === "undo" ? "Undo" : "Redo";
+    return String(value);
+  };
+
+  Renderer.prototype.canUndo = function () {
+    if (typeof this.adapter.undo !== "function") return false;
+    if (typeof this.adapter.canUndo !== "function") return true;
+    try { return !!this.adapter.canUndo(); } catch (error) { return false; }
+  };
+
+  Renderer.prototype.canRedo = function () {
+    if (typeof this.adapter.redo !== "function") return false;
+    if (typeof this.adapter.canRedo !== "function") return true;
+    try { return !!this.adapter.canRedo(); } catch (error) { return false; }
+  };
+
+  Renderer.prototype.runHistory = function (kind) {
+    var method = kind === "redo" ? this.adapter.redo : this.adapter.undo;
+    if (typeof method !== "function") return false;
+    var result;
+    try { result = method.call(this.adapter); }
+    catch (error) { this.adapter.announce("error", this.historyLabel(kind) + " failed: " + String(error && error.message || error)); return false; }
+    if (result && typeof result.then === "function") {
+      return result.then(function (ok) {
+        if (ok === false) this.adapter.announce("warning", this.historyLabel(kind) + " is not available.");
+        else this.apply();
+        return ok !== false;
+      }.bind(this), function (error) {
+        this.adapter.announce("error", this.historyLabel(kind) + " failed: " + String(error && error.message || error));
+        return false;
+      }.bind(this));
+    }
+    if (result === false) {
+      this.adapter.announce("warning", this.historyLabel(kind) + " is not available.");
+      return false;
+    }
+    this.apply();
+    return true;
+  };
+
+  Renderer.prototype.undo = function () { return this.runHistory("undo"); };
+  Renderer.prototype.redo = function () { return this.runHistory("redo"); };
+
+  Renderer.prototype.bindHistoryShortcut = function () {
+    if ((typeof this.adapter.undo !== "function" && typeof this.adapter.redo !== "function") || this._historyKeyHandler) return;
+    var self = this;
+    this._historyKeyHandler = function (event) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      var target = event.target || {};
+      var tag = String(target.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      var key = String(event.key || "").toLowerCase();
+      if (key === "z" && typeof self.adapter.undo === "function") {
+        event.preventDefault();
+        if (event.shiftKey) self.redo(); else self.undo();
+      } else if (key === "y" && typeof self.adapter.redo === "function") {
+        event.preventDefault();
+        self.redo();
+      }
+    };
+    if (typeof document !== "undefined" && document.addEventListener) document.addEventListener("keydown", this._historyKeyHandler);
+  };
+
+  Renderer.prototype.unbindHistoryShortcut = function () {
+    if (this._historyKeyHandler && typeof document !== "undefined" && document.removeEventListener) {
+      document.removeEventListener("keydown", this._historyKeyHandler);
+    }
+    this._historyKeyHandler = null;
+  };
+
   Renderer.prototype.commands = function () {
     var self = this;
     var out = [];
@@ -7919,6 +8003,12 @@
       var actionId = String(rec.block.id || rec.block.label || rec.block.call || rec.block.bind || "action");
       out.push({kind: "action", id: "action:" + actionId, label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
     });
+    if (typeof this.adapter.undo === "function") {
+      out.push({kind: "history", id: "history:undo", label: this.historyLabel("undo"), path: "history:undo", disabled: !this.canUndo(), run: function () { self.undo(); }});
+    }
+    if (typeof this.adapter.redo === "function") {
+      out.push({kind: "history", id: "history:redo", label: this.historyLabel("redo"), path: "history:redo", disabled: !this.canRedo(), run: function () { self.redo(); }});
+    }
     return out;
   };
 
@@ -7943,7 +8033,7 @@
     }
     function choose(index) {
       var row = rows[index];
-      if (!row) return;
+      if (!row || row.command.disabled) return;
       self.recordRecent(row.command.id);
       close();
       row.command.run();
@@ -7964,6 +8054,10 @@
         option.setAttribute("data-pui-command", command.id);
         option.setAttribute("data-favorite", favorite ? "true" : "false");
         if (self.preferences.recent.indexOf(command.id) >= 0) option.setAttribute("data-recent", "true");
+        if (command.disabled) {
+          option.disabled = true;
+          option.setAttribute("aria-disabled", "true");
+        }
         option.setAttribute("aria-selected", index === active ? "true" : "false");
         option.setAttribute("aria-label", command.label + " · " + command.kind + (favorite ? " · favorite" : "") + (self.preferences.recent.indexOf(command.id) >= 0 ? " · recent" : ""));
         option.addEventListener("click", function () { choose(index); });
