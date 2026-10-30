@@ -94,7 +94,7 @@
 .pui-range { display: flex; align-items: center; gap: 5px; width: 100%; }
 .pui-number { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
 .pui-number input[type="number"] { flex: 1 1 auto; min-width: 0; }
-.pui-scrub { flex: 0 0 auto; width: 20px; min-height: 28px; padding: 0; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface-2); color: var(--pui-muted); font: inherit; font-size: 0.8rem; line-height: 1; cursor: ew-resize; touch-action: none; }
+.pui-scrub { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; min-height: 28px; padding: 0; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface-2); color: var(--pui-muted); font: inherit; font-size: 0.8rem; line-height: 1; cursor: ew-resize; touch-action: none; user-select: none; }
 .pui-scrub::before { content: "↔"; }
 .pui-scrub:hover, .pui-scrub:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
 .pui-range input[type="range"] { flex: 1 1 auto; }

@@ -5099,8 +5099,8 @@
     var self = this;
     var precision = numericPrecision(field);
     var step = Number(field.step) || (precision !== null ? Math.pow(10, -precision) : 1);
-    var handle = el("button", {
-      type: "button", class: "pui-scrub", role: "slider", tabindex: "0",
+    var handle = el("span", {
+      class: "pui-scrub", role: "slider", tabindex: "0",
       "aria-label": "Drag to adjust " + String(label || this.labelText(field))
     });
     if (field.min !== undefined) handle.setAttribute("aria-valuemin", String(field.min));
