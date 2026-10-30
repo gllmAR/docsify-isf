@@ -4650,6 +4650,7 @@
     var self = this;
     var data = this.historyValue(rec);
     rec.value = data;
+    rec.entrySignature = JSON.stringify(data.entries);
     rec.list.textContent = "";
     rec.entryEls = [];
     if (!data.entries.length) {
@@ -4676,6 +4677,11 @@
 
   Renderer.prototype.historyRefresh = function (rec) {
     var data = this.historyValue(rec);
+    var signature = JSON.stringify(data.entries);
+    if (rec.entrySignature !== signature) {
+      this.historyRender(rec);
+      return;
+    }
     rec.value = data;
     rec.current = data.index;
     rec.undo.disabled = !this.canUndo();
@@ -7385,10 +7391,12 @@
     var virtual = !!block.virtual;
     var rowHeight = Math.max(18, Number(block.row_height) || 32);
     var viewportHeight = Math.max(1, Number(block.height) || 320);
+    if (rec.focusIndex >= total) rec.focusIndex = Math.max(0, total - 1);
     if (virtual && rec.viewport) {
       var scrollTop = Number(rec.viewport.scrollTop) || 0;
       start = Math.max(0, Math.floor(scrollTop / rowHeight) - 2);
       end = Math.min(total, start + Math.ceil(viewportHeight / rowHeight) + 5);
+      if (rec.focusIndex < start || rec.focusIndex >= end) rec.focusIndex = start;
     }
     if (virtual && start > 0) {
       var top = el("tr", {class: "pui-table-spacer", "aria-hidden": "true"}, el("td", {colspan: columns.length + (block.multi !== false ? 1 : 0)}));
