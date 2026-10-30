@@ -167,9 +167,9 @@ Load**. Move the pointer over the preview to move the ripple (click for the
 ```
 
 Keep `docsify-isf.js` next to its `vendor/pupitre-ui/` folder: the parameter
-drawer loads the shared toolkit on demand from that sibling directory. Both
+inspector/transport loads the shared toolkit on demand from that sibling directory. Both
 are in the npm package and the Pages build. If you host the script elsewhere,
-point `isf.puiBase` at the folder; if the assets cannot load, the drawer shows
+point `isf.puiBase` at the folder; if the assets cannot load, the inspector shows
 a diagnostic with a Retry button and the shader still renders.
 
 Then write ordinary Markdown:
@@ -213,7 +213,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
-| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the drawer shows a diagnostic and Retry. |
+| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the inspector shows a diagnostic and Retry. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |
@@ -228,7 +228,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
-| `persistLayout` | `true` | Remember editor height, folded toolbar, drawer widths, Scale and Resolution across viewers and pages. |
+| `persistLayout` | `true` | Remember editor height, folded toolbar, inspector width, Scale and Resolution across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
 | `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters + Resolution/Scale). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
@@ -240,27 +240,23 @@ All keys are optional and live under `window.$docsify.isf`:
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
 (`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, …).
-`PupitreUI`/`PupitreISF` become available once the first parameter drawer loads
-them; `await DocsifyISF.loadPUI()` loads the toolkit explicitly. The parameter
-drawer is a PUI document generated from the
-normalised `INPUTS` by the vendored ISF adapter: the same control vocabulary
-as the other Pupitre hosts, embedded in the drawer with the viewer theme. The
-pass/quality/time/export row is a PUI **host block** (`isf.view`), so the whole
-drawer is one renderer (while the assets load, or if they fail, the row stays
-a sibling of the panel). The fullscreen toolbox is a PUI toolbar in a
+`PupitreUI`/`PupitreISF` become available once the first inspector or
+transport mounts; `await DocsifyISF.loadPUI()` loads the toolkit explicitly.
+The viewer is a **studio shell**: a header, an edge-to-edge preview, a
+full-width **PUI transport footer** (play/pause/stop and the shader-time seek),
+and one right-hand **inspector** with **Parameters** and **Source** tabs.
+The Parameters tab is a PUI document generated from the normalised `INPUTS` by
+the vendored ISF adapter, with the shader description/credit and the
+View/Resolution/Scale/Randomize/Export section below the fields. The Source tab
+is the host GLSL editor. The fullscreen Controls toolbox is a PUI toolbar in a
 non-modal top drawer, the bottom status line is a PUI statusbar with a tone,
-and transient action feedback (copy link, reset, export, microphone) uses a
-dismissible PUI toast stack. The main header is a PUI `toolbar` with a
-source-link title and an ISF format chip, the live FPS/size readout, and
-grouped icon actions. The toolbar measures itself: at wide widths every action
-is visible; when space is tight the lowest-priority actions (reset/source/
-share, then fullscreen/play if needed) collapse into More, while the title and
-stats stay put. Pressed states and the input-count badge come from bindings. The parameter inspector opens with the
-shader description, credit/categories, the fields, and the View section below
-them. Drawers are floating solid cards with a shared header/close treatment in
-both the page and fullscreen. The host title/actions stay as the
-pre-load/failure fallback and are removed once the PUI toolbar mounts; the
-code editor and stage remain host surfaces.
+and transient action feedback uses a dismissible PUI toast stack. The header is
+a measured PUI `toolbar` with the source-link title and ISF chip, the live
+FPS/size readout, and grouped icon actions. The toolbar collapses its
+lowest-priority actions into More when space is tight, keeping the title and
+stats in place. Pressed states, the input-count badge and the transport are
+driven through PUI bindings. The host header stays as the pre-load/failure
+fallback; the code editor and stage remain host surfaces.
 
 ## OBS / fullscreen link
 
@@ -274,7 +270,7 @@ https://site/page/?isf-shader=<shader-url>&isf-fullscreen=1
 `isf-shader` names the shader, `isf-values` carries its current parameters,
 `isf-res` carries the Resolution preset and `isf-quality` the Scale multiplier
 (self-contained: no local storage or page links are needed).
-`isf-fullscreen=1` mounts one bare viewer — no header, drawers or status — that
+`isf-fullscreen=1` mounts one bare viewer — no header, inspector, transport or status — that
 fills the viewport and always plays. That is the capture an OBS **Browser**
 source wants: paste the URL, set the source size, done.
 
@@ -296,23 +292,22 @@ the cap to the site default. The bare viewer never writes local storage.
 
 The in-page fullscreen button (or double-clicking the canvas) makes the whole
 viewer block fill the display. The header is hidden: a PUI **Controls** drawer
-is revealed by the pill at the top centre (or **H**), clear of the side
-drawers. It carries Source editor, Parameters, Play/Pause, Reset, Exit
-fullscreen, Open source and Copy OBS link. The panel is a floating card;
-opening it closes any side inspector so the two overlays never cover each
-other. **Escape** closes it, and choosing Source editor/Parameters closes it so
-the side drawer's own header is fully accessible. On narrow fullscreens the pill steps aside while a side drawer is
-open. The shader gets the whole viewport, and the same
-Resolution/Scale cap applies, so a 4K fullscreen still renders at SD by default
-until you pick HD/FHD/Native. If the PUI assets cannot load, the normal header
-stays as the fallback.
+is revealed by the pill at the top centre (or **H**). It carries Source
+editor, Parameters, Reset, Exit fullscreen, Open source and Copy OBS link; the
+**transport footer** remains at the bottom for play and seek. The inspector
+opens in the same right dock with its tabs, and opening Controls closes it so
+the overlays never cover each other. **Escape** closes Controls, and choosing
+Source editor/Parameters closes it while opening the inspector tab. The
+shader gets the whole viewport, and the same Resolution/Scale cap applies, so
+a 4K fullscreen still renders at SD by default until you pick HD/FHD/Native.
+If the PUI assets cannot load, the normal header falls back.
 
 ## Editor
 
-The code pane fills the available vertical space of its drawer and follows
-window/stage resizes; dragging the splitter pins a manual height (double-click
-resets it), and folding the toolbar grows the pane by exactly the freed
-rows.
+The Source tab fills the inspector and follows window/stage resizes; dragging
+the splitter pins a manual height (double-click resets it), and folding the
+editor toolbar grows the pane by exactly the freed rows. The inspector header
+carries the Parameters/Source tabs, keyboard help and close.
 
 Press the `</>` button in the viewer header:
 
@@ -329,22 +324,21 @@ Press the `</>` button in the viewer header:
   an opening bracket); **Tab / Shift+Tab** indent and dedent the selection;
   **Ctrl/Cmd + /** toggles comments; **Ctrl/Cmd + +/-/0** zooms the editor;
   indentation width follows `editorIndent`.
-- A **Templates** PUI menu inserts ready-made `INPUTS` snippets (float, bool,
-  color, point2D, event, long, image, audioFFT) or starts a new generator,
-  filter, transition or multi-pass shader. The native select remains only as
-  the pre-load fallback if the toolkit assets are unavailable.
+- A compact **Templates** PUI menu inserts ready-made `INPUTS` snippets
+  (float, bool, color, point2D, event, long, image, audioFFT) or starts a new
+  generator, filter, transition or multi-pass shader. The native select
+  remains only as the pre-load fallback if the toolkit assets are unavailable.
 - Compile errors are mapped back to the original `.fs` file line — the gutter
   highlights it, the status bar explains it, and the error overlay offers
   **Fix at line N**, **Copy error** and **Open source**.
 - **Revert** returns to the file on disk; **Copy** puts the source on the
   clipboard.
 - **Drag the handle above the editor** to resize it (double-click to reset,
-  or focus it and use ↑/↓/Home/End). The **code and parameter drawers are
-  overlays**: the code editor slides in from the left edge, the parameters
-  from the right, both translucent so the render stays visible behind them,
-  and neither resizes the canvas. Drag their inner edges to resize a drawer
-  (or focus the rail and use ←/→/Home/End; double-click resets). Sizes persist
-  when `persistLayout` is on.
+  or focus it and use ↑/↓/Home/End). The **inspector** is one floating card on
+  the right with Parameters/Source tabs; it overlays the preview and never
+  resizes the canvas. Drag its inner edge to resize it (or focus the rail and
+  use ←/→/Home/End; double-click resets). Sizes persist when `persistLayout`
+  is on.
 
 ## Import (Shadertoy / GLSL Sandbox)
 
@@ -372,18 +366,15 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   values are clamped to `MIN`/`MAX`, `long` values snap to `VALUES`, and
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
-- `width`, `height` and `aspectRatio` size the preview; the code and
-  parameter drawers overlay the canvas (left/right) at every width and never
-  change the render size. They are translucent/glassy (backdrop blur) so the
-  shader stays visible and are toggled from the top bar (`</>` editor and the
-  sliders button, `aria-pressed`-aware). One drawer may use up to 64 % of the
-  stage, two are capped at 46 % each so the render stays visible; on phones
-  each drawer fills the stage, opening one closes the other, and the resize
-  rails are hidden.
-- The top bar is responsive: on narrow screens the title gets its own row and
-  the action buttons wrap, keeping every control visible and at least 36 px
-  tall on touch devices; controls and drawers respect the notch safe areas,
-  and form fields switch to 16 px on coarse pointers so iOS does not zoom.
+- `width`, `height` and `aspectRatio` size the preview. The **inspector**
+  overlays the canvas on the right and never changes the render size; it is a
+  floating translucent card so the shader stays visible, toggled by the
+  `</>`/sliders buttons and using one tab (Parameters or Source) at a time.
+  The **transport footer** owns play and seek at every width.
+- The header is responsive: on narrow screens the title keeps its space,
+  low-priority actions collapse into More, and every control stays at least
+  36 px tall on touch devices; the inspector tabs, transport and form fields
+  respect the notch safe areas and coarse-pointer sizing.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles
   fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
   `aria-expanded`, and the status regions are `aria-live`.

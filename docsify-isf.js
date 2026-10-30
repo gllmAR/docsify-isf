@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.25.1
+ * docsify-isf v1.26.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.25.1";
+    var VERSION = "1.26.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5448,6 +5448,15 @@
             ".isf-drawer-left.isf-drawer-closed{transform:translateX(-12px)}",
             ".isf-drawer-right.isf-drawer-closed{transform:translateX(12px)}",
             ".isf-drawer-inner{flex:1 1 auto;min-height:0;overflow:auto}",
+            ".isf-inspector-head{display:flex;align-items:center;gap:.35rem;padding:.4rem .55rem;border-bottom:1px solid var(--isf-border);background:color-mix(in srgb,var(--isf-surface) 92%,transparent);position:sticky;top:0;z-index:4;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
+            ".isf-inspector-tabs{display:flex;gap:.15rem;flex:1 1 auto;min-width:0}",
+            ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",
+            ".isf-inspector-tab:hover{color:var(--isf-text);background:var(--isf-surface-2)}",
+            ".isf-inspector-tab[aria-selected=true]{background:var(--isf-surface-2);border-color:var(--isf-border);color:var(--isf-text)}",
+            ".isf-inspector-help,.isf-inspector-close{flex:0 0 auto;min-width:30px;min-height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}",
+            ".isf-inspector .isf-params > .isf-panel-title,.isf-inspector .isf-editor-wrap > .isf-panel-title{display:none}",
+            ".isf-inspector .isf-params{border-bottom:0}",
+            ".isf-inspector .isf-editor-wrap{height:100%}",
             ".isf-drawer .isf-panel{background:transparent;border-bottom:1px solid var(--isf-border)}",
             ".isf-drawer .isf-editor-wrap{background:rgba(0,0,0,.12)}",
             ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
@@ -5466,6 +5475,19 @@
             ".isf-status.is-error{color:var(--isf-danger)}",
             ".isf-status.is-warn{color:#b7791f}",
             ".isf-status.is-pui{padding:0;border:0;background:transparent;white-space:normal}",
+            ".isf-transport{background:var(--isf-surface);border-top:1px solid var(--isf-border);padding:.3rem max(.55rem,env(safe-area-inset-left)) .3rem max(.55rem,env(safe-area-inset-right));position:relative;z-index:6}",
+            ".isf-transport .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
+            ".isf-transport .pui-panel,.isf-transport .pui-page,.isf-transport .pui-section,.isf-transport .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
+            ".isf-transport .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.5rem;padding:0;border:0;border-radius:0;background:transparent}",
+            ".isf-transport .pui-transport-head{flex:0 0 auto;gap:.35rem}",
+            ".isf-transport .pui-transport-head h4{display:none}",
+            ".isf-transport .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
+            ".isf-transport .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.45rem}",
+            ".isf-transport .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
+            ".isf-transport .pui-transport-time{color:var(--isf-muted);font-size:.7rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
+            ".isf-transport .pui-transport-loop,.isf-transport .pui-transport select{display:none}",
+            ".isf-bare:not(.isf-revealed) .isf-transport{display:none}",
+            "@media (pointer:coarse){.isf-transport .pui-transport-head .pui-button{min-height:36px}.isf-transport .pui-transport-controls input[type=range]{min-height:36px}}",
             ".isf-pui-statusbar{background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
             ".isf-pui-statusbar .pui{width:100%;padding:0;background:transparent;border-radius:0;font-size:.74rem;color:var(--isf-muted)}",
             ".isf-pui-statusbar .pui-panel,.isf-pui-statusbar .pui-page,.isf-pui-statusbar .pui-section,.isf-pui-statusbar .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
@@ -7637,6 +7659,8 @@
         viewer.routePath = routePath || "";
         viewer.title = title || basename(viewer.href);
         viewer.state = "idle";
+        viewer.inspectorTab = "params";
+        viewer.inspectorImport = false;
         // A viewer released by the context budget rebuilds its controls when it
         // resumes; the auto-open decision must not override a drawer the user
         // already toggled.
@@ -7733,7 +7757,7 @@
         stage.appendChild(overlay);
 
         var paramsPanel = h("div", "isf-panel isf-params", {
-            id: uid + "-params", role: "region", "aria-label": "Parameters"
+            id: uid + "-params", role: "tabpanel", "aria-label": "Parameters"
         });
         var paramsTitle = h("div", "isf-panel-title");
         paramsTitle.appendChild(h("span", null, { text: "Parameters" }));
@@ -7744,29 +7768,49 @@
         paramsPanel.appendChild(paramsIntro);
         var paramsList = h("div", "isf-params-list");
         paramsPanel.appendChild(paramsList);
+
         var rightResize = h("div", "isf-resize-x isf-resize-right", {
             role: "separator", "aria-orientation": "vertical",
-            "aria-label": "Resize the parameters drawer", tabindex: "0",
-            title: "Drag to resize the parameters drawer — double-click to reset"
+            "aria-label": "Resize the inspector", tabindex: "0",
+            title: "Drag to resize the inspector — double-click to reset"
         });
         var rightInner = h("div", "isf-drawer-inner");
-        rightInner.appendChild(paramsPanel);
-        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-drawer-closed");
-        rightDrawer.appendChild(rightResize);
-        rightDrawer.appendChild(rightInner);
 
-        var leftResize = h("div", "isf-resize-x isf-resize-left", {
-            role: "separator", "aria-orientation": "vertical",
-            "aria-label": "Resize the code drawer", tabindex: "0",
-            title: "Drag to resize the code drawer — double-click to reset"
+        var inspectorHead = h("div", "isf-inspector-head");
+        var inspectorTabs = h("div", "isf-inspector-tabs", { role: "tablist", "aria-label": "Inspector" });
+        var paramsTab = h("button", "isf-inspector-tab is-active", {
+            type: "button", role: "tab", id: uid + "-tab-params", "aria-selected": "true",
+            "aria-controls": uid + "-params", text: "Parameters"
         });
-        var leftInner = h("div", "isf-drawer-inner");
+        inspectorTabs.appendChild(paramsTab);
+        var sourceTab = null;
+        if (config.editor) {
+            sourceTab = h("button", "isf-inspector-tab", {
+                type: "button", role: "tab", id: uid + "-tab-source", "aria-selected": "false",
+                "aria-controls": uid + "-editor", text: "Source"
+            });
+            inspectorTabs.appendChild(sourceTab);
+        }
+        inspectorHead.appendChild(inspectorTabs);
+        var inspectorHelp = h("button", "isf-btn isf-keys-btn isf-inspector-help", {
+            type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts"
+        });
+        var inspectorClose = h("button", "isf-btn isf-panel-close isf-inspector-close", {
+            type: "button", "aria-label": "Close inspector", title: "Close", text: "×"
+        });
+        inspectorHead.appendChild(inspectorHelp);
+        inspectorHead.appendChild(inspectorClose);
+        rightInner.appendChild(inspectorHead);
+        rightInner.appendChild(paramsPanel);
+
         var editor = null;
         if (config.editor) {
             editor = createEditor(viewer, config);
             editor.el.id = uid + "-editor";
+            editor.el.setAttribute("role", "tabpanel");
+            editor.el.setAttribute("aria-label", "Source editor");
             editor.el.classList.add("isf-hidden");
-            leftInner.appendChild(editor.el);
+            rightInner.appendChild(editor.el);
         }
         var importPanel = h("div", "isf-panel isf-import isf-hidden", { id: uid + "-import", role: "region", "aria-label": "Import Shadertoy or GLSL Sandbox" });
         var importTitle = h("div", "isf-panel-title");
@@ -7786,22 +7830,40 @@
         importPanel.appendChild(importTitle);
         importPanel.appendChild(importArea);
         importPanel.appendChild(importActions);
-        leftInner.appendChild(importPanel);
-        var leftDrawer = h("div", "isf-drawer isf-drawer-left isf-drawer-closed");
-        leftDrawer.appendChild(leftResize);
-        leftDrawer.appendChild(leftInner);
+        rightInner.appendChild(importPanel);
 
-        stage.appendChild(leftDrawer);
+        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-inspector isf-drawer-closed");
+        rightDrawer.appendChild(rightResize);
+        rightDrawer.appendChild(rightInner);
+
         stage.appendChild(rightDrawer);
         updateDrawerButtons();
+        paramsTab.addEventListener("click", function () { viewer.setInspectorTab("params"); });
+        if (sourceTab) sourceTab.addEventListener("click", function () { showEditorPanel(); });
+        inspectorClose.addEventListener("click", function () { closeInspector(); });
+        inspectorHelp.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
+        paramsClose.addEventListener("click", function () { closeInspector(); });
+        inspectorTabs.addEventListener("keydown", function (event) {
+            var tabs = [paramsTab].concat(sourceTab ? [sourceTab] : []);
+            var index = tabs.indexOf(document.activeElement);
+            if (index < 0) return;
+            if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                event.preventDefault();
+                var next = (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+                tabs[next].focus();
+                viewer.setInspectorTab(next === 0 ? "params" : "source");
+            }
+        });
         body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         var statusText = h("span", "isf-status-text");
         status.appendChild(statusText);
         var statusPUIHost = h("div", "isf-pui isf-pui-statusbar");
         status.appendChild(statusPUIHost);
+        var transportHost = h("div", "isf-transport isf-pui isf-hidden");
         block.appendChild(header);
         block.appendChild(body);
+        block.appendChild(transportHost);
         block.appendChild(status);
 
         viewer.dom = {
@@ -7814,10 +7876,14 @@
             overlay: overlay,
             overlayInner: overlayInner,
             badge: badge,
-            leftDrawer: leftDrawer,
             rightDrawer: rightDrawer,
-            leftResize: leftResize,
             rightResize: rightResize,
+            inspectorHead: inspectorHead,
+            inspectorTabs: inspectorTabs,
+            paramsTab: paramsTab,
+            sourceTab: sourceTab,
+            inspectorHelp: inspectorHelp,
+            inspectorClose: inspectorClose,
             body: body,
             paramsPanel: paramsPanel,
             paramsIntro: paramsIntro,
@@ -7835,7 +7901,8 @@
             status: status,
             statusText: statusText,
             statusPUIHost: statusPUIHost,
-            headerPUIHost: headerPUIHost
+            headerPUIHost: headerPUIHost,
+            transportHost: transportHost
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -7899,23 +7966,15 @@
 
         function maxDrawerWidth() {
             var stageWidth = stage.getBoundingClientRect().width || (typeof window !== "undefined" ? window.innerWidth : 1200);
-            // One open drawer may take more room; two must leave the render visible.
-            var fraction = openDrawerCount() >= 2 ? 0.46 : 0.64;
-            return Math.max(240, Math.min(820, stageWidth * fraction));
+            return Math.max(240, Math.min(820, stageWidth * 0.64));
         }
 
         function isDrawerClosed(drawer) {
             return drawer.classList.contains("isf-drawer-closed");
         }
 
-        function openDrawerCount() {
-            return (isDrawerClosed(leftDrawer) ? 0 : 1) + (isDrawerClosed(rightDrawer) ? 0 : 1);
-        }
-
         function clampDrawerWidths() {
-            var limit = maxDrawerWidth();
-            if (leftDrawer.style.width) leftDrawer.style.width = clamp(parseFloat(leftDrawer.style.width) || 380, 240, limit) + "px";
-            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, limit) + "px";
+            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
         }
 
         function setDrawerWidth(drawer, px, key, persist) {
@@ -7929,9 +7988,8 @@
             return width;
         }
 
-        // Drawers overlay the canvas on both edges; resizing them never
-        // changes the render size. The handle on the inner edge of each
-        // drawer drags it wider, and is keyboard-operable.
+        // The inspector is a single right dock; resizing it never changes the
+        // render size.
         function bindDrawerResize(handle, drawer, key, direction) {
             var startX = 0;
             var startWidth = 0;
@@ -7973,18 +8031,14 @@
         }
 
         applyStageLayout();
-        bindDrawerResize(leftResize, leftDrawer, "leftWidth", 1);
         bindDrawerResize(rightResize, rightDrawer, "paramsWidth", -1);
-        var storedLeft = viewer.layout.leftWidth || viewer.layout.editorWidth || viewer.layout.sideWidth;
-        var storedRight = viewer.layout.paramsWidth || viewer.layout.sideWidth;
-        if (storedLeft && config.persistLayout !== false) setDrawerWidth(leftDrawer, storedLeft, "leftWidth", false);
+        var storedRight = viewer.layout.paramsWidth || viewer.layout.sideWidth || viewer.layout.leftWidth || viewer.layout.editorWidth;
         if (storedRight && config.persistLayout !== false) setDrawerWidth(rightDrawer, storedRight, "paramsWidth", false);
         var drawerMetricsHandler = function () {
             clampDrawerWidths();
         };
         window.addEventListener("resize", drawerMetricsHandler);
         viewer.listeners.push(function () { window.removeEventListener("resize", drawerMetricsHandler); });
-        paramsClose.addEventListener("click", function () { viewer.toggleParams(); });
         stage.addEventListener("dblclick", function (event) {
             if (event.target === canvas) viewer.toggleFullscreen();
         });
@@ -8059,20 +8113,65 @@
             badge.textContent = viewer.badgeText;
             badge.classList.toggle("isf-hidden", !viewer.badgeText);
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+            if (viewer.applyPUITransport) viewer.applyPUITransport();
         };
         viewer.showOverlay = function (html, show) {
             overlayInner.innerHTML = html || "";
             overlay.style.display = show ? "flex" : "none";
         };
+        function setInspectorPanel() {
+            var source = !!(viewer.editor && viewer.inspectorTab === "source");
+            paramsPanel.classList.toggle("isf-hidden", source);
+            if (viewer.editor) viewer.editor.el.classList.toggle("isf-hidden", !source || !!viewer.inspectorImport);
+            importPanel.classList.toggle("isf-hidden", !(source && viewer.inspectorImport));
+            paramsTab.setAttribute("aria-selected", source ? "false" : "true");
+            paramsTab.tabIndex = source ? -1 : 0;
+            if (sourceTab) {
+                sourceTab.setAttribute("aria-selected", source ? "true" : "false");
+                sourceTab.tabIndex = source ? 0 : -1;
+            }
+        }
+        function updateDrawerButtons() {
+            var open = !isDrawerClosed(rightDrawer);
+            var tab = viewer.inspectorTab || "params";
+            var paramsOpen = open && tab === "params";
+            var editorOpen = open && tab === "source";
+            paramsButton.setAttribute("aria-pressed", paramsOpen ? "true" : "false");
+            paramsButton.setAttribute("aria-expanded", paramsOpen ? "true" : "false");
+            paramsButton.classList.toggle("is-active", paramsOpen);
+            if (editorButton) {
+                editorButton.setAttribute("aria-pressed", editorOpen ? "true" : "false");
+                editorButton.setAttribute("aria-expanded", editorOpen ? "true" : "false");
+                editorButton.classList.toggle("is-active", editorOpen);
+            }
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+        }
+        function openInspector(tab) {
+            viewer.inspectorTab = tab === "source" && viewer.editor ? "source" : (tab || viewer.inspectorTab || "params");
+            viewer.inspectorImport = false;
+            rightDrawer.classList.remove("isf-drawer-closed");
+            block.classList.add("isf-drawer-open");
+            clampDrawerWidths();
+            setInspectorPanel();
+            updateDrawerButtons();
+        }
+        function closeInspector() {
+            rightDrawer.classList.add("isf-drawer-closed");
+            block.classList.remove("isf-drawer-open");
+            updateDrawerButtons();
+        }
         function showEditorPanel() {
-            importPanel.classList.add("isf-hidden");
-            if (viewer.editor) viewer.editor.el.classList.remove("isf-hidden");
-            if (viewer.editor && viewer.editor.refreshFold) requestAnimationFrame(viewer.editor.refreshFold);
+            if (!viewer.editor) { openInspector("params"); return; }
+            openInspector("source");
+            viewer.inspectorImport = false;
+            setInspectorPanel();
+            if (viewer.editor.refreshFold) requestAnimationFrame(viewer.editor.refreshFold);
         }
         viewer.openImport = function () {
-            importPanel.classList.remove("isf-hidden");
-            if (viewer.editor) viewer.editor.el.classList.add("isf-hidden");
-            viewer.setDrawer(leftDrawer, true);
+            if (!viewer.editor) return;
+            openInspector("source");
+            viewer.inspectorImport = true;
+            setInspectorPanel();
             try { importArea.focus(); } catch (err) { /* ignore */ }
         };
         viewer.exportPng = function () {
@@ -8188,55 +8287,37 @@
 
         // The toolbar buttons are the single control surface for the drawers;
         // keep their pressed/expanded state in sync wherever a drawer changes.
-        function updateDrawerButtons() {
-            var rightOpen = !isDrawerClosed(rightDrawer);
-            paramsButton.setAttribute("aria-pressed", rightOpen ? "true" : "false");
-            paramsButton.setAttribute("aria-expanded", rightOpen ? "true" : "false");
-            paramsButton.classList.toggle("is-active", rightOpen);
-            if (editorButton) {
-                var leftOpen = !isDrawerClosed(leftDrawer);
-                editorButton.setAttribute("aria-pressed", leftOpen ? "true" : "false");
-                editorButton.setAttribute("aria-expanded", leftOpen ? "true" : "false");
-                editorButton.classList.toggle("is-active", leftOpen);
-            }
-            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
-        }
-        viewer.updateDrawerButtons = updateDrawerButtons;
-
+        viewer.setInspectorTab = function (tab) {
+            openInspector(tab);
+            if (tab === "source" && viewer.editor) viewer.editor.focus();
+        };
+        viewer.isInspectorOpen = function () { return !isDrawerClosed(rightDrawer); };
         viewer.setDrawer = function (drawer, open) {
-            if (open && isNarrowLayout()) {
-                // Phones: one drawer at a time, so the render stays reachable.
-                var other = drawer === leftDrawer ? rightDrawer : leftDrawer;
-                if (!isDrawerClosed(other)) other.classList.add("isf-drawer-closed");
-            }
-            drawer.classList.toggle("isf-drawer-closed", !open);
-            block.classList.toggle("isf-drawer-open", !isDrawerClosed(leftDrawer) || !isDrawerClosed(rightDrawer));
-            clampDrawerWidths();
-            updateDrawerButtons();
+            if (open) openInspector(viewer.inspectorTab || "params");
+            else closeInspector();
         };
         viewer.isDrawerOpen = function (drawer) {
-            return !isDrawerClosed(drawer);
+            return !isDrawerClosed(rightDrawer);
         };
         viewer.setPanel = function (panel, open) {
-            if (panel === viewer.dom.paramsPanel) viewer.setDrawer(rightDrawer, open);
-            else if (panel === viewer.dom.editorPanel) {
-                viewer.setDrawer(leftDrawer, open);
-                if (open) showEditorPanel();
+            if (panel === viewer.dom.paramsPanel) {
+                if (open) openInspector("params"); else closeInspector();
+            } else if (panel === viewer.dom.editorPanel) {
+                if (open) { openInspector("source"); showEditorPanel(); } else closeInspector();
             } else {
                 panel.classList.toggle("isf-hidden", !open);
             }
         };
         viewer.toggleParams = function () {
             viewer.drawerTouched = true;
-            viewer.setDrawer(rightDrawer, !viewer.isDrawerOpen(rightDrawer));
+            if (!isDrawerClosed(rightDrawer) && viewer.inspectorTab === "params") closeInspector();
+            else openInspector("params");
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
             viewer.drawerTouched = true;
-            var open = !viewer.isDrawerOpen(leftDrawer);
-            viewer.setDrawer(leftDrawer, open);
-            if (open) showEditorPanel();
-            if (open && viewer.editor) viewer.editor.focus();
+            if (!isDrawerClosed(rightDrawer) && viewer.inspectorTab === "source" && !viewer.inspectorImport) closeInspector();
+            else { openInspector("source"); if (viewer.editor) viewer.editor.focus(); }
         };
         viewer.togglePlay = function () {
             var runtime = viewer.runtime;
@@ -8247,6 +8328,7 @@
             viewer.dom.playButton.title = playing ? "Pause" : "Play";
             viewer.updateBadge(playing ? "" : "paused");
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+            if (viewer.applyPUITransport) viewer.applyPUITransport();
             if (viewer.refreshPUIFullscreenToolbar) viewer.refreshPUIFullscreenToolbar();
         };
         viewer.resetAll = function () {
@@ -8570,6 +8652,7 @@
             section.appendChild(timeRow);
             viewer.dom.timeRange = timeRange;
             viewer.dom.timeLabel = timeLabel;
+            viewer.dom.timeRow = timeRow;
             var randomButton = h("button", "isf-btn", { type: "button", text: "Randomize", title: "Randomize every parameter within its declared range" });
             randomButton.addEventListener("click", function () { viewer.randomizeParameters(); });
             section.appendChild(randomButton);
@@ -8590,7 +8673,6 @@
                 items.push({id: "params", label: "Parameters", call: "isf.params"});
             }
             items.push({kind: "separator", label: ""});
-            items.push({id: "play", label: viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause", call: "isf.play"});
             items.push({id: "reset", label: "Reset parameters", call: "isf.reset"});
             items.push({kind: "separator", label: ""});
             items.push({id: "fullscreen", label: "Exit fullscreen", call: "isf.fullscreen"});
@@ -8628,10 +8710,7 @@
         };
         viewer.setToolbarOpen = function (open, fromPUI) {
             viewer.toolbarOpen = !!open;
-            if (open) {
-                if (!isDrawerClosed(leftDrawer)) viewer.setDrawer(leftDrawer, false);
-                if (!isDrawerClosed(rightDrawer)) viewer.setDrawer(rightDrawer, false);
-            }
+            if (open && !isDrawerClosed(rightDrawer)) closeInspector();
             if (!fromPUI && viewer.puiToolbar) viewer.puiToolbar.ui.apply();
         };
         viewer.mountPUIStatusbar = function () {
@@ -8681,6 +8760,107 @@
             }
             viewer.puiStatus = {ui: ui, host: host};
             viewer.setState(viewer.statusText, viewer.statusKind);
+        };
+
+        viewer.transportValue = function () {
+            var runtime = viewer.runtime;
+            var duration = 60;
+            var position = runtime ? Number(runtime.time) || 0 : 0;
+            return {
+                playing: !!(runtime && runtime.playing),
+                position: Math.max(0, Math.min(duration, position)),
+                duration: duration,
+                loop: false,
+                rate: 1,
+                canPlay: !!runtime,
+                canPause: !!runtime,
+                canStop: !!runtime,
+                canSeek: !!runtime,
+                canLoop: false,
+                canRate: false
+            };
+        };
+        viewer.transportAction = function (intent) {
+            var runtime = viewer.runtime;
+            if (!runtime || !intent) return false;
+            var op = String(intent.op || "");
+            if (op === "play" || op === "pause") {
+                var want = op === "play";
+                if (runtime.playing !== want) viewer.togglePlay();
+                return true;
+            }
+            if (op === "stop") {
+                if (runtime.playing) runtime.setPlaying(false);
+                runtime.time = 0;
+                runtime.needsRender = true;
+                viewer.updateBadge("paused");
+                viewer.applyPUIHeader();
+                viewer.applyPUITransport();
+                viewer.refreshPUIFullscreenToolbar();
+                return true;
+            }
+            if (op === "seek") {
+                runtime.time = Math.max(0, Math.min(60, Number(intent.position) || 0));
+                runtime.needsRender = true;
+                viewer.applyPUITransport();
+                return true;
+            }
+            return false;
+        };
+        viewer.applyPUITransport = function () {
+            if (!viewer.puiTransport) return;
+            try { viewer.puiTransport.ui.apply(); } catch (error) { /* ignore */ }
+        };
+        viewer.mountPUITransport = function () {
+            if (viewer.puiTransport || viewer.disposed || !puiAvailable()) return;
+            var host = viewer.dom.transportHost;
+            if (!host) return;
+            var adapter = {
+                getValue: function (path) {
+                    return path === "/isf/transport" ? viewer.transportValue() : undefined;
+                },
+                setValue: function () { return false; },
+                callAction: function () { return false; },
+                getPathMeta: function () { return {}; },
+                transportAction: function (intent) { return viewer.transportAction(intent); },
+                announce: function (level, message) {
+                    if (level === "error") viewer.warn(message);
+                    else viewer.setState(message, level === "success" ? "ok" : "");
+                }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                transportAction: adapter.transportAction,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            var doc = {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-transport", title: "Playback", embedded: true, pages: [{id: "transport", title: "Playback", sections: [{
+                    id: "transport", title: "Playback", blocks: [{
+                        kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport",
+                        a11y: {name: "Shader playback"},
+                        transport_options: {rates: [1], labels: {
+                            title: "Playback", play: "Play", pause: "Pause", stop: "Stop",
+                            seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
+                        }}
+                    }]
+                }]}]}]
+            };
+            try { ui.render(doc); } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                viewer.warn("Playback transport unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiTransport = {ui: ui, host: host};
+            host.classList.remove("isf-hidden");
+            if (viewer.dom.timeRow) viewer.dom.timeRow.classList.add("isf-hidden");
+            viewer.applyPUITransport();
         };
 
         viewer.mountPUIFullscreenToolbar = function () {
@@ -8773,10 +8953,6 @@
             }
             items.push({kind: "separator"});
             items.push({
-                id: "play", label_bind: "/isf/ui/playLabel", icon_bind: "/isf/ui/playIcon",
-                title_bind: "/isf/ui/playLabel", icon_only: true, call: "isf.play", priority: 80
-            });
-            items.push({
                 id: "fullscreen", label: "Fullscreen", icon: "fullscreen", icon_only: true,
                 title: "Fullscreen", call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen", priority: 70
             });
@@ -8821,8 +8997,8 @@
             if (!host) return;
             var adapter = {
                 getValue: function (path) {
-                    if (path === "/isf/ui/editorOpen") return viewer.isDrawerOpen(leftDrawer);
-                    if (path === "/isf/ui/paramsOpen") return viewer.isDrawerOpen(rightDrawer);
+                    if (path === "/isf/ui/editorOpen") return viewer.isDrawerOpen(rightDrawer) && viewer.inspectorTab === "source";
+                    if (path === "/isf/ui/paramsOpen") return viewer.isDrawerOpen(rightDrawer) && viewer.inspectorTab === "params";
                     if (path === "/isf/ui/fullscreen") return isFullscreenActive();
                     if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
                     if (path === "/isf/ui/playLabel") return viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause";
@@ -8904,6 +9080,7 @@
             if (puiAvailable()) {
                 viewer.mountPUIFullscreenToolbar();
                 viewer.mountPUIStatusbar();
+                viewer.mountPUITransport();
                 viewer.mountPUIHeader();
             }
             // PUI renders the view row as an `isf.view` host block inside the
@@ -9275,6 +9452,10 @@
                 try { viewer.puiHeader.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.puiHeader = null;
             }
+            if (viewer.puiTransport) {
+                try { viewer.puiTransport.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.puiTransport = null;
+            }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
             if (viewer.audioState) {
@@ -9308,7 +9489,6 @@
                     if (item) {
                         viewer.showOverlay("", false);
                         showEditorPanel();
-                        viewer.setDrawer(leftDrawer, true);
                         if (viewer.editor) viewer.editor.markError(item.rawLine, item.buffer);
                     }
                 } else if (kind === "close") {

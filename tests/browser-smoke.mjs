@@ -346,7 +346,7 @@ try {
         await page.waitForFunction(() => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
             const editor = block && block.querySelector(".isf-editor");
-            return editor && !block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") &&
+            return editor && !editor.classList.contains("isf-hidden") && !block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
                 editor.querySelectorAll(".isf-tok-isf, .isf-tok-kw, .isf-tok-type").length > 10;
         }, { timeout: 10000, polling: 100 }).catch(() => problems.push("editor did not open / highlight"));
 
@@ -357,7 +357,7 @@ try {
             const active = block.querySelector(".isf-active-line");
             const resizeY = block.querySelector(".isf-resize-y");
             const resizeX = block.querySelector(".isf-resize-x");
-            const drawer = block.querySelector(".isf-drawer-left");
+            const drawer = block.querySelector(".isf-drawer-right");
 
             const heightBefore = editor.getBoundingClientRect().height;
             resizeY.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
@@ -398,7 +398,7 @@ try {
         if (editorAudit.resizeXDisplay === "none") problems.push("side pane resizer hidden while the panel is open");
         if (!(editorAudit.sideAfter < editorAudit.sideBefore)) problems.push("drawer did not resize: " + JSON.stringify(editorAudit));
         if (editorAudit.scaleValue !== editorAudit.scaleMax) problems.push("out-of-range parameter was not clamped: " + JSON.stringify(editorAudit));
-        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.leftWidth == null) {
+        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.paramsWidth == null) {
             problems.push("pane sizes were not persisted: " + JSON.stringify(editorAudit.layout));
         }
 
@@ -410,11 +410,11 @@ try {
         // The close button must collapse the pane again.
         const closed = await page.evaluate(async () => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-            const close = block.querySelector('.isf-editor-wrap .isf-btn[aria-label="Close editor"]');
+            const close = block.querySelector('.isf-inspector-close');
             if (!close) return { missing: true };
             close.click();
             await new Promise((resolve) => setTimeout(resolve, 50));
-            return { hidden: block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") };
+            return { hidden: block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") };
         });
         if (closed.missing) problems.push("editor close button missing");
         else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
@@ -426,7 +426,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        if (block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await wait(300);
         const textarea = block.querySelector(".isf-input");
         Array.from(block.querySelectorAll(".isf-tab")).find((t) => /Vertex/i.test(t.textContent)).click();
@@ -462,7 +462,7 @@ try {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const byTitle = (root, title) => Array.from(root.querySelectorAll(".isf-btn")).find((b) => b.title === title);
         const byText = (root, text) => Array.from(root.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
-        if (block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
+        if (block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await wait(250);
         byText(block, "Import").click();
         await wait(250);
@@ -634,20 +634,21 @@ try {
         await wait(250);
         const randomized = before !== speedValue();
 
-        const timeRange = plasma.querySelector(".isf-time-row input[type=\"range\"]");
+        const timeRange = plasma.querySelector('.isf-transport .pui-transport-controls input[type="range"]') ||
+            plasma.querySelector('.isf-time-row input[type="range"]');
         timeRange.value = "12.5";
         timeRange.dispatchEvent(new Event("input", { bubbles: true }));
         await wait(180);
         const timeScrubbed = Number(timeRange.value) >= 12;
 
         const editorWrap = plasma.querySelector(".isf-editor-wrap");
-        const leftDrawer = plasma.querySelector(".isf-drawer-left");
+        const leftDrawer = plasma.querySelector(".isf-drawer-right");
         const editorWasHidden = leftDrawer.classList.contains("isf-drawer-closed");
         plasma.dispatchEvent(new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true }));
         await wait(180);
         const editorToggled = leftDrawer.classList.contains("isf-drawer-closed") !== editorWasHidden;
 
-        const keysButton = Array.from(plasma.querySelectorAll(".isf-editor-wrap .isf-btn")).find((b) => b.textContent.trim() === "?");
+        const keysButton = plasma.querySelector(".isf-inspector-help");
         let shortcutsShown = false;
         if (keysButton) {
             keysButton.click();
@@ -687,8 +688,11 @@ try {
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         b.scrollIntoView({ block: "center" });
-        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="editor"]').click();
-        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="params"]').click();
+        const inspector = b.querySelector(".isf-drawer-right");
+        if (!inspector.classList.contains("isf-drawer-closed")) {
+            const close = b.querySelector(".isf-inspector-close");
+            if (close) close.click();
+        }
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
     const lateralTabs = await page.$$eval(".isf-block .isf-edge-tab", (elements) => elements.length);
@@ -700,7 +704,7 @@ try {
         const b = document.querySelector(".isf-block");
         const button = b.querySelector('.isf-header [data-pui-item="editor"]');
         return {
-            drawerOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
+            drawerOpen: !b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed"),
             pressed: button.getAttribute("aria-pressed") === "true"
         };
     });
@@ -728,6 +732,9 @@ try {
         problems.push("scale slider not found for the drag test");
     }
 
+    // The inspector is tabbed now; switch back to Source before typing.
+    await page.click('.isf-block .isf-header [data-pui-item="editor"]');
+    await new Promise((resolve) => setTimeout(resolve, 350));
     const textareaHandle = await page.$(".isf-block .isf-input");
     if (textareaHandle) {
         const textBox = await textareaHandle.boundingBox();
@@ -800,8 +807,11 @@ try {
         const b = document.querySelector(".isf-block");
         if (!b) return;
         b.scrollIntoView({ block: "center" });
-        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="editor"]').click();
-        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) b.querySelector('.isf-header [data-pui-item="params"]').click();
+        const inspector = b.querySelector(".isf-drawer-right");
+        if (!inspector.classList.contains("isf-drawer-closed")) {
+            const close = b.querySelector(".isf-inspector-close");
+            if (close) close.click();
+        }
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const phone = await page.evaluate(() => {
@@ -850,10 +860,8 @@ try {
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
         if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) {
-            b.querySelector('.isf-header [data-pui-item="params"]').click();
-        }
-        if (!b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed")) {
-            b.querySelector('.isf-header [data-pui-item="editor"]').click();
+            const close = b.querySelector(".isf-inspector-close");
+            if (close) close.click();
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
         const button = b.querySelector('.isf-header [data-pui-item="params"]');
@@ -881,9 +889,12 @@ try {
             document.querySelector(".isf-block");
         b.querySelector('.isf-header [data-pui-item="editor"]').click();
         await new Promise((resolve) => setTimeout(resolve, 350));
+        const sourceTab = b.querySelector('.isf-inspector-tab[aria-controls$="-editor"]');
+        const paramsPanel = b.querySelector(".isf-params");
         return {
-            editorOpen: !b.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed"),
-            paramsClosed: b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")
+            editorOpen: !b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
+                !!sourceTab && sourceTab.getAttribute("aria-selected") === "true",
+            paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden")
         };
     });
     if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
@@ -999,12 +1010,12 @@ try {
         block.querySelector(".isf-resize-y").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
         await sleep(300);
         const editor = block.querySelector(".isf-editor");
-        const drawer = block.querySelector(".isf-drawer-left");
+        const drawer = block.querySelector(".isf-drawer-right");
         const toolbar = block.querySelector(".isf-editor-toolbar");
-        const title = block.querySelector(".isf-editor-head");
+        const inspectorHead = block.querySelector(".isf-inspector-head");
         const resize = block.querySelector(".isf-editor-wrap .isf-resize-y");
         const stage = block.querySelector(".isf-stage");
-        const chrome = (title ? title.getBoundingClientRect().height : 0) +
+        const chrome = (inspectorHead ? inspectorHead.getBoundingClientRect().height : 0) +
             (resize ? resize.getBoundingClientRect().height : 0) +
             toolbar.getBoundingClientRect().height;
         const measure = () => ({
@@ -1369,8 +1380,8 @@ try {
         const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
         block.querySelector('.isf-header [data-pui-item="editor"]').click();
         await sleep(400);
-        const editorOpen = !block.querySelector(".isf-drawer-left").classList.contains("isf-drawer-closed") &&
-            getComputedStyle(block.querySelector(".isf-drawer-left")).display !== "none";
+        const editorOpen = !block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
+            getComputedStyle(block.querySelector(".isf-drawer-right")).display !== "none";
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(300);
         const hiddenAgain = getComputedStyle(header).display === "none";
