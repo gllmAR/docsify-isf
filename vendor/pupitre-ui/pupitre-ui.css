@@ -864,3 +864,42 @@
 .pui-schema-form-status.is-error { color: var(--pui-danger); }
 .pui-schema-form-status.is-ok { color: var(--pui-success, #56c596); }
 .pui-schema-form-actions { display: flex; gap: 6px; }
+
+/* P1 surfaces: transport, meter, key capture. */
+.pui-transport { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
+.pui-transport-head { display: flex; align-items: center; gap: 6px; }
+.pui-transport-head h4 { margin: 0; font-size: 0.88rem; }
+.pui-transport-controls { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.pui-transport-controls input[type="range"] { flex: 1 1 180px; min-width: 0; }
+.pui-transport-time { color: var(--pui-muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pui-transport-loop { display: inline-flex; align-items: center; gap: 3px; color: var(--pui-muted); font-size: 0.72rem; }
+.pui-transport select { width: auto; min-width: 64px; }
+.pui-meter { display: flex; flex-direction: column; gap: 4px; padding: 7px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
+.pui-meter-head { display: flex; align-items: center; gap: 4px; }
+.pui-meter-label { margin-inline-end: auto; font-size: 0.78rem; }
+.pui-meter-bar { position: relative; height: 14px; overflow: hidden; border: 1px solid var(--pui-border); border-radius: 999px; background: var(--pui-bg); }
+.pui-meter-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--pui-success, #56c596), var(--pui-warning) 78%, var(--pui-danger)); }
+.pui-meter-peak { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--pui-text); }
+.pui-meter.is-clip { border-color: var(--pui-danger); }
+.pui-meter.is-muted { opacity: 0.65; }
+.pui-meter [aria-pressed="true"] { border-color: var(--pui-accent); color: var(--pui-accent); }
+.pui-meter input[type="range"] { width: 100%; }
+.pui-keycapture { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
+.pui-keycapture-label { color: var(--pui-muted); font-size: 0.78rem; }
+.pui-keycapture-display { min-width: 7em; padding: 3px 7px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-bg); font-family: ui-monospace, monospace; font-size: 0.75rem; }
+.pui-keycapture-display[data-state="capturing"] { border-color: var(--pui-warning); color: var(--pui-warning); }
+.pui-keycapture-display[data-state="error"] { border-color: var(--pui-danger); color: var(--pui-danger); }
+.pui-keycapture-error { flex-basis: 100%; margin: 0; color: var(--pui-danger); font-size: 0.7rem; }
+
+/* P1 field/tree/dialog chrome. */
+.pui-file-field { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pui-file-field input[type="file"] { min-width: 0; max-width: 100%; }
+.pui-file-field-name { color: var(--pui-muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-path-input { width: 100%; min-height: var(--pui-touch); padding: 4px 7px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-bg); color: var(--pui-text); font: inherit; }
+.pui-tree-row-action { flex: 0 0 auto; width: 22px; min-height: 22px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--pui-muted); font: inherit; font-size: 0.7rem; cursor: pointer; }
+.pui-tree-row-action:hover, .pui-tree-row-action:focus-visible { border-color: var(--pui-border); color: var(--pui-text); outline: none; }
+.pui-tree-status { color: var(--pui-muted); font-size: 0.65rem; }
+.pui-dialog-block { display: contents; }
+.pui-dialog-trigger { align-self: flex-start; }
+.pui-block-dialog .pui-dialog-body { display: flex; flex-direction: column; gap: 6px; max-height: min(60vh, 520px); overflow: auto; }
+.pui-dialog-status { min-height: 1.1em; margin: 0; color: var(--pui-muted); font-size: 0.72rem; }
