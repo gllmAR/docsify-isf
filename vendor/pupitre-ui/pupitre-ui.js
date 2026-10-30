@@ -10355,10 +10355,11 @@
     return !!value;
   };
 
+  function groupEnabled(records, index) {
+    return index < 0 || !records[index] || records[index].enabled !== false;
+  }
+
   Renderer.prototype.refreshConditions = function () {
-    function groupEnabled(records, index) {
-      return index < 0 || !records[index] || records[index].enabled !== false;
-    }
     for (var p = 0; p < this.pageRecords.length; p++) {
       var page = this.pageRecords[p];
       page.visible = this.conditionOk(page.page.visible_when);
