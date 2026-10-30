@@ -538,6 +538,16 @@
       if (tableRec.enabled) tableRec.root.removeAttribute("aria-disabled");
       else tableRec.root.setAttribute("aria-disabled", "true");
     }
+    for (var cv = 0; cv < this.canvasRecords.length; cv++) {
+      var canvasRec = this.canvasRecords[cv];
+      var canvasBlock = blocks[canvasRec.path];
+      if (canvasBlock) {
+        canvasRec.block = canvasBlock;
+        canvasRec.options = isObject(canvasBlock.canvas_options) ? canvasBlock.canvas_options : {};
+        canvasRec.__valueSignature = null;
+        this.canvasRefresh(canvasRec);
+      }
+    }
     for (var i = 0; i < this.records.length; i++) {
       var rec = this.records[i];
       var next = blocks[rec.path];
@@ -3872,6 +3882,7 @@
     outline.appendChild(list);
     root.appendChild(outline);
     this.canvasApplyView(rec);
+    try { rec.__valueSignature = JSON.stringify(rec.value); } catch (error) { rec.__valueSignature = null; }
     return root;
   };
 
@@ -3903,9 +3914,24 @@
       }
     }
     var grid = el("g", {class: "pui-canvas-grid"});
-    var spacing = Number(rec.options.grid || 64);
-    for (var gx = 0; gx <= Number(rec.value.width); gx += spacing) grid.appendChild(svgEl("line", {x1: gx, y1: 0, x2: gx, y2: rec.value.height}));
-    for (var gy = 0; gy <= Number(rec.value.height); gy += spacing) grid.appendChild(svgEl("line", {x1: 0, y1: gy, x2: rec.value.width, y2: gy}));
+    var gridOptions = isObject(rec.options.grid) ? rec.options.grid : {};
+    var divisions = Number(rec.options.grid_divisions !== undefined ? rec.options.grid_divisions : gridOptions.divisions);
+    var spacing = Number(rec.options.grid || gridOptions.spacing || 64);
+    if (divisions > 0) spacing = Number(rec.value.width) / divisions;
+    if (spacing > 0) {
+      var gridColor = rec.options.grid_color || gridOptions.color || "";
+      var gridOpacity = rec.options.grid_opacity !== undefined ? rec.options.grid_opacity : gridOptions.opacity;
+      var gridWeight = rec.options.grid_weight !== undefined ? rec.options.grid_weight : gridOptions.weight;
+      var makeLine = function (x1, y1, x2, y2) {
+        var attrs = {x1: x1, y1: y1, x2: x2, y2: y2};
+        if (gridColor) attrs.stroke = gridColor;
+        if (gridOpacity !== undefined) attrs["stroke-opacity"] = Number(gridOpacity);
+        if (gridWeight !== undefined) attrs["stroke-width"] = Number(gridWeight);
+        return svgEl("line", attrs);
+      };
+      for (var gx = 0; gx <= Number(rec.value.width); gx += spacing) grid.appendChild(makeLine(gx, 0, gx, rec.value.height));
+      for (var gy = 0; gy <= Number(rec.value.height); gy += spacing) grid.appendChild(makeLine(0, gy, rec.value.width, gy));
+    }
     rec.svg.appendChild(grid);
     rec.paintEls = [];
     if (isObject(rec.value.paint) && isArray(rec.value.paint.data) && Number(rec.value.paint.width) > 0 && Number(rec.value.paint.height) > 0) {
@@ -5576,6 +5602,30 @@
     this.keyCaptureRecords.push(rec);
     this.keyCaptureRefresh(rec);
     return root;
+  };
+
+  /** Re-read a canvas value changed outside the canvas (field edit, undo,
+   * host update) without rebuilding the rest of the page. Gestures keep their
+   * local state until pointerup. */
+  Renderer.prototype.canvasRefresh = function (rec) {
+    if (!rec || rec.drag || rec.pan || rec.marquee || rec.regionDrag || rec.paint) return;
+    var path = String(rec.path || rec.block && rec.block.bind || "");
+    if (!path) return;
+    var next = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, rec.block)
+      : this.adapter.getValue(path);
+    if (!isObject(next)) return;
+    var signature;
+    try { signature = JSON.stringify(next); } catch (error) { return; }
+    if (rec.__valueSignature === signature) return;
+    rec.__valueSignature = signature;
+    rec.value = next;
+    rec.view = { zoom: Number(next.view && next.view.zoom) > 0 ? Number(next.view.zoom) : 1,
+      panX: Number(next.view && next.view.panX) || 0, panY: Number(next.view && next.view.panY) || 0 };
+    rec.selected = {};
+    (isArray(next.selected) ? next.selected : []).forEach(function (id) { rec.selected[String(id)] = true; });
+    rec.selectedRegion = next.selected_region ? String(next.selected_region) : "";
+    if (typeof rec.render === "function") rec.render();
   };
 
   Renderer.prototype.previewValue = function (rec) {
@@ -10121,6 +10171,9 @@
     }
     for (var pv = 0; pv < this.previewRecords.length; pv++) {
       this.previewRefresh(this.previewRecords[pv]);
+    }
+    for (var cv = 0; cv < this.canvasRecords.length; cv++) {
+      this.canvasRefresh(this.canvasRecords[cv]);
     }
     for (var tr = 0; tr < this.transportRecords.length; tr++) {
       this.transportRefresh(this.transportRecords[tr]);
