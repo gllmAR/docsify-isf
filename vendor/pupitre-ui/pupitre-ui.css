@@ -650,6 +650,7 @@
 .pui-canvas-viewport { position: relative; min-height: 360px; height: min(58vh, 520px); overflow: hidden; border: 1px solid var(--pui-border); border-radius: 6px; background: color-mix(in srgb, var(--pui-bg) 88%, var(--pui-surface)); touch-action: none; cursor: grab; outline-offset: 2px; }
 .pui-canvas-viewport:focus-visible { outline: 3px solid var(--pui-accent); }
 .pui-canvas-content { position: absolute; transform-origin: 0 0; inset: 0; }
+.pui-canvas-background { position: absolute; left: 0; top: 0; max-width: none; pointer-events: none; object-fit: fill; opacity: 0.92; }
 .pui-canvas-shapes { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
 .pui-canvas-grid line { stroke: var(--pui-border); stroke-width: 1; opacity: 0.45; vector-effect: non-scaling-stroke; }
 .pui-canvas-edge { stroke: var(--pui-accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }

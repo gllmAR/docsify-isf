@@ -245,6 +245,9 @@
       canRedo: options.canRedo || null,
       undoLabel: options.undoLabel || null,
       redoLabel: options.redoLabel || null,
+      historyAction: options.historyAction || null,
+      historyCheckpoint: options.historyCheckpoint || null,
+      graphInspector: options.graphInspector || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: options.announce || function () {},
@@ -267,6 +270,7 @@
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
+    this.historyRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -361,6 +365,7 @@
     this.menuRecords = [];
     this.toastRecords = [];
     this.graphRecords = [];
+    this.historyRecords = [];
     this.workbenches = [];
     this.commandLogRecords = [];
     this.selectionRecords = [];
@@ -1136,6 +1141,7 @@
     if (kind === "timeline") return this.buildTimeline(block);
     if (kind === "stage") return this.buildStage(block);
     if (kind === "tree") return this.buildTree(block);
+    if (kind === "history") return this.buildHistory(block);
     if (kind === "commandlog") return this.buildCommandLog(block);
     if (kind === "selection") return this.buildSelection(block);
     if (kind === "disclosure") return this.buildDisclosure(block);
@@ -2360,6 +2366,28 @@
     var self = this;
     if (!rec.inspector) return;
     rec.inspector.textContent = "";
+    if (rec.graphOptions && rec.graphOptions.inspector === "host" && typeof this.adapter.graphInspector === "function") {
+      var selectedNodes = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
+      var context = {
+        node: selectedNodes.length === 1 ? selectedNodes[0] : null,
+        type: selectedNodes.length === 1 ? (rec.typeMap[String(selectedNodes[0].type)] || null) : null,
+        selected: selectedNodes,
+        frame: rec.selectedFrame || null,
+        cable: rec.selectedCable || null
+      };
+      try {
+        var made = this.adapter.graphInspector(rec.inspector, context, rec.block, this);
+        if (made === false) { /* fall through to the generic inspector */ }
+        else {
+          if (made && (made.nodeType || typeof made.tagName === "string")) rec.inspector.appendChild(made);
+          return;
+        }
+      } catch (error) {
+        this.adapter.announce("error", "Graph inspector failed: " + String(error && error.message || error));
+        rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: "Graph inspector unavailable."}));
+        return;
+      }
+    }
     if (rec.selectedFrame) {
       var frame = rec.selectedFrame;
       rec.inspector.appendChild(el("h5", {text: String(frame.title || "Frame")}));
@@ -2825,6 +2853,10 @@
   };
 
   Renderer.prototype.graphPushUndo = function (rec, snapshot) {
+    if (rec.graphOptions && rec.graphOptions.host_undo && typeof this.adapter.historyCheckpoint === "function") {
+      try { this.adapter.historyCheckpoint(deepClone(snapshot), rec.block, "graph"); } catch (error) { /* host history */ }
+      return;
+    }
     rec.undo.push(deepClone(snapshot));
     rec.redo = [];
   };
@@ -2942,6 +2974,15 @@
   };
 
   Renderer.prototype.graphUndo = function (rec) {
+    if (rec.graphOptions && rec.graphOptions.host_undo) {
+      if (typeof this.adapter.undo !== "function") return false;
+      var ok = this.adapter.undo();
+      rec.graph = this.adapter.getValue(String(rec.graphPath || rec.block.bind || ""));
+      rec.undo = [];
+      rec.redo = [];
+      this.rebuildGraph(rec);
+      return ok !== false;
+    }
     if (!rec.undo.length) return false;
     rec.redo.push(deepClone(rec.graph));
     rec.graph = rec.undo.pop();
@@ -2951,6 +2992,15 @@
   };
 
   Renderer.prototype.graphRedo = function (rec) {
+    if (rec.graphOptions && rec.graphOptions.host_undo) {
+      if (typeof this.adapter.redo !== "function") return false;
+      var ok = this.adapter.redo();
+      rec.graph = this.adapter.getValue(String(rec.graphPath || rec.block.bind || ""));
+      rec.undo = [];
+      rec.redo = [];
+      this.rebuildGraph(rec);
+      return ok !== false;
+    }
     if (!rec.redo.length) return false;
     rec.undo.push(deepClone(rec.graph));
     rec.graph = rec.redo.pop();
@@ -3785,6 +3835,20 @@
     rec.svg.setAttribute("viewBox", "0 0 " + Number(rec.value.width) + " " + Number(rec.value.height));
     rec.svg.setAttribute("width", String(rec.value.width));
     rec.svg.setAttribute("height", String(rec.value.height));
+    if (rec.backgroundEl && rec.backgroundEl.parentNode) rec.backgroundEl.parentNode.removeChild(rec.backgroundEl);
+    rec.backgroundEl = null;
+    if (rec.value.background !== undefined && rec.value.background !== null && rec.value.background !== "") {
+      var background = isObject(rec.value.background) ? rec.value.background : {src: rec.value.background};
+      var src = String(background.src || background.url || "");
+      if (src) {
+        var image = el("img", {class: "pui-canvas-background", src: src, alt: String(background.alt || "")});
+        image.style.width = String(Number(background.width) || Number(rec.value.width)) + "px";
+        image.style.height = String(Number(background.height) || Number(rec.value.height)) + "px";
+        if (background.opacity !== undefined) image.style.opacity = String(background.opacity);
+        rec.content.insertBefore(image, rec.svg);
+        rec.backgroundEl = image;
+      }
+    }
     var grid = el("g", {class: "pui-canvas-grid"});
     var spacing = Number(rec.options.grid || 64);
     for (var gx = 0; gx <= Number(rec.value.width); gx += spacing) grid.appendChild(svgEl("line", {x1: gx, y1: 0, x2: gx, y2: rec.value.height}));
@@ -4228,11 +4292,24 @@
   };
 
   Renderer.prototype.canvasPushUndo = function (rec, snapshot) {
+    if (rec.options && rec.options.host_undo && typeof this.adapter.historyCheckpoint === "function") {
+      try { this.adapter.historyCheckpoint(deepClone(snapshot), rec.block, "canvas"); } catch (error) { /* host history */ }
+      return;
+    }
     rec.undo.push(deepClone(snapshot));
     rec.redo = [];
   };
 
   Renderer.prototype.canvasUndo = function (rec) {
+    if (rec.options && rec.options.host_undo) {
+      if (typeof this.adapter.undo !== "function") return false;
+      var ok = this.adapter.undo();
+      rec.value = this.adapter.getValue(String(rec.path || rec.block.bind || ""));
+      rec.undo = [];
+      rec.redo = [];
+      rec.render();
+      return ok !== false;
+    }
     if (!rec.undo.length) return false;
     rec.redo.push(deepClone(rec.value));
     rec.value = rec.undo.pop();
@@ -4242,6 +4319,15 @@
   };
 
   Renderer.prototype.canvasRedo = function (rec) {
+    if (rec.options && rec.options.host_undo) {
+      if (typeof this.adapter.redo !== "function") return false;
+      var ok = this.adapter.redo();
+      rec.value = this.adapter.getValue(String(rec.path || rec.block.bind || ""));
+      rec.undo = [];
+      rec.redo = [];
+      rec.render();
+      return ok !== false;
+    }
     if (!rec.redo.length) return false;
     rec.undo.push(deepClone(rec.value));
     rec.value = rec.redo.pop();
@@ -4520,6 +4606,88 @@
     this.selectionRecords.push(rec);
     refresh();
     return root;
+  };
+
+  /** Labelled host history: the host owns the stack, PUI owns entries/jump,
+   * current position and undo/redo presentation. No renderer-local history. */
+  Renderer.prototype.buildHistory = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var value = path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(path, block) : this.adapter.getValue(path)) : null;
+    var label = String(block.label || block.id || "History");
+    var root = el("section", {class: "pui-history", "data-pui-history": path, role: "group"});
+    if (block.a11y && block.a11y.name) root.setAttribute("aria-label", String(block.a11y.name));
+    else root.setAttribute("aria-label", label);
+    var head = el("div", {class: "pui-history-head"}, el("h4", {text: label}));
+    root.appendChild(head);
+    var undo = el("button", {type: "button", class: "pui-button", text: "Undo"});
+    var redo = el("button", {type: "button", class: "pui-button", text: "Redo"});
+    undo.addEventListener("click", function () { self.undo(); });
+    redo.addEventListener("click", function () { self.redo(); });
+    head.appendChild(undo);
+    head.appendChild(redo);
+    var list = el("ol", {class: "pui-history-list", role: "list"});
+    root.appendChild(list);
+    var rec = {block: block, path: path, value: value, root: root, head: head, list: list, undo: undo, redo: redo, entries: [], entryEls: [], current: -1};
+    var render = function () { self.historyRender(rec); };
+    rec.render = render;
+    this.historyRecords.push(rec);
+    render();
+    return root;
+  };
+
+  Renderer.prototype.historyValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) return {entries: [], index: -1};
+    var entries = isArray(value.entries) ? value.entries : (isArray(value.items) ? value.items : []);
+    var index = Number(value.index);
+    if (!isFinite(index)) index = entries.length - 1;
+    return {entries: entries, index: index};
+  };
+
+  Renderer.prototype.historyRender = function (rec) {
+    var self = this;
+    var data = this.historyValue(rec);
+    rec.value = data;
+    rec.list.textContent = "";
+    rec.entryEls = [];
+    if (!data.entries.length) {
+      rec.list.appendChild(el("li", {class: "pui-history-empty", text: "No history yet."}));
+    }
+    data.entries.forEach(function (entry, index) {
+      if (!isObject(entry)) entry = {label: String(entry)};
+      var item = el("li", {class: "pui-history-entry" + (index === data.index ? " is-current" : "")});
+      var button = el("button", {type: "button", class: "pui-history-jump", text: String(entry.label || entry.id || "Edit " + (index + 1))});
+      if (index === data.index) button.setAttribute("aria-current", "true");
+      button.addEventListener("click", function () {
+        var action = {op: "history.jump", index: index, entry: entry};
+        if (typeof self.adapter.historyAction === "function") self.adapter.historyAction(action, data, rec.block);
+        else self.adapter.announce("warning", "The host does not expose history jump.");
+      });
+      item.appendChild(button);
+      if (entry.kind) item.appendChild(el("span", {class: "pui-history-kind", text: String(entry.kind)}));
+      if (entry.at) item.appendChild(el("span", {class: "pui-history-at", text: String(entry.at)}));
+      rec.list.appendChild(item);
+      rec.entryEls.push(button);
+    });
+    this.historyRefresh(rec);
+  };
+
+  Renderer.prototype.historyRefresh = function (rec) {
+    var data = this.historyValue(rec);
+    rec.value = data;
+    rec.current = data.index;
+    rec.undo.disabled = !this.canUndo();
+    rec.redo.disabled = !this.canRedo();
+    rec.undo.title = this.historyLabel("undo");
+    rec.redo.title = this.historyLabel("redo");
+    rec.entryEls.forEach(function (button, index) {
+      var entry = data.entries[index];
+      var current = index === data.index;
+      button.setAttribute("aria-current", current ? "true" : "false");
+      button.classList.toggle("is-current", current);
+      button.textContent = String(entry && (entry.label || entry.id) || "Edit " + (index + 1));
+    });
   };
 
   /** Fixed status line + bounded command-history overlay. Hosts own commands,
@@ -6777,16 +6945,23 @@
     this.apply();
   };
 
-  Renderer.prototype.tableToggle = function (rec, key, additive) {
+  Renderer.prototype.tableToggle = function (rec, key, additive, range) {
     var selected = rec.selected.slice();
     var index = selected.indexOf(String(key));
+    var rowIndex = rec.keys.indexOf(String(key));
     if (rec.block.multi === false) {
       selected = index >= 0 && !additive ? [] : [String(key)];
-    } else if (index >= 0) {
-      selected.splice(index, 1);
+    } else if (range && rec.anchorIndex !== null && rec.anchorIndex !== undefined && rowIndex >= 0) {
+      var from = Math.min(rec.anchorIndex, rowIndex);
+      var to = Math.max(rec.anchorIndex, rowIndex);
+      selected = rec.keys.slice(from, to + 1);
+    } else if (additive) {
+      if (index >= 0) selected.splice(index, 1);
+      else selected.push(String(key));
     } else {
-      selected.push(String(key));
+      selected = [String(key)];
     }
+    if (rowIndex >= 0 && !range) rec.anchorIndex = rowIndex;
     // Visible rows follow the current view order; hidden selections stay put.
     selected.sort(function (a, b) {
       var ai = rec.keys.indexOf(a), bi = rec.keys.indexOf(b);
@@ -7108,13 +7283,13 @@
     for (var index = start; index < end; index++) {
       (function (row, index) {
         var key = rec.keys[index];
-        var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: "0", role: "row", "aria-keyshortcuts": "F2"});
+        var tr = el("tr", {class: "pui-table-row", "data-pui-row": key, tabindex: String(index === (rec.focusIndex || 0) ? 0 : -1), role: "row", "aria-keyshortcuts": "F2"});
         tr.setAttribute("aria-selected", rec.selected.indexOf(key) >= 0 ? "true" : "false");
         if (virtual) tr.setAttribute("aria-rowindex", String(index + 2));
         if (rec.selected.indexOf(key) >= 0) tr.classList.add("is-selected");
         var check = null;
         if (block.multi !== false) {
-          check = el("input", {type: "checkbox", "aria-label": "Select " + key});
+          check = el("input", {type: "checkbox", "aria-label": "Select " + key, tabindex: String(index === (rec.focusIndex || 0) ? 0 : -1)});
           check.checked = rec.selected.indexOf(key) >= 0;
           check.addEventListener("click", function (event) {
             event.stopPropagation();
@@ -7148,7 +7323,7 @@
         });
         tr.addEventListener("click", function (event) {
           if (event.target && event.target.tagName === "INPUT") return;
-          self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+          self.tableToggle(rec, key, !!(event.metaKey || event.ctrlKey), !!event.shiftKey);
         });
         tr.addEventListener("keydown", function (event) {
           if (event.key === "F2") {
@@ -7158,10 +7333,11 @@
           }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            self.tableToggle(rec, key, !!(event.shiftKey || event.metaKey || event.ctrlKey));
+            self.tableToggle(rec, key, !!(event.metaKey || event.ctrlKey), !!event.shiftKey);
           }
         });
-        rec.rowEls.push({key: key, row: row, el: tr, check: check, cells: cells});
+        tr.addEventListener("focus", function () { rec.focusIndex = index; });
+        rec.rowEls.push({key: key, row: row, el: tr, check: check, cells: cells, index: index});
         rec.body.appendChild(tr);
       })(rec.rows[index], index);
     }
@@ -7171,6 +7347,27 @@
       rec.body.appendChild(bottom);
     }
     this.tableUpdateHead(rec);
+  };
+
+  Renderer.prototype.tableFocusRow = function (rec) {
+    if (!rec || !rec.keys.length) return;
+    var index = Math.max(0, Math.min(rec.keys.length - 1, rec.focusIndex || 0));
+    rec.focusIndex = index;
+    if (rec.viewport && rec.block.virtual) {
+      var rowHeight = Math.max(18, Number(rec.block.row_height) || 32);
+      var top = index * rowHeight;
+      var height = Math.max(1, Number(rec.block.height) || 320);
+      if (top < rec.viewport.scrollTop) rec.viewport.scrollTop = top;
+      else if (top + rowHeight > rec.viewport.scrollTop + height) rec.viewport.scrollTop = top + rowHeight - height;
+      this.tableRenderBody(rec);
+    }
+    var target = null;
+    for (var i = 0; i < rec.rowEls.length; i++) {
+      rec.rowEls[i].el.tabIndex = rec.rowEls[i].index === index ? 0 : -1;
+      if (rec.rowEls[i].check) rec.rowEls[i].check.tabIndex = rec.rowEls[i].index === index ? 0 : -1;
+      if (rec.rowEls[i].index === index) target = rec.rowEls[i].el;
+    }
+    if (target && target.focus) target.focus();
   };
 
   Renderer.prototype.tableRefresh = function (rec) {
@@ -7330,6 +7527,7 @@
       viewport: viewport, filterInput: filterInput, count: count,
       rows: [], keys: [], selected: [], rowEls: [], checks: [], actionItems: [], headerCells: [],
       filterText: block.filter_text, sort: block.sort, totalRows: 0, resetScroll: true,
+      focusIndex: 0, anchorIndex: null,
       pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
       visible: true, enabled: true
     };
@@ -7347,6 +7545,20 @@
       if (!block.virtual) return;
       if (rec.editing) self.tableCancelEdit(rec);
       else self.tableRenderBody(rec);
+    });
+    table.addEventListener("keydown", function (event) {
+      var key = String(event.key || "");
+      if (["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"].indexOf(key) < 0) return;
+      if (!rec.keys.length) return;
+      event.preventDefault();
+      var current = rec.focusIndex || 0;
+      var page = Math.max(1, Math.floor(Number(block.height) || 320) / Math.max(18, Number(block.row_height) || 32) - 1);
+      if (key === "Home") rec.focusIndex = 0;
+      else if (key === "End") rec.focusIndex = rec.keys.length - 1;
+      else if (key === "PageDown") rec.focusIndex = Math.min(rec.keys.length - 1, current + page);
+      else if (key === "PageUp") rec.focusIndex = Math.max(0, current - page);
+      else rec.focusIndex = Math.max(0, Math.min(rec.keys.length - 1, current + (key === "ArrowDown" ? 1 : -1)));
+      self.tableFocusRow(rec);
     });
     this.tableRecords.push(rec);
     this.tableRebuild(rec);
@@ -8429,6 +8641,9 @@
     }
     for (var t = 0; t < this.tableRecords.length; t++) {
       this.tableRefresh(this.tableRecords[t]);
+    }
+    for (var hr = 0; hr < this.historyRecords.length; hr++) {
+      this.historyRefresh(this.historyRecords[hr]);
     }
     for (var c = 0; c < this.commandLogRecords.length; c++) {
       if (this.commandLogRecords[c].refresh) this.commandLogRecords[c].refresh();
