@@ -232,6 +232,8 @@
       setCollectionItem: options.setCollectionItem || null,
       addCollectionItem: options.addCollectionItem || null,
       removeCollectionItem: options.removeCollectionItem || null,
+      renameCollectionItem: options.renameCollectionItem || null,
+      moveCollectionItem: options.moveCollectionItem || null,
       resolveCollectionPath: options.resolveCollectionPath || null,
       validateValue: options.validateValue || null,
       getPreferences: options.getPreferences || null,
@@ -7027,72 +7029,298 @@
     return String(block.bind || "") + "/" + String(key) + "/" + raw.replace(/^\./, "");
   };
 
+  Renderer.prototype.collectionLabel = function (item, key, block) {
+    if (!isObject(item)) return String(item);
+    var keyName = String(block && (block.rename_key || block.label_key) || "");
+    return String(item[keyName] || item.label || item.name || item.title || key);
+  };
+
+  Renderer.prototype.collectionSelection = function (block) {
+    var path = String(block.selected || "");
+    if (!path) return [];
+    var raw = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, block)
+      : this.adapter.getValue(path);
+    if (isArray(raw)) return raw.map(String);
+    if (isObject(raw) && isArray(raw.ids)) return raw.ids.map(String);
+    if (raw === undefined || raw === null || raw === "") return [];
+    return [String(raw)];
+  };
+
+  Renderer.prototype.collectionWriteSelection = function (rec, keys) {
+    var block = rec.block;
+    var path = String(block.selected || "");
+    rec.selectedKeys = keys.slice();
+    if (!path) return;
+    var current = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, block)
+      : this.adapter.getValue(path);
+    var value;
+    if (block.multi === true) {
+      value = keys.slice();
+      if (isObject(current) && !isArray(current)) {
+        value = deepClone(current);
+        value.ids = keys.slice();
+      }
+    } else {
+      value = keys.length ? keys[0] : null;
+    }
+    this.setPath(path, value, block);
+  };
+
+  Renderer.prototype.collectionRefresh = function (rec, focus) {
+    var self = this;
+    var selected = {};
+    rec.selectedKeys.forEach(function (key) { selected[String(key)] = true; });
+    for (var i = 0; i < rec.options.length; i++) {
+      var on = !!selected[String(rec.optionKeys[i])];
+      rec.options[i].setAttribute("aria-selected", on ? "true" : "false");
+      rec.options[i].classList.toggle("is-selected", on);
+    }
+    if (rec.actions) {
+      rec.actions.textContent = "";
+      rec.actionItems = (isArray(rec.block.actions) ? rec.block.actions : []).map(function (item) {
+        var copy = Object.assign({}, item);
+        copy.collection_bind = String(rec.block.bind || "");
+        copy.collection_selected = String(rec.block.selected || "");
+        copy.collection_items = rec.selectedKeys.slice();
+        copy.collection_item = rec.selectedKeys.length === 1 ? rec.selectedKeys[0] : undefined;
+        return copy;
+      });
+      if (rec.actionItems.length) rec.actions.appendChild(this.buildActions(rec.actionItems, "collection"));
+    }
+    if (rec.itemPanel) {
+      rec.itemPanel.textContent = "";
+      var selectedItem = null;
+      for (var s = 0; s < rec.items.length; s++) {
+        if (String(this.collectionKey(rec.block, rec.items[s], s)) === String(rec.selectedKeys[0])) selectedItem = rec.items[s];
+      }
+      if (selectedItem) this.collectionBuildItem(rec, selectedItem, rec.itemPanel);
+    }
+    this.collectionFocus(rec, focus);
+  };
+
+  Renderer.prototype.collectionBuildItem = function (rec, item, panel) {
+    var template = rec.block.item && isArray(rec.block.item.template) ? rec.block.item.template : (isArray(rec.block.template) ? rec.block.template : []);
+    var key = this.collectionKey(rec.block, item, rec.items.indexOf(item));
+    var context = {bind: String(rec.block.bind || ""), key: key, item: item, items: rec.items, block: rec.block};
+    for (var t = 0; t < template.length; t++) {
+      var copy = Object.assign({}, template[t]);
+      var rawBind = String(copy.bind || "");
+      if (copy.bind) copy.bind = this.collectionPath(rec.block, key, copy.bind);
+      copy.__pui_raw_bind = rawBind;
+      panel.appendChild(this.buildBlock(copy, context));
+    }
+  };
+
+  Renderer.prototype.collectionFocus = function (rec, force) {
+    if (!rec.list || !rec.list.focus) return;
+    if (rec.activeIndex < 0) rec.activeIndex = rec.options.length ? 0 : -1;
+    rec.options.forEach(function (option, index) {
+      option.classList.toggle("is-active", index === rec.activeIndex);
+      option.tabIndex = -1;
+    });
+    if (rec.activeIndex >= 0 && rec.options[rec.activeIndex]) {
+      rec.list.setAttribute("aria-activedescendant", rec.options[rec.activeIndex].id);
+      if (force || (typeof document !== "undefined" && document.activeElement === rec.list)) rec.list.focus();
+    } else {
+      rec.list.removeAttribute("aria-activedescendant");
+    }
+  };
+
+  Renderer.prototype.collectionSelect = function (rec, index, event) {
+    if (index < 0 || index >= rec.options.length) return;
+    var key = String(rec.optionKeys[index]);
+    var keys = rec.selectedKeys.slice();
+    var additive = !!(event && (event.ctrlKey || event.metaKey));
+    var range = !!(event && event.shiftKey);
+    if (rec.block.multi === true) {
+      if (range && rec.anchorIndex !== null) {
+        var from = Math.min(rec.anchorIndex, index), to = Math.max(rec.anchorIndex, index);
+        keys = [];
+        for (var i = from; i <= to; i++) keys.push(String(rec.optionKeys[i]));
+      } else if (additive) {
+        var at = keys.indexOf(key);
+        if (at >= 0) keys.splice(at, 1); else keys.push(key);
+      } else {
+        keys = [key];
+      }
+    } else {
+      keys = [key];
+    }
+    rec.anchorIndex = index;
+    rec.activeIndex = index;
+    this.collectionWriteSelection(rec, keys);
+    this.collectionRefresh(rec, true);
+  };
+
+  Renderer.prototype.collectionRename = function (rec, index) {
+    var self = this;
+    if (!rec.block.rename || index < 0 || index >= rec.options.length || rec.editing) return;
+    var option = rec.options[index];
+    var key = String(rec.optionKeys[index]);
+    var item = rec.items[index];
+    var labelEl = rec.optionLabels[index];
+    if (!option || !labelEl) return;
+    var previous = this.collectionLabel(item, key, rec.block);
+    var input = el("input", {type: "text", class: "pui-collection-rename", value: previous, "aria-label": "Rename " + previous});
+    labelEl.hidden = true;
+    option.appendChild(input);
+    rec.editing = {index: index, key: key, item: item, input: input, labelEl: labelEl, option: option};
+    input.addEventListener("click", function (event) { event.stopPropagation(); });
+    var finish = function (commit) {
+      if (!rec.editing) return;
+      var editing = rec.editing;
+      rec.editing = null;
+      var label = String(input.value || "").trim();
+      if (commit && label && label !== previous) {
+        var keyName = String(rec.block.rename_key || rec.block.label_key || "label");
+        var renamed = false;
+        if (typeof self.adapter.renameCollectionItem === "function") {
+          renamed = self.adapter.renameCollectionItem(String(rec.block.bind || ""), key, label, rec.block) !== false;
+        } else {
+          var path = String(rec.block.bind || "").replace(/\/$/, "") + "/" + key + "/" + keyName;
+          renamed = self.setPath(path, label, rec.block) !== false;
+        }
+        if (renamed) {
+          if (isObject(editing.item)) editing.item[keyName] = label;
+          editing.labelEl.textContent = label;
+        } else {
+          self.adapter.announce("error", "Rename was rejected by the host.");
+        }
+      }
+      editing.labelEl.hidden = false;
+      if (editing.input.parentNode) editing.input.parentNode.removeChild(editing.input);
+      self.collectionFocus(rec, true);
+    };
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      else if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      else { event.stopPropagation(); }
+    });
+    input.addEventListener("blur", function () { finish(true); });
+    input.focus();
+    if (input.select) input.select();
+  };
+
+  Renderer.prototype.collectionMove = function (rec, index, delta) {
+    if (!rec.block.reorder || index < 0 || index + delta < 0 || index + delta >= rec.items.length) return;
+    var next = rec.items.slice();
+    var moved = next.splice(index, 1)[0];
+    next.splice(index + delta, 0, moved);
+    var bind = String(rec.block.bind || "");
+    var ok = true;
+    if (typeof this.adapter.moveCollectionItem === "function") {
+      ok = this.adapter.moveCollectionItem(bind, this.collectionKey(rec.block, moved, index), this.collectionKey(rec.block, next[index], index + delta), rec.block) !== false;
+    } else {
+      ok = this.setPath(bind, next, rec.block) !== false;
+    }
+    if (!ok) {
+      this.adapter.announce("warning", "The collection order was not changed.");
+      return;
+    }
+    var activeKey = rec.optionKeys[rec.activeIndex];
+    this.render(this.doc);
+    var root = this.mount.querySelector('[data-pui-collection="' + bind.replace(/"/g, '\\"') + '"]');
+    var list = root && root.querySelector(".pui-collection-list");
+    if (list) {
+      var record = null;
+      for (var r = 0; r < this.collectionRecords.length; r++) if (this.collectionRecords[r].element === root) record = this.collectionRecords[r];
+      if (record) {
+        var at = record.optionKeys.indexOf(String(activeKey));
+        record.activeIndex = at >= 0 ? at : 0;
+        this.collectionFocus(record, true);
+      }
+    }
+  };
+
   Renderer.prototype.buildCollection = function (block) {
     var self = this;
     var a11y = isObject(block.a11y) ? block.a11y : {};
     var bind = String(block.bind || "");
-    var selectedPath = String(block.selected || "");
-    var items = this.collectionItems(block);
-    var selected = selectedPath ? (typeof this.adapter.getValueFor === "function"
-      ? this.adapter.getValueFor(selectedPath, block) : this.adapter.getValue(selectedPath)) : undefined;
     var title = String(block.label || block.title || "Items");
+    var items = this.collectionItems(block);
+    var selectedKeys = this.collectionSelection(block);
     var root = el("section", {class: "pui-collection", "data-pui-collection": bind, role: String(a11y.role || "group")});
-    var collectionRecord = {element: root, block: block, options: [], pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, visible: true, enabled: true};
+    var list = el("div", {class: "pui-collection-list", role: "listbox", tabindex: "0", "aria-label": title});
+    if (block.multi === true) list.setAttribute("aria-multiselectable", "true");
+    var rec = {
+      element: root, block: block, list: list, options: [], optionKeys: [], optionLabels: [],
+      items: items, selectedKeys: selectedKeys, activeIndex: selectedKeys.length ? Math.max(0, items.findIndex(function (item, index) {
+        return String(self.collectionKey(block, item, index)) === String(selectedKeys[0]);
+      })) : (items.length ? 0 : -1), anchorIndex: null, editing: null,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex, visible: true, enabled: true
+    };
     var previousCollectionIndex = this._collectionRecordIndex;
     this._collectionRecordIndex = this.collectionRecords.length;
-    this.collectionRecords.push(collectionRecord);
+    this.collectionRecords.push(rec);
     if (a11y.name) root.setAttribute("aria-label", String(a11y.name));
     if (block.help) root.appendChild(el("p", {class: "pui-help", text: String(block.help)}));
     var head = el("div", {class: "pui-collection-head"}, el("h4", {text: title}));
     root.appendChild(head);
-    var list = el("div", {class: "pui-collection-list", role: "listbox", "aria-label": title});
-    var selectedItem = null;
-    var selectedKey = null;
     for (var i = 0; i < items.length; i++) {
       (function (item, index) {
         var key = self.collectionKey(block, item, index);
-        if (equal(key, selected)) { selectedItem = item; selectedKey = key; }
-        var option = el("button", {type: "button", class: "pui-collection-option", role: "option", "data-pui-key": String(key)});
-        var itemLabel = isObject(item) ? String(item.label || item.name || item.title || key) : String(item);
-        option.appendChild(el("span", {class: "pui-collection-name", text: itemLabel}));
-        option.setAttribute("aria-selected", equal(key, selected) ? "true" : "false");
-        option.addEventListener("click", function () {
-          if (!selectedPath) return;
-          self.setPath(selectedPath, key, block);
-          self.render(self.doc);
+        var option = el("button", {type: "button", class: "pui-collection-option", role: "option", id: self.id("collection-option"), tabindex: "-1", "data-pui-key": String(key)});
+        var itemLabel = self.collectionLabel(item, key, block);
+        var labelEl = el("span", {class: "pui-collection-name", text: itemLabel});
+        option.appendChild(labelEl);
+        option.setAttribute("aria-selected", selectedKeys.indexOf(String(key)) >= 0 ? "true" : "false");
+        if (selectedKeys.indexOf(String(key)) >= 0) option.classList.add("is-selected");
+        option.addEventListener("click", function (event) {
+          rec.activeIndex = index;
+          self.collectionSelect(rec, index, event);
         });
-        collectionRecord.options.push(option);
+        option.addEventListener("dblclick", function () { self.collectionRename(rec, index); });
+        rec.options.push(option);
+        rec.optionKeys.push(String(key));
+        rec.optionLabels.push(labelEl);
         list.appendChild(option);
       })(items[i], i);
     }
+    list.addEventListener("keydown", function (event) {
+      var key = String(event.key || "");
+      if (rec.editing) return;
+      if (event.altKey && (key === "ArrowUp" || key === "ArrowDown") && block.reorder) {
+        event.preventDefault();
+        self.collectionMove(rec, rec.activeIndex, key === "ArrowUp" ? -1 : 1);
+      } else if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
+        event.preventDefault();
+        var next = key === "Home" ? 0 : key === "End" ? rec.options.length - 1 :
+          rec.activeIndex + (key === "ArrowDown" ? 1 : -1);
+        rec.activeIndex = Math.max(0, Math.min(rec.options.length - 1, next));
+        if (event.shiftKey && block.multi === true) self.collectionSelect(rec, rec.activeIndex, event);
+        else self.collectionFocus(rec);
+      } else if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        self.collectionSelect(rec, rec.activeIndex, event);
+      } else if (key === "F2" && block.rename) {
+        event.preventDefault();
+        self.collectionRename(rec, rec.activeIndex);
+      }
+    });
+    list.addEventListener("focus", function () { self.collectionFocus(rec); });
     root.appendChild(list);
+    rec.list = list;
     if (!items.length) {
       if (isObject(block.empty)) root.appendChild(this.buildBlock(block.empty));
       else root.appendChild(el("p", {class: "pui-collection-empty", text: "No items."}));
     }
+    rec.actions = null;
+    rec.actionItems = [];
     if (isArray(block.actions) && block.actions.length) {
-      var actions = block.actions.map(function (item) {
-        var copy = Object.assign({}, item);
-        copy.collection_bind = bind;
-        copy.collection_selected = selectedPath;
-        copy.collection_item = selectedKey;
-        return copy;
-      });
-      root.appendChild(this.buildActions(actions, "collection"));
+      rec.actions = el("div", {class: "pui-collection-actions"});
+      root.appendChild(rec.actions);
     }
+    var selectedItem = null;
+    for (var s = 0; s < items.length; s++) if (String(this.collectionKey(block, items[s], s)) === String(selectedKeys[0])) selectedItem = items[s];
+    rec.itemPanel = null;
     if (selectedItem) {
-      var itemPanel = el("div", {class: "pui-collection-item", role: "group", "aria-label": String(block.label || "Selected item")});
-      var template = block.item && isArray(block.item.template) ? block.item.template : (isArray(block.template) ? block.template : []);
-      var context = {bind: bind, key: selectedKey, item: selectedItem, items: items, block: block};
-      for (var t = 0; t < template.length; t++) {
-        var copy = Object.assign({}, template[t]);
-        var rawBind = String(copy.bind || "");
-        if (copy.bind) copy.bind = this.collectionPath(block, selectedKey, copy.bind);
-        copy.__pui_raw_bind = rawBind;
-        itemPanel.appendChild(this.buildBlock(copy, context));
-      }
-      root.appendChild(itemPanel);
+      rec.itemPanel = el("div", {class: "pui-collection-item", role: "group", "aria-label": String(block.label || "Selected item")});
+      root.appendChild(rec.itemPanel);
+      this.collectionBuildItem(rec, selectedItem, rec.itemPanel);
     }
+    this.collectionRefresh(rec);
     this._collectionRecordIndex = previousCollectionIndex;
     return root;
   };
@@ -7273,6 +7501,12 @@
       }
       if (item.id === "remove" && typeof this.adapter.removeCollectionItem === "function") {
         return this.adapter.removeCollectionItem(item.collection_bind, item.collection_item, item);
+      }
+      if (isArray(item.collection_items) && item.call) {
+        var selectedItems = item.collection_items.slice();
+        return this.adapter.callAction(String(item.call), Object.assign({}, isObject(item.args) ? item.args : {}, {
+          bind: item.collection_bind, selected: selectedItems, item: selectedItems.length === 1 ? selectedItems[0] : undefined
+        }));
       }
       if (item.call) {
         var extra = {bind: item.collection_bind, selected: item.collection_item, item: item.collection_item};
