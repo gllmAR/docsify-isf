@@ -234,6 +234,8 @@
       removeCollectionItem: options.removeCollectionItem || null,
       resolveCollectionPath: options.resolveCollectionPath || null,
       validateValue: options.validateValue || null,
+      getPreferences: options.getPreferences || null,
+      setPreferences: options.setPreferences || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: options.announce || function () {},
@@ -287,6 +289,7 @@
     this._collectionRecordIndex = -1;
     this._routeHistory = [];
     this.currentRoute = null;
+    this.preferences = {favorites: [], recent: []};
   }
 
   Renderer.prototype.render = function (doc) {
@@ -327,6 +330,7 @@
     this.destroySlots();
     this.disconnectToolbarLayouts();
     this.doc = doc;
+    this.loadPreferences();
     this.lang = this.resolveLanguage(doc);
     this.dir = String(doc.dir || (global.PupitreI18n ? global.PupitreI18n.direction(this.lang) : "ltr"));
     this.signature = structureKey(doc);
@@ -7834,17 +7838,86 @@
     }
   };
 
+  Renderer.prototype.loadPreferences = function () {
+    if (typeof this.adapter.getPreferences !== "function") return this.preferences;
+    var next = {favorites: [], recent: []};
+    if (typeof this.adapter.getPreferences === "function") {
+      try {
+        var stored = this.adapter.getPreferences();
+        if (isObject(stored)) {
+          if (isArray(stored.favorites)) next.favorites = stored.favorites.map(String);
+          if (isArray(stored.recent)) next.recent = stored.recent.map(String);
+        }
+      } catch (error) { /* host preference reads must not break rendering */ }
+    }
+    this.preferences = next;
+    return next;
+  };
+
+  Renderer.prototype.savePreferences = function (next) {
+    this.preferences = {
+      favorites: isArray(next.favorites) ? next.favorites.slice() : [],
+      recent: isArray(next.recent) ? next.recent.slice() : []
+    };
+    if (typeof this.adapter.setPreferences === "function") {
+      try { this.adapter.setPreferences({favorites: this.preferences.favorites.slice(), recent: this.preferences.recent.slice()}); }
+      catch (error) { /* host preference writes are best-effort */ }
+    }
+    return this.preferences;
+  };
+
+  Renderer.prototype.isFavorite = function (id) {
+    return this.preferences.favorites.indexOf(String(id)) >= 0;
+  };
+
+  Renderer.prototype.toggleFavorite = function (id) {
+    id = String(id);
+    var favorites = this.preferences.favorites.slice();
+    var index = favorites.indexOf(id);
+    if (index >= 0) favorites.splice(index, 1);
+    else favorites.unshift(id);
+    this.savePreferences({favorites: favorites, recent: this.preferences.recent});
+    if (this._palette && this._palette.paint) this._palette.paint(this._palette.input.value);
+    return index < 0;
+  };
+
+  Renderer.prototype.recordRecent = function (id) {
+    id = String(id);
+    var recent = [id].concat(this.preferences.recent.filter(function (entry) { return entry !== id; })).slice(0, 20);
+    this.savePreferences({favorites: this.preferences.favorites, recent: recent});
+  };
+
+  Renderer.prototype.orderedCommands = function () {
+    var self = this;
+    var favorites = this.preferences.favorites;
+    var recent = this.preferences.recent;
+    return this.commands().map(function (command, index) {
+      var favoriteIndex = favorites.indexOf(command.id);
+      var recentIndex = recent.indexOf(command.id);
+      return {command: command, index: index, favoriteIndex: favoriteIndex, recentIndex: recentIndex};
+    }).sort(function (a, b) {
+      if (a.favoriteIndex >= 0 && b.favoriteIndex < 0) return -1;
+      if (b.favoriteIndex >= 0 && a.favoriteIndex < 0) return 1;
+      if (a.favoriteIndex >= 0 && b.favoriteIndex >= 0) return a.favoriteIndex - b.favoriteIndex;
+      if (a.recentIndex >= 0 && b.recentIndex < 0) return -1;
+      if (b.recentIndex >= 0 && a.recentIndex < 0) return 1;
+      if (a.recentIndex >= 0 && b.recentIndex >= 0) return a.recentIndex - b.recentIndex;
+      return a.index - b.index;
+    }).map(function (entry) { return entry.command; });
+  };
+
   Renderer.prototype.commands = function () {
     var self = this;
     var out = [];
     this.pageRecords.forEach(function (rec) {
-      out.push({kind: "page", label: String(rec.page.title || rec.page.id || "Page"), path: "#page=" + String(rec.page.id || ""), run: function () { self.navigate(rec.page.id); }});
+      out.push({kind: "page", id: "page:" + String(rec.page.id || ""), label: String(rec.page.title || rec.page.id || "Page"), path: "#page=" + String(rec.page.id || ""), run: function () { self.navigate(rec.page.id); }});
     });
     this.records.forEach(function (rec) {
-      out.push({kind: "field", label: self.labelText(rec.block), path: rec.path, run: function () { self.focusPath(rec.path); }});
+      out.push({kind: "field", id: "field:" + rec.path, label: self.labelText(rec.block), path: rec.path, run: function () { self.focusPath(rec.path); }});
     });
     this.actions.forEach(function (rec) {
-      out.push({kind: "action", label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
+      var actionId = String(rec.block.id || rec.block.label || rec.block.call || rec.block.bind || "action");
+      out.push({kind: "action", id: "action:" + actionId, label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
     });
     return out;
   };
@@ -7859,7 +7932,8 @@
     form.appendChild(input);
     form.appendChild(list);
     dialog.appendChild(form);
-    var commands = this.commands();
+    this.loadPreferences();
+    var commands = this.orderedCommands();
     var rows = [];
     var active = 0;
     function close() {
@@ -7870,6 +7944,7 @@
     function choose(index) {
       var row = rows[index];
       if (!row) return;
+      self.recordRecent(row.command.id);
       close();
       row.command.run();
     }
@@ -7879,11 +7954,18 @@
       active = 0;
       var needle = String(query || "").trim().toLowerCase();
       commands.filter(function (command) {
-        return !needle || (command.label + " " + command.path + " " + command.kind).toLowerCase().indexOf(needle) >= 0;
+        return !needle || (command.label + " " + command.path + " " + command.kind + " " + command.id).toLowerCase().indexOf(needle) >= 0;
       }).slice(0, 80).forEach(function (command, index) {
         var option = el("button", {type: "button", role: "option", class: "pui-palette-option", id: self.id("command")});
-        option.textContent = command.label + " · " + command.kind;
+        var favorite = self.isFavorite(command.id);
+        var star = el("span", {class: "pui-palette-star", "aria-hidden": "true", text: favorite ? "★" : "☆"});
+        option.appendChild(star);
+        option.appendChild(el("span", {class: "pui-palette-label", text: command.label + " · " + command.kind}));
+        option.setAttribute("data-pui-command", command.id);
+        option.setAttribute("data-favorite", favorite ? "true" : "false");
+        if (self.preferences.recent.indexOf(command.id) >= 0) option.setAttribute("data-recent", "true");
         option.setAttribute("aria-selected", index === active ? "true" : "false");
+        option.setAttribute("aria-label", command.label + " · " + command.kind + (favorite ? " · favorite" : "") + (self.preferences.recent.indexOf(command.id) >= 0 ? " · recent" : ""));
         option.addEventListener("click", function () { choose(index); });
         list.appendChild(option);
         rows.push({button: option, command: command});
@@ -7906,7 +7988,7 @@
     });
     form.addEventListener("submit", function (event) { event.preventDefault(); choose(active); });
     dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
-    this._palette = {dialog: dialog, input: input, list: list, close: close};
+    this._palette = {dialog: dialog, input: input, list: list, close: close, paint: paint};
     document.body.appendChild(dialog);
     dialog.showModal();
     paint("");

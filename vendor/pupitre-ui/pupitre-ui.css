@@ -35,6 +35,10 @@
 .pui-search input { flex: 1 1 auto; width: 100%; min-height: var(--pui-touch); padding: 3px 6px; }
 .pui-palette-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
 .pui-palette-option { text-align: start; min-height: var(--pui-touch); padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.pui-palette-option { display: flex; align-items: center; gap: 8px; }
+.pui-palette-star { width: 1.1em; color: var(--pui-muted); text-align: center; }
+.pui-palette-option[data-favorite="true"] .pui-palette-star { color: var(--pui-warning); }
+.pui-palette-label { flex: 1 1 auto; min-width: 0; }
 .pui-palette-option[aria-selected="true"] { background: var(--pui-surface-2); border-color: var(--pui-accent); }
 .pui-palette-empty { margin: 4px 0; color: var(--pui-muted); }
 .pui-panel { display: flex; flex-direction: column; gap: var(--pui-gap); }
