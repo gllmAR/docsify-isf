@@ -258,6 +258,7 @@
     this.collectionRecords = [];
     this.tableRecords = [];
     this.formRecords = [];
+    this.presetRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
     this.toolbarRecords = [];
@@ -351,6 +352,7 @@
     this.collectionRecords = [];
     this.tableRecords = [];
     this.formRecords = [];
+    this.presetRecords = [];
     this.shellRecords = [];
     this.statusRecords = [];
     this.toolbarRecords = [];
@@ -464,6 +466,9 @@
         groupEnabled(this.sectionRecords, menuRec.sectionRecordIndex);
       menuRec.root.hidden = !menuRec.visible;
       menuRec.trigger.disabled = !menuRec.enabled;
+    }
+    for (var pr = 0; pr < this.presetRecords.length; pr++) {
+      this.presetRefresh(this.presetRecords[pr]);
     }
     for (var fm = 0; fm < this.formRecords.length; fm++) {
       var formRec = this.formRecords[fm];
@@ -1120,7 +1125,7 @@
     if (kind === "toast") return this.buildToast(block);
     if (kind === "action") return this.buildActions([block]);
     if (kind === "actions") return this.buildActions(block.items || [], kind);
-    if (kind === "presets") return this.buildActions(block.items || [], kind, block.storage);
+    if (kind === "presets") return this.buildPresets(block);
     if (kind === "note") {
       return el("p", {class: "pui-note " + (block.level === "warning" ? "pui-warn" : ""), text: String(block.text || "")});
     }
@@ -7448,6 +7453,158 @@
     if (this.mount) while (this.mount.firstChild) this.mount.removeChild(this.mount.firstChild);
   };
 
+  Renderer.prototype.presetItems = function (block) {
+    var path = String(block.storage && block.storage.list || "");
+    if (!path) return [];
+    var value = typeof this.adapter.getValueFor === "function"
+      ? this.adapter.getValueFor(path, block)
+      : this.adapter.getValue(path);
+    if (isArray(value)) return value;
+    if (isObject(value) && isArray(value.presets)) return value.presets;
+    return [];
+  };
+
+  Renderer.prototype.presetId = function (preset, index) {
+    if (isObject(preset) && preset.id !== undefined) return String(preset.id);
+    if (isObject(preset) && preset.name !== undefined) return String(preset.name);
+    return String(preset === undefined || preset === null ? index : preset);
+  };
+
+  Renderer.prototype.presetLabel = function (preset, id) {
+    if (isObject(preset)) return String(preset.label || preset.name || preset.title || id);
+    return String(preset);
+  };
+
+  Renderer.prototype.presetSelected = function (rec) {
+    var path = String(rec.block.storage && rec.block.storage.select || "");
+    if (path) {
+      var raw = typeof this.adapter.getValueFor === "function"
+        ? this.adapter.getValueFor(path, rec.block)
+        : this.adapter.getValue(path);
+      if (raw !== undefined && raw !== null) return String(raw);
+    }
+    return rec.selectedId === undefined || rec.selectedId === null ? "" : String(rec.selectedId);
+  };
+
+  Renderer.prototype.presetStorageAction = function (rec, action) {
+    if (!isObject(action)) return null;
+    var copy = Object.assign({}, action);
+    copy.args = Object.assign({}, isObject(action.args) ? action.args : {}, {
+      preset: rec.selectedPreset || null,
+      preset_id: rec.selectedId || "",
+      presets: this.presetItems(rec.block)
+    });
+    return copy;
+  };
+
+  Renderer.prototype.presetStorageActions = function (rec) {
+    if (!rec.actions) return;
+    for (var old = 0; old < (rec.storageActionRecords || []).length; old++) {
+      var control = rec.storageActionRecords[old];
+      this.actions = this.actions.filter(function (entry) { return entry.control !== control; });
+    }
+    rec.storageActionRecords = [];
+    rec.actions.textContent = "";
+    var storage = rec.block.storage || {};
+    var selected = !!rec.selectedPreset;
+    ["save", "delete", "rename"].forEach(function (key) {
+      var action = storage[key];
+      if (!isObject(action)) return;
+      var copy = rec.renderer.presetStorageAction(rec, action);
+      if (key === "delete" && !selected) copy.disabled = true;
+      var control = rec.renderer.addActionButton(rec.actions, copy);
+      rec.storageActionRecords.push(control);
+    });
+  };
+
+  Renderer.prototype.presetSignature = function (rec) {
+    return JSON.stringify({selected: rec.selectedId, items: this.presetItems(rec.block).map(function (preset, index) {
+      return {id: this.presetId(preset, index), label: this.presetLabel(preset, this.presetId(preset, index))};
+    }, this)});
+  };
+
+  Renderer.prototype.presetRefresh = function (rec) {
+    var selectedId = this.presetSelected(rec);
+    var signature = this.presetSignature({selectedId: selectedId, block: rec.block});
+    if (rec.presetSignature === signature) {
+      rec.selectedId = selectedId;
+      rec.selectedPreset = this.presetItems(rec.block).find(function (preset, index) {
+        return this.presetId(preset, index) === selectedId;
+      }, this) || null;
+      return;
+    }
+    rec.selectedId = selectedId;
+    var presets = this.presetItems(rec.block);
+    rec.presets = presets;
+    rec.selectedPreset = null;
+    for (var i = 0; i < presets.length; i++) {
+      if (this.presetId(presets[i], i) === rec.selectedId) rec.selectedPreset = presets[i];
+    }
+    this.presetRender(rec);
+    rec.presetSignature = this.presetSignature(rec);
+  };
+
+  Renderer.prototype.presetRender = function (rec) {
+    var self = this;
+    if (rec.list) {
+      rec.list.textContent = "";
+      rec.items = this.presetItems(rec.block);
+      rec.items.forEach(function (preset, index) {
+        var id = self.presetId(preset, index);
+        var option = el("button", {type: "button", role: "option", class: "pui-preset", "data-pui-preset": id, text: self.presetLabel(preset, id)});
+        option.setAttribute("aria-selected", id === rec.selectedId ? "true" : "false");
+        if (id === rec.selectedId) option.classList.add("is-selected");
+        option.addEventListener("click", function () { self.presetSelect(rec, preset, id, option); });
+        rec.list.appendChild(option);
+      });
+      if (!rec.items.length) rec.list.appendChild(el("span", {class: "pui-preset-empty", text: "No presets."}));
+    }
+    this.presetStorageActions(rec);
+    rec.presetSignature = this.presetSignature(rec);
+  };
+
+  Renderer.prototype.presetSelect = function (rec, preset, id, button) {
+    rec.selectedId = id;
+    rec.selectedPreset = preset;
+    var selectPath = String(rec.block.storage && rec.block.storage.select || "");
+    if (selectPath) this.setPath(selectPath, id, rec.block);
+    this.presetRender(rec);
+    if (typeof document !== "undefined") {
+      var focusedPreset = null;
+      var choices = rec.list ? rec.list.querySelectorAll("[data-pui-preset]") : [];
+      for (var p = 0; p < choices.length; p++) if (choices[p].getAttribute("data-pui-preset") === String(id)) focusedPreset = choices[p];
+      if (focusedPreset && focusedPreset.focus) focusedPreset.focus();
+    }
+    var recall = rec.block.storage && rec.block.storage.recall;
+    if (isObject(recall)) this.startAction(this.presetStorageAction(rec, recall), button);
+  };
+
+  Renderer.prototype.buildPresets = function (block) {
+    var self = this;
+    var root = el("section", {class: "pui-presets", "data-pui-presets": String(block.bind || "")});
+    if (block.label) root.appendChild(el("h4", {class: "pui-presets-title", text: String(block.label)}));
+    root.appendChild(this.buildActions(block.items || [], "presets"));
+    var storage = isObject(block.storage) ? block.storage : null;
+    var rec = {
+      renderer: this, block: block, root: root, list: null, actions: null,
+      presets: [], items: [], selectedId: "", selectedPreset: null,
+      storageActionRecords: [], presetSignature: undefined,
+      pageRecordIndex: this._pageRecordIndex, sectionRecordIndex: this._sectionRecordIndex,
+      visible: true, enabled: true
+    };
+    if (storage && storage.list) {
+      rec.list = el("div", {class: "pui-preset-list", role: "listbox", "aria-label": String(block.label || "Presets")});
+      root.appendChild(rec.list);
+    }
+    if (storage) {
+      rec.actions = el("div", {class: "pui-preset-storage"});
+      root.appendChild(rec.actions);
+    }
+    this.presetRecords.push(rec);
+    this.presetRefresh(rec);
+    return root;
+  };
+
   Renderer.prototype.buildActions = function (items, kind, storage) {
     var bar = el("div", {class: "pui-actions", "data-pui-actions": kind || "actions"});
     for (var i = 0; i < items.length; i++) {
@@ -7915,6 +8072,9 @@
         codeRec.setHighlight(liveText);
         codeRec.setStatus("Updated from host.", false);
       }
+    }
+    for (var pr = 0; pr < this.presetRecords.length; pr++) {
+      this.presetRefresh(this.presetRecords[pr]);
     }
     this.refreshConditions();
     this.layoutToolbars();

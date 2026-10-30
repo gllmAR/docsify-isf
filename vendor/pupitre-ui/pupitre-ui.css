@@ -107,6 +107,14 @@
 .pui-vector-comp input { max-width: 6em; }
 .pui-flags, .pui-radio-group { border: 0; margin: 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .pui-check, .pui-radio { display: inline-flex; align-items: center; gap: 6px; min-height: var(--pui-touch); cursor: pointer; }
+.pui-presets { display: flex; flex-direction: column; gap: 6px; }
+.pui-presets-title { margin: 0; font-size: 0.9rem; }
+.pui-preset-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.pui-preset { min-height: var(--pui-touch); padding: 3px 9px; border: 1px solid var(--pui-border); border-radius: 999px; background: var(--pui-surface-2); color: var(--pui-text); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.pui-preset.is-selected, .pui-preset[aria-selected="true"] { border-color: var(--pui-accent); box-shadow: inset 0 0 0 1px var(--pui-accent); }
+.pui-preset:focus-visible { outline: 2px solid var(--pui-accent); outline-offset: 2px; }
+.pui-preset-empty { color: var(--pui-muted); font-size: 0.72rem; }
+.pui-preset-storage { display: flex; flex-wrap: wrap; gap: 5px; }
 .pui-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .pui-button {
   min-height: var(--pui-touch); padding: 4px 10px; cursor: pointer; font-size: 0.76rem; font-weight: 600;
