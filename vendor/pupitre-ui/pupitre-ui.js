@@ -212,6 +212,7 @@
       timelineAction: options.timelineAction || null,
       stageAction: options.stageAction || null,
       treeAction: options.treeAction || null,
+      moveTreeNode: options.moveTreeNode || null,
       selectionAction: options.selectionAction || null,
       projectAction: options.projectAction || null,
       canvasAction: options.canvasAction || null,
@@ -4865,6 +4866,42 @@
         row.addEventListener("click", function (event) { self.treeSelect(rec, id, !!(event.ctrlKey || event.metaKey || event.shiftKey)); });
         row.addEventListener("dblclick", function (event) { if (event.preventDefault) event.preventDefault(); self.treeStartRename(rec, id); });
         row.addEventListener("focus", function () { rec.focusId = id; });
+        if (rec.options.drag !== false && !rec.block.readonly) {
+          row.draggable = true;
+          row.addEventListener("dragstart", function (event) {
+            rec.dragId = id;
+            row.classList.add("is-dragging");
+            if (event.dataTransfer && event.dataTransfer.setData) event.dataTransfer.setData("text/plain", id);
+            if (event.stopPropagation) event.stopPropagation();
+          });
+          row.addEventListener("dragend", function () {
+            rec.dragId = null;
+            rec.dropTarget = null;
+            self.treeClearDropClasses(rec);
+          });
+          row.addEventListener("dragover", function (event) {
+            if (!rec.dragId || rec.dragId === id) return;
+            if (event.preventDefault) event.preventDefault();
+            var box = row.getBoundingClientRect ? row.getBoundingClientRect() : {top: 0, height: 1};
+            var ratio = ((event.clientY || 0) - box.top) / Math.max(1, box.height);
+            var position = ratio < 0.28 ? "before" : ratio > 0.72 ? "after" : "inside";
+            rec.dropTarget = {id: id, position: position};
+            self.treeClearDropClasses(rec);
+            row.classList.add("is-drop-" + position);
+          });
+          row.addEventListener("dragleave", function () {
+            if (rec.dropTarget && rec.dropTarget.id === id) row.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+          });
+          row.addEventListener("drop", function (event) {
+            if (event.preventDefault) event.preventDefault();
+            var fromId = rec.dragId;
+            var target = rec.dropTarget;
+            rec.dragId = null;
+            rec.dropTarget = null;
+            self.treeClearDropClasses(rec);
+            if (fromId && target && target.id === id) self.treeDrop(rec, fromId, id, target.position);
+          });
+        }
         if (rec.focusId === id) rec.rows[id] = row;
         group.appendChild(row);
         if (children.length && isExpanded) {
@@ -5009,6 +5046,17 @@
     if (index < 0) index = 0;
     var current = flat[index];
     var focusAt = function (next) { if (next) { rec.focusId = next.id; rec.shouldFocus = true; self.treeRender(rec); } };
+    if (rec.options.drag !== false && event.altKey && event.ctrlKey && (event.key === "ArrowLeft" || event.key === "ArrowRight") && current) {
+      event.preventDefault();
+      if (event.key === "ArrowLeft" && current.parentId) {
+        var parent = this.treeFind(rec.value.roots, current.parentId);
+        if (parent && parent.parent) this.treeDrop(rec, rec.focusId, String(parent.node.id), "after");
+      } else if (event.key === "ArrowRight") {
+        var visible = flat[index - 1];
+        if (visible) this.treeDrop(rec, rec.focusId, String(visible.id), "inside");
+      }
+      return;
+    }
     if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       event.preventDefault();
       if (rec.block.readonly || (rec.options.reorder === false)) return;
@@ -5036,6 +5084,73 @@
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.treeSelect(rec, rec.focusId, false); return; }
     if (event.key === "F2") { event.preventDefault(); this.treeStartRename(rec, rec.focusId); return; }
     if (event.key === "F10" && event.shiftKey) { event.preventDefault(); this.treeOpenMenu(rec, rec.focusId); return; }
+  };
+
+  Renderer.prototype.treeClearDropClasses = function (rec) {
+    Object.keys(rec.rows || {}).forEach(function (id) {
+      var row = rec.rows[id];
+      if (row && row.classList) row.classList.remove("is-drop-before", "is-drop-after", "is-drop-inside");
+    });
+  };
+
+  Renderer.prototype.treeFind = function (roots, id) {
+    var found = null;
+    var visit = function (list, parent) {
+      if (!isArray(list) || found) return;
+      for (var i = 0; i < list.length; i++) {
+        var node = list[i];
+        if (!isObject(node)) continue;
+        var nodeId = String(node.id === undefined ? "" : node.id);
+        if (nodeId === String(id)) { found = {node: node, parent: parent, list: list, index: i}; return; }
+        visit(node.children, node);
+        if (found) return;
+      }
+    };
+    visit(roots, null);
+    return found;
+  };
+
+  Renderer.prototype.treeContains = function (node, id) {
+    if (!isObject(node)) return false;
+    if (String(node.id) === String(id)) return true;
+    return (isArray(node.children) ? node.children : []).some(function (child) { return this.treeContains(child, id); }, this);
+  };
+
+  Renderer.prototype.treeDrop = function (rec, fromId, toId, position) {
+    if (!rec || !rec.value || !fromId || !toId || fromId === toId) return false;
+    if (rec.block.readonly) return false;
+    var from = this.treeFind(rec.value.roots, fromId);
+    var to = this.treeFind(rec.value.roots, toId);
+    if (!from || !to || this.treeContains(from.node, toId)) {
+      this.adapter.announce("warning", "A node cannot be moved into itself.");
+      return false;
+    }
+    var moved = from.node;
+    if (typeof this.adapter.moveTreeNode === "function") {
+      var ok = this.adapter.moveTreeNode(fromId, toId, position, rec.block);
+      if (ok === false) {
+        this.adapter.announce("warning", "The host rejected the tree move.");
+        return false;
+      }
+      rec.value = this.adapter.getValue(rec.path);
+      rec.focusId = fromId;
+      if (position === "inside") rec.expanded[toId] = true;
+      rec.shouldFocus = true;
+      this.treeRender(rec);
+      return true;
+    }
+    from.list.splice(from.index, 1);
+    var targetList = position === "inside" ? (to.node.children || (to.node.children = [])) : to.list;
+    var targetIndex = to.list.indexOf(to.node);
+    if (position === "before") targetList.splice(targetIndex, 0, moved);
+    else if (position === "after") targetList.splice(targetIndex + 1, 0, moved);
+    else targetList.push(moved);
+    rec.focusId = fromId;
+    if (position === "inside") rec.expanded[toId] = true;
+    this.writeTree(rec, {op: "tree.move", fromId: fromId, toId: toId, position: position}, true);
+    rec.shouldFocus = true;
+    this.treeRender(rec);
+    return true;
   };
 
   Renderer.prototype.treeOpenMenu = function (rec, id) {
