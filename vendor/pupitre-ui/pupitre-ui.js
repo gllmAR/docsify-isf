@@ -255,6 +255,14 @@
       meterAction: options.meterAction || null,
       subscribeMeters: options.subscribeMeters || null,
       keyCaptureAction: options.keyCaptureAction || null,
+      bindingAction: options.bindingAction || null,
+      subscribeBindings: options.subscribeBindings || null,
+      workspaceAction: options.workspaceAction || null,
+      mediaTimelineAction: options.mediaTimelineAction || null,
+      subscribeMediaTimeline: options.subscribeMediaTimeline || null,
+      favoriteAction: options.favoriteAction || null,
+      subscribeFavorites: options.subscribeFavorites || null,
+      filePick: options.filePick || null,
       dialogAction: options.dialogAction || null,
       historyCheckpoint: options.historyCheckpoint || null,
       graphInspector: options.graphInspector || null,
@@ -286,6 +294,10 @@
     this.transportRecords = [];
     this.meterRecords = [];
     this.keyCaptureRecords = [];
+    this.bindingRecords = [];
+    this.workspaceRecords = [];
+    this.mediaTimelineRecords = [];
+    this.favoriteRecords = [];
     this.dialogRecords = [];
     this.schemaFormRecords = [];
     this.workbenches = [];
@@ -390,6 +402,10 @@
     this.transportRecords = [];
     this.meterRecords = [];
     this.keyCaptureRecords = [];
+    this.bindingRecords = [];
+    this.workspaceRecords = [];
+    this.mediaTimelineRecords = [];
+    this.favoriteRecords = [];
     this.dialogRecords = [];
     this.schemaFormRecords = [];
     this.workbenches = [];
@@ -1174,6 +1190,10 @@
     if (kind === "transport") return this.buildTransport(block);
     if (kind === "meter") return this.buildMeter(block);
     if (kind === "keycapture") return this.buildKeyCapture(block);
+    if (kind === "binding") return this.buildBinding(block);
+    if (kind === "workspaces") return this.buildWorkspaces(block);
+    if (kind === "mediaTimeline") return this.buildMediaTimeline(block);
+    if (kind === "favorites") return this.buildFavorites(block);
     if (kind === "dialog") return this.buildDialog(block);
     if (kind === "commandlog") return this.buildCommandLog(block);
     if (kind === "selection") return this.buildSelection(block);
@@ -4745,6 +4765,476 @@
     return root;
   };
 
+  Renderer.prototype.favoriteValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    var normalize = function (item) {
+      return isObject(item) ? {id: String(item.id === undefined ? item.value : item.id), label: String(item.label || item.name || item.id || ""), kind: String(item.kind || ""), active: item.active === true} : null;
+    };
+    return {items: (isArray(value.items) ? value.items : (isArray(value.favorites) ? value.favorites : [])).map(normalize).filter(Boolean),
+      recent: (isArray(value.recent) ? value.recent : []).map(normalize).filter(Boolean),
+      selected: value.selected !== undefined ? String(value.selected) : "", error: String(value.error || ""),
+      canRemove: value.canRemove !== false, canClearRecent: value.canClearRecent !== false};
+  };
+
+  Renderer.prototype.favoriteAction = function (rec, intent) {
+    if (typeof this.adapter.favoriteAction === "function") {
+      try { return this.adapter.favoriteAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Favorite action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose favorite actions.");
+    return false;
+  };
+
+  Renderer.prototype.favoriteRefresh = function (rec) {
+    var data = this.favoriteValue(rec);
+    rec.value = data;
+    var fill = function (list, items, section) {
+      list.textContent = "";
+      items.forEach(function (item) {
+        var active = item.id === data.selected || item.active;
+        var button = el("button", {type: "button", class: "pui-button pui-favorite-item" + (active ? " is-active" : ""), text: item.label || item.id, "aria-pressed": active ? "true" : "false"});
+        if (item.kind) button.setAttribute("data-kind", item.kind);
+        button.addEventListener("click", function () { rec.self.favoriteAction(rec, {op: "select", id: item.id, section: section}); });
+        list.appendChild(button);
+      });
+    };
+    fill(rec.favorites, data.items, "favorites");
+    fill(rec.recent, data.recent, "recent");
+    rec.favorites.hidden = !data.items.length;
+    rec.recent.hidden = !data.recent.length || rec.options.recents === false;
+    rec.recentTitle.hidden = rec.recent.hidden;
+    rec.favoritesEmpty.hidden = !!data.items.length;
+    rec.remove.disabled = !data.selected || !data.canRemove;
+    rec.clearRecent.disabled = !data.recent.length || !data.canClearRecent;
+    rec.status.textContent = data.error;
+    rec.status.hidden = !data.error;
+  };
+
+  Renderer.prototype.buildFavorites = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.favorites_options) ? block.favorites_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("favorites." + key, fallback)); };
+    var root = el("section", {class: "pui-favorites", "data-pui-favorites": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Favorites"))});
+    var head = el("div", {class: "pui-favorites-head"}, el("h4", {text: String(block.label || text("title", "Favorites"))}));
+    root.appendChild(head);
+    var favorites = el("div", {class: "pui-favorite-list", role: "group", "aria-label": text("favorites", "Favorite parameters")});
+    var empty = el("span", {class: "pui-favorite-empty", text: text("empty", "No favorites.")});
+    root.appendChild(favorites); root.appendChild(empty);
+    var recentLabel = el("h5", {class: "pui-favorite-subtitle", text: text("recent", "Recent")});
+    root.appendChild(recentLabel);
+    var recent = el("div", {class: "pui-favorite-list pui-favorite-recent", role: "group", "aria-label": text("recent", "Recent")});
+    root.appendChild(recent);
+    var bar = el("div", {class: "pui-favorite-actions"});
+    var remove = el("button", {type: "button", class: "pui-button", text: text("remove", "Remove")});
+    var clearRecent = el("button", {type: "button", class: "pui-button", text: text("clear_recent", "Clear recent")});
+    remove.addEventListener("click", function () { var data = self.favoriteValue(rec); self.favoriteAction(rec, {op: "remove", id: data.selected}); });
+    clearRecent.addEventListener("click", function () { self.favoriteAction(rec, {op: "clearRecent"}); });
+    bar.appendChild(remove); bar.appendChild(clearRecent); root.appendChild(bar);
+    var status = el("p", {class: "pui-favorite-status", role: "status", "aria-live": "polite", hidden: true});
+    root.appendChild(status);
+    var rec = {block: block, path: path, root: root, favorites: favorites, recent: recent, recentTitle: recentLabel, favoritesEmpty: empty, remove: remove, clearRecent: clearRecent, status: status, options: options, labels: labels, text: text, self: self, unsubscribe: null};
+    if (typeof this.adapter.subscribeFavorites === "function") {
+      try { rec.unsubscribe = this.adapter.subscribeFavorites(path, function (data) { if (isObject(data)) self.favoriteRefresh(rec); }); } catch (error) {}
+    }
+    this.favoriteRecords.push(rec);
+    this.favoriteRefresh(rec);
+    return root;
+  };
+
+  Renderer.prototype.mediaTimelineValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    var duration = Number(value.duration);
+    if (!isFinite(duration) || duration <= 0) duration = 60;
+    var clamp = function (time) { return Math.max(0, Math.min(duration, Number(time) || 0)); };
+    var selected = value.selectedClip !== undefined ? String(value.selectedClip) : (value.selected !== undefined ? String(value.selected) : "");
+    var tracks = (isArray(value.tracks) ? value.tracks : []).filter(isObject).map(function (track) {
+      var id = String(track.id === undefined ? "" : track.id);
+      var clips = (isArray(track.clips) ? track.clips : []).filter(isObject).map(function (clip) {
+        var start = clamp(clip.start);
+        var length = Math.max(0.01, Math.min(duration - start, Number(clip.duration) || 1));
+        return {id: String(clip.id === undefined ? "" : clip.id), label: String(clip.label || clip.name || clip.id || "Clip"),
+          start: start, duration: length, end: start + length, kind: String(clip.kind || "clip"), color: String(clip.color || ""),
+          thumb: String(clip.thumb || clip.thumbnail || ""), selected: clip.selected === true || String(clip.id) === selected,
+          disabled: clip.disabled === true};
+      });
+      return {id: id, label: String(track.label || track.name || id || "Track"), kind: String(track.kind || "track"),
+        muted: track.muted === true, locked: track.locked === true, clips: clips};
+    });
+    return {duration: duration, playhead: clamp(value.playhead), snap: Math.max(0.01, Number(value.snap || rec.options.snap) || 0.5),
+      tracks: tracks, selected: selected, zoom: Math.max(0.1, Number(value.zoom) || 1)};
+  };
+
+  Renderer.prototype.mediaTimelineAction = function (rec, intent) {
+    if (typeof this.adapter.mediaTimelineAction === "function") {
+      try { return this.adapter.mediaTimelineAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Media timeline action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose media timeline actions.");
+    return false;
+  };
+
+  Renderer.prototype.mediaTimelineSignature = function (data) {
+    return JSON.stringify({duration: data.duration, tracks: data.tracks.map(function (track) {
+      return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
+        clips: track.clips.map(function (clip) { return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, kind: clip.kind, color: clip.color, thumb: clip.thumb}; })};
+    })});
+  };
+
+  Renderer.prototype.mediaTimelineTime = function (seconds) {
+    if (global.PupitreTimeline && global.PupitreTimeline.formatTime) return global.PupitreTimeline.formatTime(seconds);
+    var total = Math.max(0, Number(seconds) || 0);
+    var m = Math.floor(total / 60), s = Math.floor(total % 60);
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  };
+
+  Renderer.prototype.mediaTimelineSeek = function (rec, event) {
+    var target = event.currentTarget || event.target;
+    if (!target || !target.getBoundingClientRect) return;
+    var rect = target.getBoundingClientRect();
+    if (!rect.width) return;
+    var x = Math.max(0, Math.min(rect.width, Number(event.clientX) - rect.left));
+    var time = x / rect.width * rec.value.duration;
+    if (global.PupitreTimeline && global.PupitreTimeline.snapTime) time = global.PupitreTimeline.snapTime(time, rec.value.snap, rec.value.duration);
+    this.mediaTimelineAction(rec, {op: "seek", time: time});
+  };
+
+  Renderer.prototype.mediaTimelineSelect = function (rec, trackId, clipId) {
+    this.mediaTimelineAction(rec, {op: "select", trackId: trackId, clipId: clipId});
+  };
+
+  Renderer.prototype.mediaTimelineKeyboard = function (rec, event, track, clip) {
+    var key = String(event.key || "");
+    if (key === "Enter" || key === " ") { event.preventDefault(); this.mediaTimelineSelect(rec, track.id, clip.id); return; }
+    if (key === "Delete" || key === "Backspace") { event.preventDefault(); this.mediaTimelineAction(rec, {op: "remove", trackId: track.id, clipId: clip.id}); return; }
+    if (key !== "ArrowLeft" && key !== "ArrowRight") return;
+    event.preventDefault();
+    var direction = key === "ArrowRight" ? 1 : -1;
+    var step = (Number(event.shiftKey ? 5 : 1) * rec.value.snap);
+    if (event.shiftKey) {
+      var length = Math.max(0.01, clip.duration + direction * step);
+      this.mediaTimelineAction(rec, {op: "trim", trackId: track.id, clipId: clip.id, start: clip.start, duration: length});
+    } else {
+      var start = Math.max(0, Math.min(rec.value.duration - clip.duration, clip.start + direction * step));
+      this.mediaTimelineAction(rec, {op: "move", trackId: track.id, clipId: clip.id, start: start});
+    }
+  };
+
+  Renderer.prototype.mediaTimelineClipDrag = function (rec, event, track, clip, handle) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.preventDefault) event.preventDefault();
+    var lane = event.currentTarget && event.currentTarget.parentNode;
+    if (!lane || !lane.getBoundingClientRect) return;
+    var rect = lane.getBoundingClientRect();
+    if (!rect.width) return;
+    var drag = {mode: handle ? "trim" : "move", trackId: track.id, clipId: clip.id, clip: clip,
+      start: clip.start, duration: clip.duration, x: Number(event.clientX), width: rect.width, moved: false,
+      element: event.currentTarget, initialLeft: clip.start / rec.value.duration * 100, initialWidth: clip.duration / rec.value.duration * 100};
+    var move = function (moveEvent) {
+      var delta = (Number(moveEvent.clientX) - drag.x) / drag.width * rec.value.duration;
+      if (Math.abs(delta) < rec.value.snap / 4) return;
+      drag.moved = true;
+      var next = drag.start + delta;
+      if (rec.value.snap) next = Math.round(next / rec.value.snap) * rec.value.snap;
+      if (drag.mode === "move") {
+        next = Math.max(0, Math.min(rec.value.duration - drag.duration, next));
+        if (drag.element && drag.element.style) drag.element.style.left = (next / rec.value.duration * 100) + "%";
+      } else {
+        var length = Math.max(0.01, Math.min(rec.value.duration - drag.start, drag.duration + delta));
+        if (rec.value.snap) length = Math.max(rec.value.snap, Math.round(length / rec.value.snap) * rec.value.snap);
+        if (drag.element && drag.element.style) drag.element.style.width = (length / rec.value.duration * 100) + "%";
+      }
+    };
+    var end = function (upEvent) {
+      if (typeof document !== "undefined" && document.removeEventListener) {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", end);
+        document.removeEventListener("pointercancel", end);
+      }
+      if (!drag.moved) return;
+      var delta = (Number(upEvent.clientX) - drag.x) / drag.width * rec.value.duration;
+      if (drag.mode === "move") {
+        var start = drag.start + delta;
+        if (rec.value.snap) start = Math.round(start / rec.value.snap) * rec.value.snap;
+        start = Math.max(0, Math.min(rec.value.duration - drag.duration, start));
+        rec.self.mediaTimelineAction(rec, {op: "move", trackId: drag.trackId, clipId: drag.clipId, start: start});
+      } else {
+        var length = Math.max(0.01, drag.duration + delta);
+        if (rec.value.snap) length = Math.max(rec.value.snap, Math.round(length / rec.value.snap) * rec.value.snap);
+        length = Math.min(rec.value.duration - drag.start, length);
+        rec.self.mediaTimelineAction(rec, {op: "trim", trackId: drag.trackId, clipId: drag.clipId, start: drag.start, duration: length});
+      }
+      rec.self.mediaTimelineRefresh(rec);
+    };
+    if (event.currentTarget && event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+    }
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", end);
+      document.addEventListener("pointercancel", end);
+    }
+  };
+
+  Renderer.prototype.mediaTimelineBuild = function (rec, data) {
+    var self = this;
+    rec.value = data;
+    rec.signature = this.mediaTimelineSignature(data);
+    rec.labelsEl.textContent = "";
+    rec.lanesEl.textContent = "";
+    rec.ruler.textContent = "";
+    rec.clipEls = {};
+    var step = Number(rec.options.ruler_step) > 0 ? Number(rec.options.ruler_step) : Math.max(1, data.duration / 8);
+    for (var tick = 0; tick <= data.duration + 0.001; tick += step) {
+      var at = Math.min(data.duration, tick);
+      var mark = el("span", {class: "pui-media-ruler-tick", style: "left:" + (at / data.duration * 100) + "%;"});
+      mark.appendChild(el("span", {class: "pui-media-ruler-label", text: this.mediaTimelineTime(at)}));
+      rec.ruler.appendChild(mark);
+    }
+    data.tracks.forEach(function (track) {
+      var label = el("div", {class: "pui-media-track-label" + (track.muted ? " is-muted" : ""), "data-track-id": track.id});
+      label.appendChild(el("span", {class: "pui-media-track-name", text: track.label}));
+      if (track.kind) label.appendChild(el("span", {class: "pui-media-track-kind", text: track.kind}));
+      if (track.muted) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("muted", "Muted")}));
+      if (track.locked) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("locked", "Locked")}));
+      rec.labelsEl.appendChild(label);
+      var lane = el("div", {class: "pui-media-lane", "data-track-id": track.id, role: "list", "aria-label": track.label});
+      lane.addEventListener("click", function (event) {
+        if (event.target && event.target.closest && event.target.closest(".pui-media-clip")) return;
+        self.mediaTimelineSeek(rec, event);
+      });
+      track.clips.forEach(function (clip) {
+        var clipEl = el("button", {type: "button", class: "pui-media-clip" + (clip.selected ? " is-selected" : "") + (clip.disabled ? " is-disabled" : ""),
+          role: "listitem", "data-track-id": track.id, "data-clip-id": clip.id, "aria-label": clip.label + " · " + self.mediaTimelineTime(clip.start) + " – " + self.mediaTimelineTime(clip.end),
+          title: clip.label + " · " + self.mediaTimelineTime(clip.start) + " – " + self.mediaTimelineTime(clip.end), style: "left:" + (clip.start / data.duration * 100) + "%;width:" + (clip.duration / data.duration * 100) + "%;"});
+        if (clip.color) clipEl.style.setProperty("--pui-media-clip-color", clip.color);
+        if (clip.thumb) clipEl.style.backgroundImage = "url(\"" + clip.thumb.replace(/"/g, "%22") + "\")";
+        clipEl.appendChild(el("span", {class: "pui-media-clip-label", text: clip.label}));
+        clipEl.appendChild(el("span", {class: "pui-media-clip-time", text: self.mediaTimelineTime(clip.duration)}));
+        var trim = el("span", {class: "pui-media-trim", "aria-hidden": "true"});
+        clipEl.appendChild(trim);
+        clipEl.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.mediaTimelineSelect(rec, track.id, clip.id); });
+        clipEl.addEventListener("keydown", function (event) { self.mediaTimelineKeyboard(rec, event, track, clip); });
+        clipEl.addEventListener("pointerdown", function (event) { self.mediaTimelineClipDrag(rec, event, track, clip, event.target === trim); });
+        lane.appendChild(clipEl);
+        rec.clipEls[track.id + "/" + clip.id] = clipEl;
+      });
+      rec.lanesEl.appendChild(lane);
+    });
+    rec.playheadEl = el("span", {class: "pui-media-playhead", "aria-hidden": "true"});
+    rec.lanesEl.appendChild(rec.playheadEl);
+  };
+
+  Renderer.prototype.mediaTimelineRefresh = function (rec, update) {
+    var data = this.mediaTimelineValue(rec);
+    if (isObject(update)) data = Object.assign({}, data, update);
+    var signature = this.mediaTimelineSignature(data);
+    if (signature !== rec.signature) this.mediaTimelineBuild(rec, data);
+    else rec.value = data;
+    rec.time.textContent = this.mediaTimelineTime(data.playhead) + " / " + this.mediaTimelineTime(data.duration);
+    if (rec.playheadEl) rec.playheadEl.style.left = (data.playhead / data.duration * 100) + "%";
+    data.tracks.forEach(function (track) {
+      track.clips.forEach(function (clip) {
+        var clipEl = rec.clipEls[track.id + "/" + clip.id];
+        if (!clipEl) return;
+        clipEl.classList.toggle("is-selected", clip.selected);
+        clipEl.setAttribute("aria-selected", clip.selected ? "true" : "false");
+      });
+    });
+  };
+
+  Renderer.prototype.buildMediaTimeline = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.mediaTimeline_options) ? block.mediaTimeline_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("mediaTimeline." + key, fallback)); };
+    var root = el("section", {class: "pui-media-timeline", "data-pui-media-timeline": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Media timeline"))});
+    var head = el("div", {class: "pui-media-timeline-head"});
+    head.appendChild(el("h4", {text: String(block.label || text("title", "Media timeline"))}));
+    var time = el("output", {class: "pui-media-timeline-time", "aria-live": "polite"});
+    head.appendChild(time);
+    root.appendChild(head);
+    var stage = el("div", {class: "pui-media-timeline-stage"});
+    var corner = el("div", {class: "pui-media-corner", "aria-hidden": "true"});
+    var ruler = el("div", {class: "pui-media-ruler", "aria-hidden": "true"});
+    ruler.addEventListener("click", function (event) { self.mediaTimelineSeek(rec, event); });
+    var labelsEl = el("div", {class: "pui-media-track-labels"});
+    var lanesEl = el("div", {class: "pui-media-lanes"});
+    stage.appendChild(corner); stage.appendChild(ruler); stage.appendChild(labelsEl); stage.appendChild(lanesEl);
+    root.appendChild(stage);
+    var status = el("p", {class: "pui-media-timeline-status", role: "status", "aria-live": "polite", hidden: true});
+    root.appendChild(status);
+    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, time: time, ruler: ruler, labelsEl: labelsEl, lanesEl: lanesEl, status: status, playheadEl: null, clipEls: {}, signature: "", value: null, unsubscribe: null, self: self};
+    if (typeof this.adapter.subscribeMediaTimeline === "function") {
+      try { rec.unsubscribe = this.adapter.subscribeMediaTimeline(path, function (data) { if (isObject(data)) self.mediaTimelineRefresh(rec, data); }); } catch (error) {}
+    }
+    this.mediaTimelineRecords.push(rec);
+    this.mediaTimelineRefresh(rec);
+    return root;
+  };
+
+  Renderer.prototype.workspaceValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    var items = isArray(value.items) ? value.items.filter(isObject) : (isArray(value.workspaces) ? value.workspaces.filter(isObject) : []);
+    var selected = value.selected !== undefined ? String(value.selected) : (value.active !== undefined ? String(value.active) : "");
+    return {items: items, selected: selected, canSave: value.canSave !== false, canDelete: value.canDelete !== false, canRename: value.canRename !== false, error: String(value.error || "")};
+  };
+
+  Renderer.prototype.workspaceAction = function (rec, intent) {
+    if (typeof this.adapter.workspaceAction === "function") {
+      try { return this.adapter.workspaceAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Workspace action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose workspace actions.");
+    return false;
+  };
+
+  Renderer.prototype.workspaceRefresh = function (rec) {
+    var data = this.workspaceValue(rec);
+    rec.value = data;
+    rec.list.textContent = "";
+    if (!data.items.length) rec.list.appendChild(el("span", {class: "pui-workspace-empty", text: rec.text("empty", "No workspaces.")}));
+    data.items.forEach(function (item) {
+      var id = String(item.id === undefined ? item.value : item.id);
+      var active = String(item.id !== undefined ? item.id : item.value) === data.selected || item.active === true;
+      var button = el("button", {type: "button", class: "pui-button pui-workspace-item" + (active ? " is-active" : ""), text: String(item.label || item.name || id), "aria-pressed": active ? "true" : "false"});
+      button.addEventListener("click", function () { rec.self.workspaceAction(rec, {op: "select", id: id}); });
+      rec.list.appendChild(button);
+    });
+    var selected = data.items.find(function (item) { return String(item.id !== undefined ? item.id : item.value) === data.selected; });
+    if (document.activeElement !== rec.name && selected) rec.name.value = String(selected.label || selected.name || data.selected);
+    else if (!selected && document.activeElement !== rec.name) rec.name.value = "";
+    rec.save.disabled = !data.canSave;
+    rec.rename.disabled = !data.canRename || !data.selected;
+    rec.remove.disabled = !data.canDelete || !data.selected;
+    rec.status.textContent = data.error;
+    rec.status.hidden = !data.error;
+  };
+
+  Renderer.prototype.buildWorkspaces = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.workspaces_options) ? block.workspaces_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("workspaces." + key, fallback)); };
+    var root = el("section", {class: "pui-workspaces", "data-pui-workspaces": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Workspaces"))});
+    var head = el("div", {class: "pui-workspaces-head"}, el("h4", {text: String(block.label || text("title", "Workspaces"))}));
+    root.appendChild(head);
+    var list = el("div", {class: "pui-workspace-list", role: "group", "aria-label": text("list", "Saved workspaces")});
+    root.appendChild(list);
+    var row = el("div", {class: "pui-workspace-controls"});
+    var name = el("input", {type: "text", class: "pui-workspace-name", "aria-label": text("name", "Workspace name"), placeholder: text("placeholder", "Workspace name")});
+    var save = el("button", {type: "button", class: "pui-button pui-primary", text: text("save", "Save")});
+    var rename = el("button", {type: "button", class: "pui-button", text: text("rename", "Rename")});
+    var remove = el("button", {type: "button", class: "pui-button pui-danger", text: text("delete", "Delete")});
+    save.addEventListener("click", function () {
+      var value = name.value.trim();
+      if (!value) { name.focus(); return; }
+      self.workspaceAction(rec, {op: "save", name: value});
+    });
+    rename.addEventListener("click", function () {
+      var value = name.value.trim();
+      if (!value) { name.focus(); return; }
+      self.workspaceAction(rec, {op: "rename", id: self.workspaceValue(rec).selected, name: value});
+    });
+    remove.addEventListener("click", function () { self.workspaceAction(rec, {op: "delete", id: self.workspaceValue(rec).selected}); });
+    row.appendChild(name); row.appendChild(save); row.appendChild(rename); row.appendChild(remove);
+    root.appendChild(row);
+    var status = el("p", {class: "pui-workspace-status", role: "status", "aria-live": "polite", hidden: true});
+    root.appendChild(status);
+    var rec = {block: block, path: path, root: root, list: list, name: name, save: save, rename: rename, remove: remove, status: status, options: options, labels: labels, text: text, self: self};
+    this.workspaceRecords.push(rec);
+    this.workspaceRefresh(rec);
+    return root;
+  };
+
+  Renderer.prototype.bindingValue = function (rec) {
+    var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
+    if (!isObject(value)) value = {};
+    var control = value.control;
+    var controlText = "";
+    if (isObject(control)) controlText = String(control.label || [control.source, control.type, control.number].filter(function (part) { return part !== undefined && part !== ""; }).join(" "));
+    else if (control !== undefined && control !== null) controlText = String(control);
+    var error = String(value.error || "");
+    var conflict = String(value.conflict || "");
+    var state = value.learning === true ? "learning" : (error || conflict ? "error" : (controlText ? "bound" : "unbound"));
+    return {label: String(value.label || rec.block.label || rec.text("title", "Binding")), target: String(value.target || ""), control: controlText,
+      value: value.value, valueText: value.valueText !== undefined ? String(value.valueText) : (value.value !== undefined ? String(value.value) : ""),
+      state: String(value.state || state), learning: value.learning === true, error: error, conflict: conflict, disabled: value.disabled === true,
+      canLearn: value.canLearn !== false, canClear: value.canClear !== false && !!controlText};
+  };
+
+  Renderer.prototype.bindingAction = function (rec, intent) {
+    if (typeof this.adapter.bindingAction === "function") {
+      try { return this.adapter.bindingAction(intent, rec.value, rec.block); }
+      catch (error) { this.adapter.announce("error", "Binding action failed: " + String(error && error.message || error)); return false; }
+    }
+    this.adapter.announce("warning", "The host does not expose binding actions.");
+    return false;
+  };
+
+  Renderer.prototype.bindingRefresh = function (rec, update) {
+    var data = this.bindingValue(rec);
+    if (isObject(update)) data = Object.assign({}, data, update);
+    rec.value = data;
+    rec.bindingLabel.textContent = data.label;
+    rec.target.textContent = data.target;
+    rec.target.hidden = !data.target;
+    rec.control.textContent = data.control || rec.text("unbound", "Not bound");
+    rec.valueText.textContent = data.valueText;
+    rec.valueText.hidden = !data.valueText;
+    rec.learn.textContent = data.learning ? rec.text("cancel", "Cancel") : rec.text("learn", "Learn");
+    rec.learn.disabled = data.disabled || (data.learning ? false : !data.canLearn);
+    rec.learn.setAttribute("aria-busy", data.learning ? "true" : "false");
+    rec.clear.disabled = data.disabled || !data.canClear || data.learning;
+    rec.root.setAttribute("data-state", data.state);
+    var message = data.error || data.conflict || (data.learning ? rec.text("move", "Move a control to learn…") : "");
+    rec.status.textContent = message;
+    rec.status.hidden = !message;
+    rec.status.setAttribute("data-tone", data.error || data.conflict ? "error" : data.learning ? "info" : "");
+  };
+
+  Renderer.prototype.buildBinding = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var options = isObject(block.binding_options) ? block.binding_options : {};
+    var labels = isObject(options.labels) ? options.labels : {};
+    var text = function (key, fallback) { return String(labels[key] || self.t("binding." + key, fallback)); };
+    var root = el("section", {class: "pui-binding", "data-pui-binding": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Binding"))});
+    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, unsubscribe: null};
+    var head = el("div", {class: "pui-binding-head"});
+    var label = el("span", {class: "pui-binding-label"});
+    var target = el("span", {class: "pui-binding-target"});
+    head.appendChild(label); head.appendChild(target);
+    root.appendChild(head);
+    var row = el("div", {class: "pui-binding-controls"});
+    var control = el("output", {class: "pui-binding-control", "aria-live": "polite"});
+    var valueText = el("output", {class: "pui-binding-value"});
+    var learn = el("button", {type: "button", class: "pui-button pui-primary", text: text("learn", "Learn")});
+    var clear = el("button", {type: "button", class: "pui-button", text: text("clear", "Clear")});
+    learn.addEventListener("click", function () {
+      var value = self.bindingValue(rec);
+      self.bindingAction(rec, {op: value.learning ? "cancel" : "learn", target: value.target});
+    });
+    clear.addEventListener("click", function () { self.bindingAction(rec, {op: "clear"}); });
+    row.appendChild(control); row.appendChild(valueText); row.appendChild(learn); row.appendChild(clear);
+    root.appendChild(row);
+    var status = el("p", {class: "pui-binding-status", role: "status", "aria-live": "polite", hidden: true});
+    root.appendChild(status);
+    rec.bindingLabel = label; rec.target = target; rec.control = control; rec.valueText = valueText; rec.learn = learn; rec.clear = clear; rec.status = status;
+    if (typeof this.adapter.subscribeBindings === "function") {
+      try { rec.unsubscribe = this.adapter.subscribeBindings(path, function (data) { if (isObject(data)) self.bindingRefresh(rec, data); }); } catch (error) {}
+    }
+    this.bindingRecords.push(rec);
+    this.bindingRefresh(rec);
+    return root;
+  };
+
   Renderer.prototype.buildDialog = function (block) {
     var self = this;
     var root = el("section", {class: "pui-dialog-block", "data-pui-dialog": String(block.id || "")});
@@ -5107,7 +5597,8 @@
       error: String(value.error || ""),
       fit: String(value.fit || "contain").toLowerCase(),
       compare: compare ? {src: String(compare.src || compare.url || ""), label: String(compare.label || rec.text("compare", "Compare"))} : null,
-      overlay: isObject(value.overlay) ? {src: String(value.overlay.src || value.overlay.url || ""), opacity: Number(value.overlay.opacity) || 0.5} : null
+      overlay: isObject(value.overlay) ? {src: String(value.overlay.src || value.overlay.url || ""), opacity: Number(value.overlay.opacity) || 0.5} : null,
+      guides: isObject(value.guides) ? value.guides : (isObject(rec.options.guides) ? rec.options.guides : null)
     };
   };
 
@@ -5160,6 +5651,13 @@
       rec.compareButton.textContent = rec.showCompare ? rec.text("live", "Show live") : (data.compare.label || rec.text("compare", "Compare"));
       rec.compareButton.setAttribute("aria-pressed", rec.showCompare ? "true" : "false");
     }
+    var guides = data.guides || {};
+    var guideClass = "pui-preview-guides";
+    if (guides.safe === true) guideClass += " is-safe";
+    if (guides.thirds === true) guideClass += " is-thirds";
+    if (guides.crosshair === true) guideClass += " is-crosshair";
+    rec.guides.className = guideClass;
+    rec.guides.hidden = !(guides.safe || guides.thirds || guides.crosshair) || rec.showCompare;
     rec.overlay.hidden = !data.overlay || !data.overlay.src || rec.showCompare;
     if (data.overlay && data.overlay.src) {
       rec.overlay.setAttribute("src", data.overlay.src);
@@ -5186,11 +5684,12 @@
     var viewport = el("figure", {class: "pui-preview-viewport"});
     var media = el("img", {class: "pui-preview-media", alt: text("alt", "Preview")});
     var overlay = el("img", {class: "pui-preview-overlay", alt: "", "aria-hidden": "true"});
-    viewport.appendChild(media); viewport.appendChild(overlay);
+    var guides = el("div", {class: "pui-preview-guides", "aria-hidden": "true"});
+    viewport.appendChild(media); viewport.appendChild(guides); viewport.appendChild(overlay);
     root.appendChild(viewport);
     var state = el("p", {class: "pui-preview-state", role: "status", "aria-live": "polite"});
     root.appendChild(state);
-    var rec = {block: block, path: path, value: null, root: root, viewport: viewport, media: media, mediaKind: "image", overlay: overlay, state: state, fit: fit, compareButton: compareButton, refresh: refresh, showCompare: false, unsubscribe: null, labels: labels, text: text, alt: text("alt", "Preview")};
+    var rec = {block: block, path: path, value: null, root: root, viewport: viewport, media: media, mediaKind: "image", overlay: overlay, guides: guides, state: state, fit: fit, compareButton: compareButton, refresh: refresh, showCompare: false, unsubscribe: null, labels: labels, text: text, alt: text("alt", "Preview"), options: options};
     fit.addEventListener("change", function () { self.previewAction(rec, {op: "fit", value: fit.value}); });
     compareButton.addEventListener("click", function () {
       rec.showCompare = !rec.showCompare;
@@ -6679,7 +7178,22 @@
       if (field.placeholder) pathInput.setAttribute("placeholder", String(field.placeholder));
       pathInput.value = valueText(this.value(rec), field);
       pathInput.addEventListener("change", function () { self.writeRecord(rec, pathInput.value); });
+      rec.control = pathInput;
       rec.inputs = [pathInput];
+      if (field.browse) {
+        var browse = el("button", {type: "button", class: "pui-button pui-path-browse", text: String(field.browse_label || self.t("field.browse", "Browse…"))});
+        browse.addEventListener("click", function () {
+          if (typeof self.adapter.filePick === "function") {
+            try { self.adapter.filePick({op: "pick", kind: "path", path: path, block: field}, self.value(rec), field); }
+            catch (error) { self.adapter.announce("error", "File picker failed: " + String(error && error.message || error)); }
+          } else {
+            self.adapter.announce("warning", "The host does not expose a file picker.");
+          }
+        });
+        var pathWrap = el("div", {class: "pui-path-field"}, pathInput, browse);
+        rec.inputs = [pathInput, browse];
+        return pathWrap;
+      }
       return pathInput;
     }
     if (widget === "select") {
@@ -7117,6 +7631,19 @@
       keyRec.handler = null;
     }
     this.keyCaptureRecords = [];
+    for (var b = 0; b < this.bindingRecords.length; b++) {
+      if (this.bindingRecords[b].unsubscribe) { try { this.bindingRecords[b].unsubscribe(); } catch (error) {} }
+    }
+    this.bindingRecords = [];
+    this.workspaceRecords = [];
+    for (var mt = 0; mt < this.mediaTimelineRecords.length; mt++) {
+      if (this.mediaTimelineRecords[mt].unsubscribe) { try { this.mediaTimelineRecords[mt].unsubscribe(); } catch (error) {} }
+    }
+    this.mediaTimelineRecords = [];
+    for (var f = 0; f < this.favoriteRecords.length; f++) {
+      if (this.favoriteRecords[f].unsubscribe) { try { this.favoriteRecords[f].unsubscribe(); } catch (error) {} }
+    }
+    this.favoriteRecords = [];
     this.dialogRecords = [];
     this.schemaFormRecords = [];
   };
@@ -7133,6 +7660,19 @@
     this.transportRecords = [];
     this.meterRecords = [];
     this.keyCaptureRecords = [];
+    for (var b = 0; b < this.bindingRecords.length; b++) {
+      if (this.bindingRecords[b].unsubscribe) { try { this.bindingRecords[b].unsubscribe(); } catch (error) {} }
+    }
+    this.bindingRecords = [];
+    this.workspaceRecords = [];
+    for (var mt = 0; mt < this.mediaTimelineRecords.length; mt++) {
+      if (this.mediaTimelineRecords[mt].unsubscribe) { try { this.mediaTimelineRecords[mt].unsubscribe(); } catch (error) {} }
+    }
+    this.mediaTimelineRecords = [];
+    for (var f = 0; f < this.favoriteRecords.length; f++) {
+      if (this.favoriteRecords[f].unsubscribe) { try { this.favoriteRecords[f].unsubscribe(); } catch (error) {} }
+    }
+    this.favoriteRecords = [];
     this.dialogRecords = [];
     this.schemaFormRecords = [];
   };
@@ -9590,6 +10130,18 @@
     }
     for (var kc = 0; kc < this.keyCaptureRecords.length; kc++) {
       this.keyCaptureRefresh(this.keyCaptureRecords[kc]);
+    }
+    for (var bd = 0; bd < this.bindingRecords.length; bd++) {
+      this.bindingRefresh(this.bindingRecords[bd]);
+    }
+    for (var ws = 0; ws < this.workspaceRecords.length; ws++) {
+      this.workspaceRefresh(this.workspaceRecords[ws]);
+    }
+    for (var mt = 0; mt < this.mediaTimelineRecords.length; mt++) {
+      this.mediaTimelineRefresh(this.mediaTimelineRecords[mt]);
+    }
+    for (var fv = 0; fv < this.favoriteRecords.length; fv++) {
+      this.favoriteRefresh(this.favoriteRecords[fv]);
     }
     for (var dl = 0; dl < this.dialogRecords.length; dl++) {
       this.dialogRecords[dl].render();
