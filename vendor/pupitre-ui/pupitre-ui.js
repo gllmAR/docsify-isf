@@ -310,6 +310,12 @@
     this.drawerRecords = [];
     this.codeRecords = [];
     this.slots = {};
+    // compatibility with the 1.7 `create({slots})` form: registerSlot() is the
+    // preferred API, but an old host must not silently lose every custom slot
+    if (isObject(options.slots)) {
+      var initialSlots = options.slots;
+      Object.keys(initialSlots).forEach(function (name) { this.slots[String(name)] = initialSlots[name]; }, this);
+    }
     this.slotInstances = [];
     this.customRecords = [];
     this.doc = null;
@@ -4122,6 +4128,10 @@
     outline.appendChild(list);
     root.appendChild(outline);
     this.canvasApplyView(rec);
+    if (options.fit_on_mount === true) {
+      // the viewport has no useful size until the host has inserted the node
+      setTimeout(function () { if (rec.viewport) self.canvasFit(rec); }, 0);
+    }
     try { rec.__valueSignature = JSON.stringify(rec.value); } catch (error) { rec.__valueSignature = null; }
     return root;
   };
