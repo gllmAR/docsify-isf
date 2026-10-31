@@ -259,7 +259,8 @@ stack.
 The host header remains only as the pre-load/failure fallback; the code editor
 and stage remain host surfaces. The header toggle exposes `aria-pressed`; the
 drawer owns focus, Escape and close; the transport is driven through PUI
-bindings.
+bindings. `params:"auto"` only auto-opens the inspector for the viewer in view,
+and never steals it from another open viewer.
 
 ## OBS / fullscreen link
 

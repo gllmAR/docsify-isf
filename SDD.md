@@ -393,8 +393,9 @@ carries the shader name; its PUI toolbar switches Parameters/Source and owns
 the More menu; the active parameters/editor surface and the PUI transport
 follow. Parameters and Source are PUI custom slots around host surfaces (the
 ISF fields document and the GLSL editor/import). `params: auto|open|closed`
-controls the initial open state (auto opens up to `paramsOpenLimit` inputs) on
-the Parameters view.
+controls the initial open state (auto only opens the in-view viewer and never
+steals the drawer from another viewer, up to `paramsOpenLimit` inputs) on the
+Parameters view.
 
 | Surface | Control | Keys | Persisted |
 |---|---|---|---|

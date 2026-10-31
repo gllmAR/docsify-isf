@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.29.0
+ * docsify-isf v1.29.1
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.29.0";
+    var VERSION = "1.29.1";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5455,6 +5455,9 @@
             ".isf-inspector-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
             ".isf-inspector-pui .pui-drawer-trigger{display:none}",
             ".isf-inspector-pui .pui-drawer-panel{position:absolute;inset:8px 8px 8px auto;width:min(460px,calc(100% - 16px));max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:var(--isf-drawer-bg)!important;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
+            "@keyframes isf-pui-drawer-in{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}",
+            ".isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-drawer-in .18s ease both}",
+            "@media (prefers-reduced-motion:reduce){.isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
             ".isf-inspector-pui .pui-drawer-head{padding:.55rem .7rem;background:var(--isf-surface);border-bottom:1px solid var(--isf-border)}",
             ".isf-inspector-pui .pui-drawer-head h4{margin:0;font-size:.8rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-inspector-pui .pui-drawer-close{width:30px;height:30px;border-radius:6px;color:var(--isf-muted)}",
@@ -5751,10 +5754,11 @@
         eye: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
         chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         more: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>',
+        help: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5.1.7c0 1.5-1.2 2.1-2.1 2.7-.5.3-.8.7-.8 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="12" cy="17" r="1.1" fill="currentColor"/></svg>',
         inspector: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9 4v16" stroke="currentColor" stroke-width="2"/></svg>'
     };
 
-    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more", "inspector"];
+    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more", "help", "inspector"];
     var HEADER_ICONS = {};
     HEADER_ICON_NAMES.forEach(function (name) {
         HEADER_ICONS[name] = function () {
@@ -8749,7 +8753,7 @@
                     {id: "reset", label: "Reset parameters", icon: "reset", call: "isf.reset"},
                     {id: "share", label: "Copy OBS link", icon: "share", call: "isf.share"},
                     {kind: "separator"},
-                    {id: "help", label: "Keyboard shortcuts", icon: "more", call: "isf.help"},
+                    {id: "help", label: "Keyboard shortcuts", icon: "help", call: "isf.help"},
                     {kind: "link", id: "source-file", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source"}
                 ]
             });
@@ -8992,7 +8996,15 @@
             else if (config.params === "closed") open = false;
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
             if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
-            if (!viewer.drawerTouched) viewer.setDrawer(null, open);
+            if (!viewer.drawerTouched) {
+                // Auto-open only the viewer currently in view, never every
+                // viewer on the page. A second auto-open must not steal the
+                // inspector from an already open, contextual viewer.
+                var canAutoOpen = open && viewer.visible &&
+                    (!window.__isfActiveInspector || window.__isfActiveInspector === viewer);
+                if (canAutoOpen) viewer.setDrawer(null, true);
+                else if (!open) viewer.setDrawer(null, false);
+            }
         };
 
         /* ----------------------------------------------------- loading */

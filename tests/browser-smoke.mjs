@@ -231,6 +231,18 @@ try {
         problems.push("viewers never reached a terminal state: " + JSON.stringify(stuck));
     }
 
+    // Auto-open is contextual: at most the visible viewer gets an inspector,
+    // never every viewer on the page.
+    const autoOpen = await page.evaluate(() => {
+        const open = Array.from(document.querySelectorAll(".isf-block")).filter((block) => {
+            const panel = window.isfInspectorPanel(block);
+            return panel && !panel.hidden;
+        });
+        return { count: open.length, inStages: open.every((block) => block.querySelector(".isf-stage").contains(window.isfInspectorPanel(block))) };
+    });
+    if (autoOpen.count > 1) problems.push("more than one inspector auto-opened: " + JSON.stringify(autoOpen));
+    if (!autoOpen.inStages) problems.push("an auto-opened inspector is not anchored in its viewer stage");
+
     // The global status line is a PUI statusbar once the toolkit loads.
     const statusPUI = await page.evaluate(() => {
         const bars = Array.from(document.querySelectorAll(".isf-status .pui-statusbar"));
