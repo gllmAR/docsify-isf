@@ -1046,7 +1046,13 @@
       node.setAttribute("aria-labelledby", paneId + "-title");
       node.appendChild(el("div", {class: "pui-workbench-pane-title", id: paneId + "-title", text: paneTitle}));
       var content = el("div", {class: "pui-workbench-pane-content"});
-      groups[region].forEach(function (section, index) { content.appendChild(self.buildSection(section, self._pageRecordIndex, index)); });
+      groups[region].forEach(function (section, index) {
+        content.appendChild(self.buildSection(section, self._pageRecordIndex, index, {
+          foldable: region === "stage" ? section.foldable === true : section.foldable !== false,
+          pageId: pageId,
+          region: region
+        }));
+      });
       node.appendChild(content);
       rec.panes[region] = node;
       return {node: node, id: paneId, title: paneTitle};
@@ -1146,7 +1152,13 @@
       self.workbenchToggle(rec, region);
     });
     var updateNarrow = function () {
-      var narrow = typeof window !== "undefined" && (window.innerWidth || 1200) < 900;
+      var viewportWidth = typeof window !== "undefined" ? (window.innerWidth || 1200) : 1200;
+      var bodyWidth = wb.clientWidth || viewportWidth;
+      var availableStage = bodyWidth - rec.widths.left - rec.widths.right;
+      // an empty stage is not a layout: 900 px was not enough for a 360 px
+      // editor pane plus a 380 px inspector, and exactly 900 px escaped the
+      // old breakpoint. Use the actual remaining width, not only the viewport.
+      var narrow = viewportWidth <= 900 || availableStage < 360;
       if (narrow === rec.narrow) return;
       var enteringNarrow = narrow && !rec.narrow;
       rec.narrow = narrow;
@@ -1193,13 +1205,37 @@
     return true;
   };
 
-  Renderer.prototype.buildSection = function (section, pageIndex, sectionIndex) {
+  Renderer.prototype.buildSection = function (section, pageIndex, sectionIndex, options) {
     this._sectionRecordIndex = this.sectionRecords.length;
     var embedded = !!this._pageEmbedded;
     var id = this.id("section-title");
     var sectionEl = el("section", {class: "pui-section", "data-pui-section": String(section.id || ""), tabindex: "-1"});
     var sectionTitle = String(section.title || section.id || "Section");
-    if (!embedded) {
+    var foldable = !embedded && !!(options && options.foldable);
+    var sectionBody = null;
+    if (foldable) {
+      var bodyId = this.id("section-body");
+      var foldKey = "pui.workbench." + String(options.pageId || "") + "." + String(options.region || "") + ".section." + String(section.id || sectionIndex) + ".folded";
+      var folded = false;
+      try { folded = !!(window.localStorage && window.localStorage.getItem(foldKey) === "1"); } catch (error) { folded = false; }
+      var title = el("h3", {id: id});
+      var toggle = el("button", {type: "button", class: "pui-section-toggle", "aria-expanded": folded ? "false" : "true", "aria-controls": bodyId});
+      toggle.appendChild(el("span", {class: "pui-section-chevron", "aria-hidden": "true", text: "▾"}));
+      toggle.appendChild(el("span", {text: sectionTitle}));
+      title.appendChild(toggle);
+      sectionEl.appendChild(title);
+      sectionEl.setAttribute("aria-labelledby", id);
+      sectionBody = el("div", {class: "pui-section-body", id: bodyId});
+      var setFolded = function (next) {
+        sectionBody.hidden = next;
+        sectionEl.classList.toggle("is-folded", next);
+        toggle.setAttribute("aria-expanded", next ? "false" : "true");
+        try { if (window.localStorage) window.localStorage.setItem(foldKey, next ? "1" : "0"); } catch (error) { /* private mode */ }
+      };
+      if (folded) setFolded(true);
+      toggle.addEventListener("click", function () { setFolded(!sectionBody.hidden); });
+      sectionEl.appendChild(sectionBody);
+    } else if (!embedded) {
       sectionEl.appendChild(el("h3", {id: id, text: sectionTitle}));
       sectionEl.setAttribute("aria-labelledby", id);
     } else {
@@ -1208,7 +1244,7 @@
     var sectionHelp = null;
     if (section.help) {
       sectionHelp = el("p", {class: "pui-help", text: String(section.help)});
-      sectionEl.appendChild(sectionHelp);
+      (sectionBody || sectionEl).appendChild(sectionHelp);
     }
     var body = el("div", {class: "pui-fields"});
     var columns = section.layout && section.layout.columns || 1;
@@ -1219,9 +1255,9 @@
       if (blockEl && blockEl.setAttribute && block && typeof block.kind === "string") blockEl.setAttribute("data-pui-kind", block.kind);
       body.appendChild(blockEl);
     }
-    sectionEl.appendChild(body);
-    if (isArray(section.actions) && section.actions.length) sectionEl.appendChild(this.buildActions(section.actions));
-    if (isArray(section.presets) && section.presets.length) sectionEl.appendChild(this.buildActions(section.presets, "preset"));
+    (sectionBody || sectionEl).appendChild(body);
+    if (isArray(section.actions) && section.actions.length) (sectionBody || sectionEl).appendChild(this.buildActions(section.actions));
+    if (isArray(section.presets) && section.presets.length) (sectionBody || sectionEl).appendChild(this.buildActions(section.presets, "preset"));
     this.sectionRecords.push({element: sectionEl, block: section, helpEl: sectionHelp, pageRecordIndex: this._pageRecordIndex, visible: true, enabled: true});
     return sectionEl;
   };
