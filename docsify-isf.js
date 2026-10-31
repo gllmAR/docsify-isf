@@ -5458,11 +5458,13 @@
             ".isf-inspector-pui .pui-drawer-head{padding:.55rem .7rem;background:var(--isf-surface);border-bottom:1px solid var(--isf-border)}",
             ".isf-inspector-pui .pui-drawer-head h4{margin:0;font-size:.8rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-inspector-pui .pui-drawer-close{width:30px;height:30px;border-radius:6px;color:var(--isf-muted)}",
-            ".isf-inspector-pui .pui-drawer-body{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;min-height:0}",
+            ".isf-inspector-pui .pui-drawer-body{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:0;overflow:hidden;min-height:0}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar{grid-row:1;grid-column:1}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-transport{grid-row:3;grid-column:1}",
             ".isf-inspector-pui .pui-drawer-body > .pui-toolbar{position:relative;z-index:6;flex:0 0 auto;padding:.35rem .55rem;border:0;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
             ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:30px;font-size:.74rem}",
             ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-menu-popup{z-index:90}",
-            ".isf-inspector-pui .pui-slot{flex:1 1 auto;min-height:0;overflow:auto}",
+            ".isf-inspector-pui .pui-slot{grid-row:2;grid-column:1;min-height:0;overflow:auto}",
             ".isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .7rem .4rem}",
             ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex-direction:column;overflow:hidden;padding:0}",
             ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor] .isf-editor-wrap{flex:1 1 auto;height:100%;min-height:0}",
@@ -5605,6 +5607,7 @@
             "/* bare mode: a self-contained fullscreen viewer for OBS browser sources */",
             ".isf-block.isf-bare{position:fixed;inset:0;margin:0;border:0;border-radius:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;contain:none;box-shadow:none}",
             ".isf-bare:not(.isf-revealed) .isf-header,.isf-bare:not(.isf-revealed) .isf-status,.isf-bare:not(.isf-revealed) .isf-drawer{display:none!important}",
+            ".isf-bare:not(.isf-revealed) .isf-inspector-pui{display:none!important}",
             ".isf-bare .isf-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr)!important;min-height:0}",
             ".isf-bare .isf-stage{height:100%!important;min-height:0;aspect-ratio:auto!important}",
             ".isf-reveal-btn{position:absolute;right:10px;bottom:10px;z-index:2147483002;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:9px;border:1px solid rgba(255,255,255,.18);background:rgba(12,13,16,.55);color:#e7e9ee;opacity:0;cursor:pointer;transition:opacity .16s ease;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}",
@@ -8073,8 +8076,8 @@
         }
         function focusInspectorTrigger() {
             setTimeout(function () {
-                if (isFullscreenActive() && viewer.dom.fullscreenHint) {
-                    try { viewer.dom.fullscreenHint.focus(); } catch (error) { /* ignore */ }
+                if (isFullscreenActive() && viewer.dom.canvas) {
+                    try { viewer.dom.canvas.focus(); } catch (error) { /* ignore */ }
                     return;
                 }
                 var trigger = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="controls"]');
@@ -8863,22 +8866,6 @@
                 kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
                 a11y: {name: "Render statistics"},
                 collapse: false
-            }, {
-                kind: "menu", id: "actions", label: "Viewer actions", title: "Viewer actions",
-                icon: "more", icon_only: true, collapse: false, items: [{
-                    id: "play", label_bind: "/isf/ui/playLabel", title_bind: "/isf/ui/playLabel",
-                    icon_bind: "/isf/ui/playIcon", call: "isf.play"
-                }, {
-                    id: "reset", label: "Reset parameters", icon: "reset",
-                    title: "Reset parameters and time", call: "isf.reset"
-                }, {
-                    id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel",
-                    title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen",
-                    call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen"
-                }, {
-                    id: "share", label: "Copy OBS link", icon: "share",
-                    title: "Copy a fullscreen link for OBS", call: "isf.share"
-                }]
             }];
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
