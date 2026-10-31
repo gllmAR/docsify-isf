@@ -982,3 +982,15 @@
 .pui-favorite-empty { color: var(--pui-muted); font-size: 0.7rem; }
 .pui-favorite-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .pui-favorite-status { margin: 0; color: var(--pui-danger); font-size: 0.7rem; }
+
+/* Compact graph: the patch follows the same density profile as its inspector.
+   Geometry comes from Renderer.graphMetrics(); these rules only paint it. */
+.pui[data-density="compact"] .pui-graph-node { border-radius: 3px; box-shadow: none; }
+.pui[data-density="compact"] .pui-graph-node.is-selected { box-shadow: 0 0 0 2px var(--pui-accent); }
+.pui[data-density="compact"] .pui-graph-node-head { min-height: 20px; padding: 0 6px; }
+.pui[data-density="compact"] .pui-graph-node-title { font-size: 0.68rem; }
+.pui[data-density="compact"] .pui-graph-node-type { font-size: 0.55rem; }
+.pui[data-density="compact"] .pui-graph-ports { padding: 0 6px; }
+.pui[data-density="compact"] .pui-graph-port-row { height: 16px; gap: 4px; font-size: 0.58rem; }
+.pui[data-density="compact"] .pui-graph-params { max-height: 48px; padding: 0 6px 4px; }
+.pui[data-density="compact"] .pui-graph-param-line { min-height: 16px; }

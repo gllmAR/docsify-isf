@@ -1281,6 +1281,17 @@
   /** Read-only G-2 graph renderer: DOM nodes + SVG cables + frames + outline.
    * The host owns the graph value and edits; this renderer owns geometry,
    * pan/zoom, focus and the accessible outline. */
+  /** Geometry for the graph viewport. Density is a renderer profile, not a
+   * document property; compact must tighten the patch itself as well as the
+   * surrounding inspector. */
+  Renderer.prototype.graphMetrics = function () {
+    if (this.density === "compact") {
+      return {nodeWidth: 156, headerHeight: 20, portRowHeight: 16, pad: 4, paramRows: 2};
+    }
+    var Graph = global.PupitreGraph;
+    return Graph && Graph.DEFAULTS ? Graph.DEFAULTS : {nodeWidth: 156, headerHeight: 26, portRowHeight: 18, pad: 8, paramRows: 2};
+  };
+
   Renderer.prototype.buildGraph = function (block, navStack) {
     var self = this;
     var Graph = global.PupitreGraph;
@@ -1361,7 +1372,8 @@
       nodeEls: {}, cableRefs: [], selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      viewport: viewport, content: content, cableGroup: cableGroup};
+      viewport: viewport, content: content, cableGroup: cableGroup,
+      metrics: self.graphMetrics()};
     this.graphRecords.push(rec);
     rec.head = head;
     rec.bookmarkBar = el("div", {class: "pui-graph-bookmarks", "aria-label": "Camera bookmarks"});
@@ -1408,7 +1420,7 @@
       if (!isObject(node)) return;
       var id = String(node.id || "");
       var type = typeMap[String(node.type)] || null;
-      var rect = Graph.nodeRect(node, type);
+      var rect = Graph.nodeRect(node, type, rec.metrics);
       var nodeEl = el("div", {
         class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : ""),
         "data-node-id": id,
@@ -1431,7 +1443,8 @@
       var ports = el("div", {class: "pui-graph-ports"});
       inputs.forEach(function (port, index) {
         var portType = String(port.type || "tex");
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + (26 + index * 18 + 4) + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, tabindex: "0", role: "button"});
+        var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, tabindex: "0", role: "button"});
         dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
         dot.title = "Input · " + portType;
         rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
@@ -1446,7 +1459,8 @@
       });
       outputs.forEach(function (port, index) {
         var portType = String(port.type || "tex");
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + (26 + index * 18 + 4) + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, tabindex: "0", role: "button"});
+        var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, tabindex: "0", role: "button"});
         dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
         dot.title = "Output · " + portType;
         rec.portEls[id + ":output:" + String(port.id)] = {el: dot, type: portType, isInput: false};
@@ -1547,8 +1561,8 @@
       if (!from || !to || !nodeEls[from.node] || !nodeEls[to.node]) return;
       var fromNode = nodes.find(function (node) { return String(node.id) === from.node; });
       var toNode = nodes.find(function (node) { return String(node.id) === to.node; });
-      var a = Graph.portPosition(fromNode, typeMap[String(fromNode.type)], from.port, false);
-      var b = Graph.portPosition(toNode, typeMap[String(toNode.type)], to.port, true);
+      var a = Graph.portPosition(fromNode, typeMap[String(fromNode.type)], from.port, false, rec.metrics);
+      var b = Graph.portPosition(toNode, typeMap[String(toNode.type)], to.port, true, rec.metrics);
       if (!a || !b) return;
       var p = Graph.cablePath(a, b);
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
@@ -1619,7 +1633,7 @@
         rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-frame", x: Number(frame.x) || 0, y: Number(frame.y) || 0, width: Number(frame.w) || 0, height: Number(frame.h) || 0}));
       });
       (rec.graph.nodes || []).forEach(function (node) {
-        var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+        var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
         rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-node", x: rect.x, y: rect.y, width: rect.w, height: rect.h}));
       });
       var vw = viewport.clientWidth || 800, vh = viewport.clientHeight || 500;
@@ -1632,6 +1646,7 @@
       content.style.transform = "translate(" + view.panX + "px," + view.panY + "px) scale(" + view.zoom + ")";
       if (cableGroup.getAttribute("transform")) cableGroup.removeAttribute("transform");
       if (rec.renderMinimap) rec.renderMinimap();
+      self.graphCull(rec);
     }
     applyView();
     minimap.addEventListener("pointerdown", function (event) {
@@ -1796,7 +1811,7 @@
         if (box) {
           var ids = [];
           rec.graph.nodes.forEach(function (node) {
-            var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+            var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
             if (rect.x + rect.w >= box.x1 && rect.x <= box.x2 && rect.y + rect.h >= box.y1 && rect.y <= box.y2) ids.push(String(node.id));
           });
           self.graphSetSelection(rec, ids);
@@ -1919,13 +1934,13 @@
     var selected = {};
     (ids || []).forEach(function (id) { selected[String(id)] = true; });
     var moving = (snapshot.nodes || []).filter(function (node) { return selected[String(node.id)]; }).map(function (node) {
-      return {node: node, rect: Graph.nodeRect(node, rec.typeMap[String(node.type)])};
+      return {node: node, rect: Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics)};
     });
     if (!moving.length) return null;
     var staticX = [], staticY = [];
     (rec.graph.nodes || []).forEach(function (node) {
       if (selected[String(node.id)]) return;
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
       staticX.push(rect.x, rect.x + rect.w / 2, rect.x + rect.w);
       staticY.push(rect.y, rect.y + rect.h / 2, rect.y + rect.h);
     });
@@ -2001,7 +2016,7 @@
     if (!nodes.length) return false;
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     nodes.forEach(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
       x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
       x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
     });
@@ -2047,7 +2062,7 @@
       return (rec.graph.nodes || []).filter(function (node) { return wanted[String(node.id)]; });
     }
     return (rec.graph.nodes || []).filter(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
       var cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
       return cx >= Number(frame.x) && cx <= Number(frame.x) + Number(frame.w) && cy >= Number(frame.y) && cy <= Number(frame.y) + Number(frame.h);
     });
@@ -2061,7 +2076,7 @@
     if (!Graph || !ids.length) return null;
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     nodes.forEach(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
       x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
       x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
     });
@@ -2108,6 +2123,46 @@
       frames: deepClone(rec.graph.frames || []),
       output: rec.graph.output
     };
+  };
+
+  /** Optional visual culling: graph content outside the viewport (plus a
+   * margin) is removed from layout/paint. The DOM stays in place so cables,
+   * selection, focus and the host model are unchanged. Opt in with
+   * `graph_options.culling:true`; `cull_margin` defaults to 240 graph units. */
+  Renderer.prototype.graphCull = function (rec) {
+    if (!rec || !rec.graphOptions || rec.graphOptions.culling !== true || !rec.viewport) return;
+    var Graph = global.PupitreGraph;
+    if (!Graph) return;
+    var view = rec.view || {zoom: 1, panX: 0, panY: 0};
+    var margin = Number(rec.graphOptions.cull_margin);
+    if (!isFinite(margin) || margin < 0) margin = 240;
+    var vw = rec.viewport.clientWidth || 800, vh = rec.viewport.clientHeight || 500;
+    var x1 = -view.panX / view.zoom - margin, y1 = -view.panY / view.zoom - margin;
+    var x2 = x1 + vw / view.zoom + margin * 2, y2 = y1 + vh / view.zoom + margin * 2;
+    var visible = {};
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var on = rect.x + rect.w >= x1 && rect.x <= x2 && rect.y + rect.h >= y1 && rect.y <= y2;
+      visible[id] = on;
+      var el = rec.nodeEls[id];
+      if (el) el.style.display = on || rec.selected[id] ? "" : "none";
+    });
+    (rec.graph.frames || []).forEach(function (frame) {
+      if (!isObject(frame)) return;
+      var el = rec.frameEls[String(frame.id || "")];
+      if (!el) return;
+      var on = Number(frame.x) + Number(frame.w) >= x1 && Number(frame.x) <= x2
+        && Number(frame.y) + Number(frame.h) >= y1 && Number(frame.y) <= y2;
+      el.style.display = on ? "" : "none";
+    });
+    (rec.cableRefs || []).forEach(function (entry) {
+      if (!entry || !entry.el || !entry.cable) return;
+      var from = Graph.parseRef(entry.cable.from), to = Graph.parseRef(entry.cable.to);
+      var on = (from && visible[from.node] !== false) || (to && visible[to.node] !== false);
+      entry.el.style.display = on ? "" : "none";
+    });
   };
 
   Renderer.prototype.graphRenderPresets = function (rec) {
@@ -2718,7 +2773,7 @@
     if (!Graph || isInput || rec.block.readonly) return;
     var node = (rec.graph.nodes || []).find(function (n) { return String(n.id) === String(nodeId); });
     if (!node) return;
-    var point = Graph.portPosition(node, rec.typeMap[String(node.type)], portId, false);
+    var point = Graph.portPosition(node, rec.typeMap[String(node.type)], portId, false, rec.metrics);
     if (!point) return;
     if (event && event.preventDefault) event.preventDefault();
     this.graphCancelWire(rec);
@@ -2984,7 +3039,7 @@
     rec.graph.nodes.forEach(function (node) {
       var el = rec.nodeEls[String(node.id)];
       if (!el) return;
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)]);
+      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
       if (el.setAttribute) el.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
       if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
       var title = el.querySelector ? el.querySelector(".pui-graph-node-title") : null;
@@ -3013,8 +3068,8 @@
       var fromNode = rec.graph.nodes.find(function (n) { return String(n.id) === from.node; });
       var toNode = rec.graph.nodes.find(function (n) { return String(n.id) === to.node; });
       if (!fromNode || !toNode) return;
-      var a = Graph.portPosition(fromNode, rec.typeMap[String(fromNode.type)], from.port, false);
-      var b = Graph.portPosition(toNode, rec.typeMap[String(toNode.type)], to.port, true);
+      var a = Graph.portPosition(fromNode, rec.typeMap[String(fromNode.type)], from.port, false, rec.metrics);
+      var b = Graph.portPosition(toNode, rec.typeMap[String(toNode.type)], to.port, true, rec.metrics);
       if (!a || !b) return;
       var p = Graph.cablePath(a, b);
       ref.el.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
@@ -5862,6 +5917,10 @@
       state: String(value.state || "disconnected").toLowerCase(),
       target: value.target === undefined || value.target === null ? "" : String(value.target),
       targets: isArray(value.targets) ? value.targets.filter(isObject) : [],
+      instances: isArray(value.instances) ? value.instances.filter(isObject) : [],
+      activeId: value.activeId === undefined || value.activeId === null ? "" : String(value.activeId),
+      canAddInstance: value.canAddInstance !== false,
+      canRemoveInstance: value.canRemoveInstance !== false,
       endpoint: value.endpoint === undefined ? "" : String(value.endpoint),
       error: value.error === undefined ? "" : String(value.error),
       reconnectIn: value.reconnectIn === undefined ? "" : String(value.reconnectIn),
@@ -5892,6 +5951,21 @@
     rec.badge.setAttribute("data-state", data.state);
     rec.status.textContent = data.error || (data.reconnectIn ? rec.text("reconnect", "Reconnect in") + " " + data.reconnectIn + "s" : "");
     rec.status.hidden = !rec.status.textContent;
+    if (rec.instanceSelect && rec.block.connection_options && rec.block.connection_options.instances === true) {
+      rec.instanceSelect.textContent = "";
+      data.instances.forEach(function (instance) {
+        var id = String(instance.id === undefined ? instance.value : instance.id);
+        var option = el("option", {value: id, text: String(instance.label || instance.name || id)});
+        if (id === data.activeId) option.selected = true;
+        rec.instanceSelect.appendChild(option);
+      });
+      if (data.activeId) rec.instanceSelect.value = data.activeId;
+      rec.instanceSelect.hidden = !data.instances.length;
+      rec.addInstance.hidden = false;
+      rec.removeInstance.hidden = !data.instances.length;
+      rec.addInstance.disabled = !data.canAddInstance;
+      rec.removeInstance.disabled = !data.canRemoveInstance || !data.activeId;
+    }
     rec.endpointInput.value = data.endpoint;
     rec.endpointInput.disabled = data.state === "connected" || data.state === "connecting" || data.state === "reconnecting";
     rec.offline.checked = data.offline;
@@ -5928,6 +6002,13 @@
     head.appendChild(badge);
     root.appendChild(head);
     var row = el("div", {class: "pui-connection-controls"});
+    var instanceSelect = el("select", {class: "pui-connection-instance", "aria-label": text("instance", "Connection instance")});
+    instanceSelect.addEventListener("change", function () { self.connectionAction(rec, {op: "instance", value: instanceSelect.value, id: instanceSelect.value}); });
+    var addInstance = el("button", {type: "button", class: "pui-button pui-connection-instance-add", text: text("add_instance", "＋")});
+    var removeInstance = el("button", {type: "button", class: "pui-button pui-connection-instance-remove", text: text("remove_instance", "✕")});
+    addInstance.addEventListener("click", function () { self.connectionAction(rec, {op: "instance.add"}); });
+    removeInstance.addEventListener("click", function () { self.connectionAction(rec, {op: "instance.remove", id: instanceSelect.value}); });
+    if (options.instances === true) { row.appendChild(instanceSelect); row.appendChild(addInstance); row.appendChild(removeInstance); }
     var endpointInput = el("input", {type: String(options.endpoint_type || "text"), class: "pui-connection-endpoint", "aria-label": text("endpoint", "Endpoint"), placeholder: String(options.endpoint_placeholder || "")});
     endpointInput.addEventListener("change", function () { self.connectionAction(rec, {op: "endpoint", value: endpointInput.value}); });
     if (options.endpoint === false) endpointInput.hidden = true;
@@ -5957,6 +6038,7 @@
     var status = el("p", {class: "pui-connection-status", role: "status", "aria-live": "polite"});
     root.appendChild(status);
     rec.badge = badge; rec.status = status; rec.endpointInput = endpointInput; rec.target = target;
+    rec.instanceSelect = instanceSelect; rec.addInstance = addInstance; rec.removeInstance = removeInstance;
     rec.connect = connect; rec.disconnect = disconnect; rec.reconnect = reconnect; rec.discover = discover;
     rec.offline = offline; rec.backLink = backLink;
     this.connectionRecords.push(rec);
