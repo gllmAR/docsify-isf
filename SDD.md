@@ -407,8 +407,9 @@ Parameters view.
 | Import | Import action | Escape returns to Source | — |
 | Playback | PUI transport in the drawer | — | — |
 
-The inspector opens from the header toggle, the fullscreen hint, H, or the
-drawer toolbar. The toggle keeps `aria-pressed` and `aria-controls`; the drawer
+The inspector opens from the header toggle at the right edge of the toolbar,
+the fullscreen hint, H, or the drawer toolbar. The toggle sits directly above
+the drawer’s right edge so the panel visibly spans from its trigger. The toggle keeps `aria-pressed` and `aria-controls`; the drawer
 is a non-modal right `region` with its own head/close and focus return. The
 drawer is positioned inside the stage on desktop; on viewports up to 600 px it
 takes the full viewport. The caret readout is dropped and the editor status is

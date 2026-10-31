@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.29.1
+ * docsify-isf v1.29.2
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.29.1";
+    var VERSION = "1.29.2";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -6973,10 +6973,6 @@
 
         viewer.buildPUIHeaderDocument = function () {
             var items = [{
-                id: "controls", label: "Inspector", icon: "inspector", icon_only: true,
-                title: "Show inspector", call: "isf.inspector",
-                pressed_bind: "/isf/ui/inspectorOpen", aria_controls: uid + "-inspector", collapse: false
-            }, {
                 kind: "link",
                 id: "title",
                 href: viewer.url || "#",
@@ -6990,6 +6986,10 @@
                 kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
                 a11y: {name: "Render statistics"},
                 collapse: false
+            }, {
+                id: "controls", label: "Inspector", icon: "inspector", icon_only: true,
+                title: "Show inspector", call: "isf.inspector",
+                pressed_bind: "/isf/ui/inspectorOpen", aria_controls: uid + "-inspector", collapse: false
             }];
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",

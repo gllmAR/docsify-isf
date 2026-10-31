@@ -835,11 +835,16 @@ try {
         await sleep(350);
         const kaleidoPanel = window.isfInspectorPanel(kaleido);
         const title = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-head h4");
+        const trigger = kaleido.querySelector('.isf-header [data-pui-item="controls"]');
+        const triggerRect = trigger.getBoundingClientRect();
+        const panelRect = kaleidoPanel.getBoundingClientRect();
         const result = {
             plasmaClosed: plasmaPanel.hidden,
             kaleidoOpen: !kaleidoPanel.hidden,
             plasmaContext: plasma.querySelector(".isf-stage").contains(plasmaPanel),
             kaleidoContext: kaleido.querySelector(".isf-stage").contains(kaleidoPanel),
+            triggerNear: Math.abs(triggerRect.right - panelRect.right) <= 24 &&
+                panelRect.top >= triggerRect.bottom - 2 && panelRect.top - triggerRect.bottom <= 24,
             title: title ? title.textContent : ""
         };
         const close = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-close");
@@ -857,6 +862,9 @@ try {
         }
         if (!/Kaleidoscope/i.test(inspectorContext.title)) {
             problems.push("the inspector lost its shader context title: " + JSON.stringify(inspectorContext.title));
+        }
+        if (!inspectorContext.triggerNear) {
+            problems.push("the inspector trigger is not anchored at the edge of its panel: " + JSON.stringify(inspectorContext));
         }
     }
 
