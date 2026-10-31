@@ -411,9 +411,9 @@ The inspector opens from the header toggle, the fullscreen hint, H, or the
 footer Parameters/Source menu. The toggle keeps `aria-pressed` and
 `aria-controls`; the host tabs keep `aria-selected` and roving focus. Width is
 clamped to 240 px…64 % of the stage; on viewports up to 600 px it takes the
-full viewport and the horizontal rail is hidden, the editor status/caret
-readout is dropped, and the toolbar/footer controls compact so the code pane
-keeps most of the height. The editor toolbar still folds to one row and the
+full viewport and the horizontal rail is hidden, the caret readout is dropped,
+the editor status is visually hidden (still an `aria-live` region), and the
+toolbar/footer controls compact so the code pane keeps most of the height. The editor toolbar still folds to one row and the
 code pane grows by the freed height. Handles are `role="separator"` with
 `aria-orientation`; persistence is opt-out via `persistLayout: false`. In
 fullscreen the inspector remains a floating card over the full-viewport render;

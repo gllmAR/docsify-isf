@@ -847,6 +847,7 @@ try {
         const heights = buttons.map((button) => button.getBoundingClientRect().height);
         return {
             viewport: window.innerWidth,
+            docWidth: document.documentElement.scrollWidth,
             blockWidth: b.getBoundingClientRect().width,
             overflow: b.scrollWidth - b.clientWidth,
             minButton: heights.length ? Math.min.apply(null, heights) : 0,
@@ -860,6 +861,7 @@ try {
     });
     if (phone.missing) problems.push("mobile: PUI header toolbar did not mount " + JSON.stringify(phone));
     if (phone.blockWidth > phone.viewport + 1) problems.push("mobile: viewer is wider than the viewport (" + phone.blockWidth + " > " + phone.viewport + ")");
+    if (phone.docWidth > phone.viewport + 1) problems.push("mobile: the document scrolls horizontally (" + phone.docWidth + " > " + phone.viewport + ")");
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px) " + JSON.stringify({wide: phone.wide, layout: phone.layout}));
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
     if (phone.actionButtons > 1) problems.push("mobile: the header should expose only the inspector toggle: " + JSON.stringify(phone));
@@ -920,7 +922,7 @@ try {
             editorOpen: !drawer.classList.contains("isf-drawer-closed") &&
                 !!sourceTab && sourceTab.getAttribute("aria-selected") === "true",
             paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden"),
-            compactChrome: getComputedStyle(b.querySelector(".isf-editor-status")).display === "none" &&
+            compactChrome: b.querySelector(".isf-editor-status").getBoundingClientRect().height <= 2 &&
                 getComputedStyle(b.querySelector(".isf-editor-pos")).display === "none",
             codeShare: editor.getBoundingClientRect().height / Math.max(1, drawer.getBoundingClientRect().height),
             bottomMenu: !!head && !!bottom && bottom.contains(head) &&

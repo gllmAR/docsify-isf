@@ -312,9 +312,10 @@ The Source tab fills the inspector and follows window/stage resizes; dragging
 the splitter pins a manual height (double-click resets it), and folding the
 editor toolbar grows the pane by exactly the freed rows. The Parameters/Source
 menu, keyboard help and close sit in the inspector’s bottom row. On phones the
-inspector takes the full viewport, the editor status/caret readout is hidden,
-and the toolbar and footer controls are compact so the code pane keeps most of
-the height.
+inspector takes the full viewport, the caret readout is hidden and the editor
+status is visually hidden but still announced, so compile feedback survives
+while the toolbar/footer controls compact and the code pane keeps most of the
+height.
 
 Open **Source** from the inspector’s bottom menu (or press Ctrl/Cmd+B):
 
