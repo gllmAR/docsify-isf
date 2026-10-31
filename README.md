@@ -245,11 +245,12 @@ transport mounts; `await DocsifyISF.loadPUI()` loads the toolkit explicitly.
 The viewer is a **studio shell** with two contextual PUI drawers anchored
 inside the shader stage. Parameters is the right PUI `drawer`; Source is a
 translucent left PUI `drawer` for the host GLSL editor and import surface.
-The header is a PUI `toolbar` with the Source toggle at the left edge, the
-source-link title/ISF chip and FPS/size readout in the middle, and the
-Parameters toggle at the right edge — each trigger sits directly above the
-drawer edge it opens. Drawer heads are merged into compact toolbars instead of
-stealing a second title row.
+The PUI `toolbar` is a **floating overlay over the stage**, not a document row:
+Source stays at the left edge, Parameters at the right, with the source-link
+title/ISF chip and FPS/size readout between. It fades to 32% after ~2.6 s of
+inactivity and returns on pointer/keyboard/focus, so idle viewers spend no
+vertical space on chrome. Drawer heads are merged into compact toolbars
+instead of stealing a second title row.
 
 The Parameters drawer toolbar carries the shader name and a **More** menu
 (fullscreen, reset, share, help, open source), followed by the PUI parameters
@@ -267,7 +268,8 @@ drawers own focus/Escape/close; the transport is driven through PUI bindings.
 `params:"auto"` only auto-opens the inspector for the viewer in view.
 
 The split surfaces use PUI **1.8.0** drawer options: `contained`, `headless`,
-`trigger:false`, CSS-length `width` and `translucent`. The renderer/adapter are
+`trigger:false`, CSS-length `width` and `translucent`. The floating
+toolbar/auto-fade is host presentation around the PUI toolbar. The renderer/adapter are
 vendored from the tagged `v1.8.0` snapshot. The same options are available to
 other PUI consumers (see `spec/OPERATOR.md`).
 

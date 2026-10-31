@@ -369,6 +369,46 @@ try {
         if (!item.hasEditor) problems.push(item.title + ": no editor");
     }
 
+    // The top toolbar is a floating overlay: it costs no document flow and
+    // fades when idle, then returns on activity.
+    const chrome = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = document.querySelector(".isf-block");
+        const header = block.querySelector(".isf-header");
+        const stage = block.querySelector(".isf-stage");
+        const status = block.querySelector(".isf-status");
+        const headerRect = header.getBoundingClientRect();
+        const blockRect = block.getBoundingClientRect();
+        const stageRect = stage.getBoundingClientRect();
+        const statusRect = status.getBoundingClientRect();
+        block.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 }));
+        await sleep(80);
+        const shown = !header.classList.contains("isf-header-idle");
+        await sleep(2750);
+        const idle = header.classList.contains("isf-header-idle");
+        const idleOpacity = parseFloat(getComputedStyle(header).opacity);
+        block.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1 }));
+        await sleep(100);
+        const revealed = !header.classList.contains("isf-header-idle");
+        return {
+            position: getComputedStyle(header).position,
+            headerHeight: Math.round(headerRect.height),
+            stageOffset: Math.round(stageRect.top - blockRect.top),
+            blockOverhead: Math.round(blockRect.height - stageRect.height - statusRect.height),
+            shown: shown,
+            idle: idle,
+            idleOpacity: idleOpacity,
+            revealed: revealed,
+            scrolledOverStage: stageRect.top <= blockRect.top + 2
+        };
+    });
+    if (chrome.position !== "absolute") problems.push("the top toolbar is not a floating overlay: " + JSON.stringify(chrome));
+    if (chrome.headerHeight > 48) problems.push("the floating toolbar is too tall: " + JSON.stringify(chrome));
+    if (!chrome.scrolledOverStage || chrome.blockOverhead > 6) problems.push("the top toolbar still consumes document flow: " + JSON.stringify(chrome));
+    if (!chrome.shown || !chrome.idle || chrome.idleOpacity > 0.45 || !chrome.revealed) {
+        problems.push("the floating toolbar did not auto-hide/reveal: " + JSON.stringify(chrome));
+    }
+
     // Transition auto-animation: the progress control must move on its own.
     const crossfade = await page.evaluate(async () => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Crossfade/i.test(b.textContent));

@@ -361,11 +361,11 @@ menu's **Default** clears the stored override and returns to the site config.
 
 ```
 .isf-block
-├── .isf-header    host fallback (removed after PUI mounts)
-│   └── .isf-pui-header  PUI toolbar: Source toggle (left),
-│                        title + ISF chip + stats, Parameters toggle (right)
+├── .isf-header    floating PUI toolbar overlay (not in document flow):
+│                  Source toggle (left), title + ISF chip + stats,
+│                  Parameters toggle (right); fades when idle
 ├── .isf-body
-│   └── .isf-stage  canvas, overlay (loading/error/released)
+│   └── .isf-stage  canvas, overlay (loading/error/released); starts at block top
 │       ├── .isf-editor-pui    left translucent PUI drawer:
 │       │   host editor title bar + GLSL editor/import custom slots
 │       └── .isf-inspector-pui right PUI drawer:
@@ -405,7 +405,9 @@ the in-view viewer, never stealing another drawer).
 | Playback | PUI transport in Parameters drawer | — | — |
 
 The right toggle sits directly above the Parameters drawer’s right edge; the
-left toggle sits above the Source drawer’s left edge. Both keep
+left toggle sits above the Source drawer’s left edge. The drawer panels start
+below the floating bar (46 px from the stage top) so the triggers remain
+visible; fullscreen clears that offset. Both keep
 `aria-pressed`/`aria-controls`. The drawers are non-modal `region`s with focus
 return. On desktop the Source drawer is `min(560px, 48%)` and Parameters
 `min(420px, 40%)`, leaving the shader visible between them. On phones each is a
@@ -499,6 +501,12 @@ carries `a11y.name: "Render statistics"`. The host title/actions/stats badge
 are removed after a successful mount and remain as the fallback before the
 assets arrive or if the toolbar fails; the toolbar is refreshed when a source
 reload changes the available inputs.
+
+The toolbar is a floating overlay over the stage: it is absolute, takes no
+document height, passes pointer events through empty space, and fades to 32%
+after ~2.6 s without pointer/keyboard/focus activity. It returns on activity;
+the Source and Parameters triggers remain at their drawer edges. There is no
+dedicated top row.
 
 The toolbar has two PUI drawers. The right Parameters drawer has a PUI
 `toolbar` with the shader name, a `menu` (More: fullscreen/reset/share/help/
