@@ -235,7 +235,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
 | `showStats` | `true` | Show `fps · resolution · passes`. |
-| `showSource` | `true` | Source link (title and inspector footer). |
+| `showSource` | `true` | Source link (title and inspector More menu). |
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
@@ -251,12 +251,14 @@ is the host GLSL editor. The bottom status line is a PUI statusbar with a tone,
 and transient action feedback uses a dismissible PUI toast stack.
 
 The header is a PUI `toolbar` with one inspector toggle, the source-link
-title/ISF chip and the live FPS/size readout. All inspector chrome lives in the
-inspector footer so the editor and parameters get the panel: fullscreen,
-reset, share and the source link sit above a native PUI **transport**
-(play/pause/stop and the shader-time seek), and the **Parameters | Source**
-menu, keyboard help and close sit in the bottom row, right-aligned. The tabs
-keep `aria-selected` in sync with the panel, the header toggle exposes
+title/ISF chip and the live FPS/size readout. The sticky bottom row of the
+inspector is just the **Parameters | Source** menu, a PUI **More** menu
+(fullscreen, reset, share, open source), a **playback shortcut**, keyboard help
+and close, right-aligned. The native PUI **transport** (play/pause/stop and the
+shader-time seek) sits in the scrolling content below the active
+Parameters/Source panel, so the editor keeps the panel height; the bottom
+playback shortcut jumps to it. The
+tabs keep `aria-selected` in sync with the panel, the header toggle exposes
 `aria-pressed`, and the transport is driven through PUI bindings. The host
 header remains only as the pre-load/failure fallback; the code editor and stage
 remain host surfaces.
@@ -298,11 +300,11 @@ viewer block fill the display. The header and status line are hidden and the
 inspector starts closed, so the shader gets the whole viewport. A subtle
 inspector pill sits at the top-left (32 px, low opacity); it fades after about
 2.2 s of inactivity and reappears on pointer/keyboard activity. Click it (or
-press **H**) to open the one inspector with its Parameters/Source menu,
-actions and transport; **Escape** closes the inspector and brings the hint
-back. There is no second fullscreen toolbox: **Exit fullscreen**, Reset, Share
-and Open source live in the inspector footer, and play/seek remain in its
-transport. The same Resolution/Scale cap applies, so a 4K fullscreen still
+press **H**) to open the one inspector with its Parameters/Source menu, More
+actions and scrolling transport; **Escape** closes the inspector and brings the
+hint back. There is no second fullscreen toolbox: **Exit fullscreen**, Reset,
+Share and Open source live in the sticky bottom row’s More menu, and play/seek
+remain in the inspector’s scrolling transport. The same Resolution/Scale cap applies, so a 4K fullscreen still
 renders at SD by default until you pick HD/FHD/Native. If the PUI assets cannot
 load, the normal header falls back.
 
@@ -314,8 +316,8 @@ editor toolbar grows the pane by exactly the freed rows. The Parameters/Source
 menu, keyboard help and close sit in the inspector’s bottom row. On phones the
 inspector takes the full viewport, the caret readout is hidden and the editor
 status is visually hidden but still announced, so compile feedback survives
-while the toolbar/footer controls compact and the code pane keeps most of the
-height.
+while the sticky bottom row and transport compact and the code pane keeps most
+of the height; the bottom play shortcut remains the quick path to playback.
 
 Open **Source** from the inspector’s bottom menu (or press Ctrl/Cmd+B):
 
@@ -378,10 +380,11 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   overlays the canvas on the right and never changes the render size; it is a
   floating translucent card so the shader stays visible, toggled by the
   header inspector button and using one tab (Parameters or Source) at a time.
-  The **inspector footer** owns the actions and the transport at every width.
+  The sticky bottom row owns the tab menu and More actions; the transport
+  scrolls with the active panel at every width.
 - The header is responsive: on narrow screens it keeps the inspector toggle
   and title (the stats readout is hidden), while all actions move into the
-  inspector footer; controls stay at least 32–36 px tall on touch devices and
+  bottom row’s More menu; controls stay at least 32–36 px tall on touch devices and
   the inspector tabs, transport and form fields respect the notch safe areas
   and coarse-pointer sizing.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles

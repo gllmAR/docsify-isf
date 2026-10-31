@@ -132,9 +132,12 @@ try {
         window.isfFooterAction = (block, id) => {
             if (!block) return null;
             window.isfOpenInspector(block, "params");
-            const action = block.querySelector('.isf-inspector-footer [data-pui-item="' + id + '"]') ||
+            const trigger = block.querySelector('.isf-inspector-more .pui-menu-trigger');
+            if (trigger && trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+            const action = block.querySelector('.isf-inspector-more [data-pui-item="' + id + '"]') ||
                 block.querySelector('.isf-header [data-pui-item="' + id + '"]');
             if (action) action.click();
+            if (trigger && trigger.getAttribute("aria-expanded") === "true" && id !== "fullscreen") trigger.click();
             return action;
         };
     });
@@ -535,7 +538,7 @@ try {
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-        const share = plasma.querySelector('.isf-inspector-footer [data-pui-item="share"]');
+        const share = plasma.querySelector('.isf-inspector-more [data-pui-item="share"]');
         const quality = plasma.querySelector('select[aria-label="Render scale"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
@@ -653,7 +656,7 @@ try {
         await wait(250);
         const randomized = before !== speedValue();
 
-        const timeRange = plasma.querySelector('.isf-inspector-footer .pui-transport-controls input[type="range"]') ||
+        const timeRange = plasma.querySelector('.isf-inspector-transport .pui-transport-controls input[type="range"]') ||
             plasma.querySelector('.isf-time-row input[type="range"]');
         timeRange.value = "12.5";
         timeRange.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1131,10 +1134,36 @@ try {
         await sleep(450);
         const paramsOpen = !drawer.classList.contains("isf-drawer-closed") &&
             !!block.querySelector('.isf-inspector-tab[data-inspector-tab="params"][aria-selected="true"]');
-        const footer = block.querySelector(".isf-inspector-footer");
+        const footer = block.querySelector(".isf-inspector-more");
         const footerActions = footer ? Array.from(footer.querySelectorAll("[data-pui-item]")).map((el) => el.getAttribute("data-pui-item")) : [];
         const footerLabels = footer ? Array.from(footer.querySelectorAll(".pui-button, .pui-toolbar-link")).map((el) => el.textContent.trim()) : [];
         const tabs = Array.from(block.querySelectorAll(".isf-inspector-tab")).map((el) => el.textContent.trim());
+        const transport = block.querySelector(".isf-inspector-transport");
+        const bottomBar = block.querySelector(".isf-inspector-bottom");
+        const transportInScroll = !!transport && !!bottomBar && !bottomBar.contains(transport);
+        let playbackShortcut = null;
+        const playShortcut = block.querySelector(".isf-inspector-play");
+        if (playShortcut) {
+            playShortcut.click();
+            await sleep(250);
+            const transportRect = transport.getBoundingClientRect();
+            const drawerRect = block.querySelector(".isf-drawer-right").getBoundingClientRect();
+            playbackShortcut = transportRect.top >= drawerRect.top - 1 && transportRect.top < drawerRect.bottom;
+        }
+        let menuOpensUp = null;
+        const moreTrigger = footer && footer.querySelector(".pui-menu-trigger");
+        if (moreTrigger) {
+            moreTrigger.click();
+            await sleep(180);
+            const popup = footer.querySelector(".pui-menu-popup");
+            if (popup) {
+                const popupRect = popup.getBoundingClientRect();
+                const triggerRect = moreTrigger.getBoundingClientRect();
+                menuOpensUp = popupRect.height > 0 && popupRect.bottom <= triggerRect.top + 1;
+            }
+            moreTrigger.click();
+            await sleep(120);
+        }
         const head = block.querySelector(".isf-inspector-head");
         const bottom = block.querySelector(".isf-inspector-bottom");
         const headAtBottom = !!head && !!bottom && bottom.contains(head);
@@ -1168,8 +1197,7 @@ try {
         await sleep(350);
         const hOpened = !drawer.classList.contains("isf-drawer-closed");
         // The footer's fullscreen action is the only exit control.
-        const exitAction = block.querySelector('.isf-inspector-footer [data-pui-item="fullscreen"]');
-        if (exitAction) exitAction.click();
+        window.isfFooterAction(block, "fullscreen");
         await sleep(700);
         const afterExit = {
             fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
@@ -1199,6 +1227,9 @@ try {
             tabs: tabs,
             headAtBottom: headAtBottom,
             tabsRight: tabsRight,
+            transportInScroll: transportInScroll,
+            playbackShortcut: playbackShortcut,
+            menuOpensUp: menuOpensUp,
             escapeClosed: escapeClosed,
             hOpened: hOpened,
             afterExit: afterExit
@@ -1220,14 +1251,19 @@ try {
         if (!resolution.hintAutoHidden) problems.push("the fullscreen hint did not auto-hide after inactivity");
         if (!resolution.hintRearmed) problems.push("pointer activity did not re-arm the fullscreen hint");
         if (!resolution.paramsOpen) problems.push("clicking the fullscreen hint did not open Parameters");
-        if (resolution.footerActions.indexOf("fullscreen") < 0 ||
+        if (resolution.footerActions.indexOf("more") < 0 ||
+            resolution.footerActions.indexOf("fullscreen") < 0 ||
             resolution.footerActions.indexOf("reset") < 0 ||
-            resolution.footerActions.indexOf("share") < 0) {
-            problems.push("the inspector footer is missing actions: " + JSON.stringify(resolution.footerActions));
+            resolution.footerActions.indexOf("share") < 0 ||
+            resolution.footerActions.indexOf("source") < 0) {
+            problems.push("the inspector More menu is missing actions: " + JSON.stringify(resolution.footerActions));
         }
         if (resolution.footerLabels.indexOf("Exit fullscreen") < 0) {
-            problems.push("the inspector footer does not expose Exit fullscreen: " + JSON.stringify(resolution.footerLabels));
+            problems.push("the inspector More menu does not expose Exit fullscreen: " + JSON.stringify(resolution.footerLabels));
         }
+        if (!resolution.transportInScroll) problems.push("the transport should be in the scrolling inspector content");
+        if (resolution.playbackShortcut !== true) problems.push("the playback shortcut did not reveal the scrolling transport");
+        if (resolution.menuOpensUp !== true) problems.push("the bottom More menu should open upward, inside the inspector");
         if (resolution.tabs.join(",") !== "Parameters,Source") {
             problems.push("the inspector menu is not Parameters,Source: " + JSON.stringify(resolution.tabs));
         }
@@ -1278,7 +1314,7 @@ try {
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(400);
-        const button = block.querySelector('.isf-inspector-footer [data-pui-item="share"]');
+        const button = block.querySelector('.isf-inspector-more [data-pui-item="share"]');
         if (!button) return null;
         button.click();
         await sleep(400);
