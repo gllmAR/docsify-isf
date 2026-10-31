@@ -451,6 +451,7 @@
     var panels = doc.panels || [];
     for (var i = 0; i < panels.length; i++) this.root.appendChild(this.buildPanel(panels[i]));
     this.mount.appendChild(this.root);
+    this.graphLayoutBodies();
     this.apply();
     this.bindShortcuts();
     this.bindPaletteShortcut();
@@ -899,6 +900,8 @@
         rec.tab.tabIndex = i === index ? 0 : -1;
       }
     }
+    // Host graph bodies on a previously hidden page now have a layout box.
+    if (this.root && this.root.parentNode) this.graphLayoutBodies();
   };
 
   Renderer.prototype.tabKey = function (index, tablist, panels, panelRecord, event) {
@@ -1285,11 +1288,59 @@
    * document property; compact must tighten the patch itself as well as the
    * surrounding inspector. */
   Renderer.prototype.graphMetrics = function () {
-    if (this.density === "compact") {
-      return {nodeWidth: 156, headerHeight: 20, portRowHeight: 16, pad: 4, paramRows: 2};
-    }
     var Graph = global.PupitreGraph;
-    return Graph && Graph.DEFAULTS ? Graph.DEFAULTS : {nodeWidth: 156, headerHeight: 26, portRowHeight: 18, pad: 8, paramRows: 2};
+    var base = Graph && Graph.DEFAULTS ? Graph.DEFAULTS : {nodeWidth: 156, headerHeight: 26, portRowHeight: 18, pad: 8, paramRows: 2, paramRowHeight: 14};
+    var metrics = Object.assign({}, base, {paramRows: 3});
+    if (this.density === "compact") {
+      metrics.headerHeight = 20;
+      metrics.portRowHeight = 16;
+      metrics.pad = 4;
+      metrics.paramRowHeight = 16;
+    } else {
+      metrics.paramRowHeight = 18;
+    }
+    return metrics;
+  };
+
+  /** Node geometry includes the measured height of a host body so covers and
+   * meters are not clipped by the generic node rectangle. */
+  Renderer.prototype.graphNodeRect = function (rec, node, type) {
+    var Graph = global.PupitreGraph;
+    if (!Graph) return {x: Number(node && node.x) || 0, y: Number(node && node.y) || 0, w: 156, h: 58};
+    type = type || (rec.typeMap && rec.typeMap[String(node.type)]);
+    var rect = Graph.nodeRect(node, type, rec.metrics);
+    var extra = Number(rec.nodeExtraHeights && rec.nodeExtraHeights[String(node.id)]) || 0;
+    if (extra > 0) rect.h += extra;
+    return rect;
+  };
+
+  Renderer.prototype.graphApplyNodeGeometry = function (rec, nodeId) {
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+    var nodeEl = rec.nodeEls && rec.nodeEls[String(nodeId)];
+    if (!node || !nodeEl) return;
+    var rect = this.graphNodeRect(rec, node);
+    if (nodeEl.setAttribute) nodeEl.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
+  };
+
+  Renderer.prototype.graphMeasureNodeBody = function (rec, nodeId) {
+    var id = String(nodeId);
+    var body = rec.bodyEls && rec.bodyEls[id];
+    if (!body) return;
+    var height = Number(body.offsetHeight);
+    if (!isFinite(height) || height < 0) height = 0;
+    rec.nodeExtraHeights[id] = height > 0 ? height + 4 : 0;
+    this.graphApplyNodeGeometry(rec, id);
+  };
+
+  Renderer.prototype.graphLayoutGraphBodies = function (rec) {
+    if (!rec || !rec.bodyEls) return;
+    var self = this;
+    Object.keys(rec.bodyEls).forEach(function (id) { self.graphMeasureNodeBody(rec, id); });
+  };
+
+  Renderer.prototype.graphLayoutBodies = function () {
+    var self = this;
+    this.graphRecords.forEach(function (rec) { self.graphLayoutGraphBodies(rec); });
   };
 
   Renderer.prototype.buildGraph = function (block, navStack) {
@@ -1373,7 +1424,7 @@
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
       viewport: viewport, content: content, cableGroup: cableGroup,
-      metrics: self.graphMetrics()};
+      metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}};
     this.graphRecords.push(rec);
     rec.head = head;
     rec.bookmarkBar = el("div", {class: "pui-graph-bookmarks", "aria-label": "Camera bookmarks"});
@@ -1420,7 +1471,7 @@
       if (!isObject(node)) return;
       var id = String(node.id || "");
       var type = typeMap[String(node.type)] || null;
-      var rect = Graph.nodeRect(node, type, rec.metrics);
+      var rect = self.graphNodeRect(rec, node, type);
       var nodeEl = el("div", {
         class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : ""),
         "data-node-id": id,
@@ -1428,6 +1479,7 @@
         tabindex: "0",
         style: "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;"
       });
+      rec.nodeEls[id] = nodeEl;
       var nodeLabel = String(node.label || (type && type.label) || node.type || id);
       nodeEl.setAttribute("aria-label", nodeLabel + (type && type.label ? ", " + type.label : "") + (node.enabled === false ? ", disabled" : ""));
       nodeEl.appendChild(el("div", {class: "pui-graph-node-head"},
@@ -1490,12 +1542,21 @@
           var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
           var line = el("div", {class: "pui-graph-param-line"});
           line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
-          var valueButton = el("button", {type: "button", class: "pui-graph-param-value", text: String(shown), "data-param-id": String(param.id)});
           var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
+          var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
+          var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id)});
+          if (bounded) {
+            var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
+            track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
+            valueButton.appendChild(track);
+          }
+          valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: String(shown)}));
           valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
           if (numeric) {
             valueButton.setAttribute("role", "slider");
             valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
+            if (param.min !== undefined) valueButton.setAttribute("aria-valuemin", String(param.min));
+            if (param.max !== undefined) valueButton.setAttribute("aria-valuemax", String(param.max));
             valueButton.title = "Drag to adjust · Alt fine · Shift coarse · double-click reset";
             valueButton.addEventListener("pointerdown", function (event) { self.graphParamScrub(rec, node, param, event); });
             valueButton.addEventListener("keydown", function (event) { self.graphParamKey(rec, node, param, event); });
@@ -1507,6 +1568,7 @@
               self.graphSetNodeParam(rec, node.id, param.id, param.default === undefined ? 0 : param.default);
             });
           }
+          self.graphParamPaint(valueButton, param, shown);
           line.appendChild(valueButton);
           paramsEl.appendChild(line);
           paramEls.push(valueButton);
@@ -1520,6 +1582,7 @@
           if (customBody && (customBody.nodeType || typeof customBody.tagName === "string")) {
             customBody.classList.add("pui-graph-node-body");
             nodeEl.appendChild(customBody);
+            rec.bodyEls[id] = customBody;
           }
         } catch (error) {
           self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
@@ -1633,7 +1696,7 @@
         rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-frame", x: Number(frame.x) || 0, y: Number(frame.y) || 0, width: Number(frame.w) || 0, height: Number(frame.h) || 0}));
       });
       (rec.graph.nodes || []).forEach(function (node) {
-        var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+        var rect = self.graphNodeRect(rec, node);
         rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-node", x: rect.x, y: rect.y, width: rect.w, height: rect.h}));
       });
       var vw = viewport.clientWidth || 800, vh = viewport.clientHeight || 500;
@@ -1811,7 +1874,7 @@
         if (box) {
           var ids = [];
           rec.graph.nodes.forEach(function (node) {
-            var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+            var rect = self.graphNodeRect(rec, node);
             if (rect.x + rect.w >= box.x1 && rect.x <= box.x2 && rect.y + rect.h >= box.y1 && rect.y <= box.y2) ids.push(String(node.id));
           });
           self.graphSetSelection(rec, ids);
@@ -1929,18 +1992,19 @@
   };
 
   Renderer.prototype.graphAlign = function (rec, snapshot, ids, dx, dy, threshold) {
+    var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph || !snapshot) return null;
     var selected = {};
     (ids || []).forEach(function (id) { selected[String(id)] = true; });
     var moving = (snapshot.nodes || []).filter(function (node) { return selected[String(node.id)]; }).map(function (node) {
-      return {node: node, rect: Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics)};
+      return {node: node, rect: self.graphNodeRect(rec, node)};
     });
     if (!moving.length) return null;
     var staticX = [], staticY = [];
     (rec.graph.nodes || []).forEach(function (node) {
       if (selected[String(node.id)]) return;
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       staticX.push(rect.x, rect.x + rect.w / 2, rect.x + rect.w);
       staticY.push(rect.y, rect.y + rect.h / 2, rect.y + rect.h);
     });
@@ -2009,6 +2073,7 @@
   };
 
   Renderer.prototype.graphFitFrame = function (rec) {
+    var self = this;
     var frame = rec.selectedFrame;
     if (!frame) return false;
     var Graph = global.PupitreGraph;
@@ -2016,7 +2081,7 @@
     if (!nodes.length) return false;
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     nodes.forEach(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
       x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
     });
@@ -2054,6 +2119,7 @@
   };
 
   Renderer.prototype.graphFrameNodes = function (rec, frame) {
+    var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph || !frame) return [];
     if (isArray(frame.members)) {
@@ -2062,7 +2128,7 @@
       return (rec.graph.nodes || []).filter(function (node) { return wanted[String(node.id)]; });
     }
     return (rec.graph.nodes || []).filter(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       var cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
       return cx >= Number(frame.x) && cx <= Number(frame.x) + Number(frame.w) && cy >= Number(frame.y) && cy <= Number(frame.y) + Number(frame.h);
     });
@@ -2070,13 +2136,14 @@
 
   Renderer.prototype.graphGroupSelection = function (rec) {
     if (rec.block.readonly) return null;
+    var self = this;
     var Graph = global.PupitreGraph;
     var nodes = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
     var ids = nodes.map(function (node) { return String(node.id); });
     if (!Graph || !ids.length) return null;
     var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     nodes.forEach(function (node) {
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
       x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
     });
@@ -2131,6 +2198,7 @@
    * `graph_options.culling:true`; `cull_margin` defaults to 240 graph units. */
   Renderer.prototype.graphCull = function (rec) {
     if (!rec || !rec.graphOptions || rec.graphOptions.culling !== true || !rec.viewport) return;
+    var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph) return;
     var view = rec.view || {zoom: 1, panX: 0, panY: 0};
@@ -2143,7 +2211,7 @@
     (rec.graph.nodes || []).forEach(function (node) {
       if (!isObject(node)) return;
       var id = String(node.id || "");
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       var on = rect.x + rect.w >= x1 && rect.x <= x2 && rect.y + rect.h >= y1 && rect.y <= y2;
       visible[id] = on;
       var el = rec.nodeEls[id];
@@ -2796,6 +2864,21 @@
     });
   };
 
+  Renderer.prototype.graphParamFill = function (param, value) {
+    var min = Number(param && param.min);
+    var max = Number(param && param.max);
+    var current = Number(value);
+    if (!isFinite(min) || !isFinite(max) || max <= min || !isFinite(current)) return 0;
+    return Math.max(0, Math.min(1, (current - min) / (max - min)));
+  };
+
+  Renderer.prototype.graphParamPaint = function (element, param, value) {
+    if (!element || !element.querySelector) return;
+    var fill = element.querySelector(".pui-graph-param-fill");
+    if (!fill || !fill.style) return;
+    fill.style.setProperty("width", (this.graphParamFill(param, value) * 100).toFixed(2) + "%");
+  };
+
   Renderer.prototype.graphParamScrub = function (rec, node, param, event) {
     if (rec.block.readonly) return;
     if (event.stopPropagation) event.stopPropagation();
@@ -3034,12 +3117,13 @@
   };
 
   Renderer.prototype.updateGraphDom = function (rec) {
+    var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph) return;
     rec.graph.nodes.forEach(function (node) {
       var el = rec.nodeEls[String(node.id)];
       if (!el) return;
-      var rect = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics);
+      var rect = self.graphNodeRect(rec, node);
       if (el.setAttribute) el.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
       if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
       var title = el.querySelector ? el.querySelector(".pui-graph-node-title") : null;
@@ -3050,9 +3134,13 @@
           var raw = isObject(node.params) ? node.params[param.id] : undefined;
           var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
           if (paramInfo.elements[index]) {
-            paramInfo.elements[index].textContent = String(shown);
-            paramInfo.elements[index].setAttribute("aria-valuenow", String(Number(shown) || 0));
-            paramInfo.elements[index].setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+            var paramEl = paramInfo.elements[index];
+            var numberEl = paramEl.querySelector ? paramEl.querySelector(".pui-graph-param-number") : null;
+            if (numberEl) numberEl.textContent = String(shown);
+            else paramEl.textContent = String(shown);
+            paramEl.setAttribute("aria-valuenow", String(Number(shown) || 0));
+            paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+            self.graphParamPaint(paramEl, param, shown);
           }
         });
       }
@@ -3189,6 +3277,7 @@
       }
     }
     parent.replaceChild(newRoot, rec.root);
+    if (newRec) this.graphLayoutGraphBodies(newRec);
     if (index >= 0) this.graphRecords.splice(index, 1);
     if (focusId && newRec && newRec.nodeEls[String(focusId)] && newRec.nodeEls[String(focusId)].focus) newRec.nodeEls[String(focusId)].focus();
   };

@@ -341,14 +341,15 @@
 .pui-graph-viewport:active { cursor: grabbing; }
 .pui-graph-content { position: absolute; inset: 0; transform-origin: 0 0; }
 .pui-graph-cables { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.pui-graph-cable { fill: none; stroke: var(--pui-muted); stroke-width: 2; }
+.pui-graph-cable { fill: none; stroke: var(--pui-muted); stroke-width: 2; opacity: 0.62; }
 .pui-graph-frame { position: absolute; border: 1px dashed var(--pui-border); border-radius: 8px; background: color-mix(in srgb, var(--pui-accent) 4%, transparent); pointer-events: auto; cursor: move; }
 .pui-graph-frame.is-selected { border-color: var(--pui-accent); box-shadow: 0 0 0 2px var(--pui-accent); }
 .pui-graph-frame-title { position: absolute; top: 4px; left: 8px; color: var(--pui-muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; pointer-events: none; }
 .pui-graph-frame-resize { position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border: 1px solid var(--pui-accent); border-radius: 3px; background: var(--pui-surface); cursor: nwse-resize; }
 .pui-graph-node { position: absolute; box-sizing: border-box; overflow: hidden; border: 1px solid var(--pui-border); border-radius: 6px; background: var(--pui-surface-2); color: var(--pui-text); box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); }
 .pui-graph-node:focus-visible { outline: 3px solid var(--pui-accent); outline-offset: 2px; }
-.pui-graph-node.is-selected { border-color: var(--pui-accent); box-shadow: 0 0 0 2px var(--pui-accent), 0 2px 8px rgb(0 0 0 / 0.18); }
+.pui-graph-node:hover { background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface-2)); }
+.pui-graph-node.is-selected { border-color: var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 10%, var(--pui-surface-2)); box-shadow: 0 0 0 2px var(--pui-accent), 0 2px 8px rgb(0 0 0 / 0.18); }
 .pui-graph-node.is-disabled { opacity: 0.55; }
 .pui-graph-node-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 26px; padding: 0 8px; border-bottom: 1px solid var(--pui-border); background: color-mix(in srgb, var(--pui-accent) 8%, var(--pui-surface-2)); }
 .pui-graph-node-title { font-size: 0.72rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -372,6 +373,7 @@
 .pui-graph-port-dot { pointer-events: auto; cursor: crosshair; outline-offset: 2px; }
 .pui-graph-port-dot:focus-visible { outline: 2px solid var(--pui-accent); }
 .pui-graph-cable { pointer-events: stroke; cursor: pointer; }
+.pui-graph-cable.is-selected, .pui-graph-cable:hover { opacity: 1; }
 .pui-graph-cable.is-selected { stroke: var(--pui-accent); stroke-width: 3; }
 .pui-graph-wire { fill: none; stroke: var(--pui-accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .pui-graph-marquee { position: absolute; border: 1px solid var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 14%, transparent); pointer-events: none; }
@@ -826,11 +828,17 @@
 .pui-graph-cable.is-control { stroke: #c792ea; }
 .pui-graph-cable.is-vstream { stroke: #a78bfa; }
 .pui-graph-cable.is-any { stroke: #a6b2c2; }
-.pui-graph-params { max-height: 56px; overflow: auto; padding-bottom: 6px; }
+.pui-graph-params { max-height: 62px; overflow: auto; padding-bottom: 6px; }
 .pui-graph-param-line { display: flex; align-items: center; gap: 2px; min-height: 18px; }
 .pui-graph-param-key { color: var(--pui-muted); }
 .pui-graph-param-value { border: 0; background: transparent; color: var(--pui-text); font: inherit; font-variant-numeric: tabular-nums; padding: 0 3px; border-radius: 3px; cursor: ew-resize; text-align: end; min-width: 3.5em; }
 .pui-graph-param-value:hover, .pui-graph-param-value:focus-visible { background: color-mix(in srgb, var(--pui-accent) 16%, transparent); color: var(--pui-accent); outline: none; }
+.pui-graph-param-value.is-numeric { display: inline-flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 4.8em; padding: 1px 3px; }
+.pui-graph-param-value.is-numeric:hover, .pui-graph-param-value.is-numeric:focus-visible { background: transparent; color: var(--pui-text); }
+.pui-graph-param-track { position: relative; display: block; height: 6px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--pui-border) 55%, transparent); }
+.pui-graph-param-fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; border-radius: 2px; background: var(--pui-accent); }
+.pui-graph-param-number { display: block; font-size: 0.6rem; line-height: 1.1; text-align: end; font-variant-numeric: tabular-nums; }
+.pui-graph-node-body { display: block; margin-top: 4px; color: var(--pui-muted); font-size: 0.62rem; line-height: 1.2; }
 .pui-graph-visibility { margin-top: 4px; font-size: 0.68rem; }
 .pui-graph-visibility summary { color: var(--pui-muted); cursor: pointer; }
 .pui-graph-visibility-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
@@ -992,5 +1000,7 @@
 .pui[data-density="compact"] .pui-graph-node-type { font-size: 0.55rem; }
 .pui[data-density="compact"] .pui-graph-ports { padding: 0 6px; }
 .pui[data-density="compact"] .pui-graph-port-row { height: 16px; gap: 4px; font-size: 0.58rem; }
-.pui[data-density="compact"] .pui-graph-params { max-height: 48px; padding: 0 6px 4px; }
+.pui[data-density="compact"] .pui-graph-params { max-height: 54px; padding: 0 6px 4px; }
 .pui[data-density="compact"] .pui-graph-param-line { min-height: 16px; }
+.pui[data-density="compact"] .pui-graph-param-track { height: 5px; }
+.pui[data-density="compact"] .pui-graph-node-body { font-size: 0.58rem; }
