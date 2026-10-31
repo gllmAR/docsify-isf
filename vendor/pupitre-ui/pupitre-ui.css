@@ -94,6 +94,17 @@
 .pui-range { display: flex; align-items: center; gap: 5px; width: 100%; }
 .pui-number { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; }
 .pui-number input[type="number"] { flex: 1 1 auto; min-width: 0; }
+.pui-knob { position: relative; flex: 0 0 auto; display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; cursor: ns-resize; touch-action: none; user-select: none; }
+.pui-control-row > .pui-knob { flex: 0 0 auto; }
+.pui-knob:focus-visible { outline: 3px solid var(--pui-accent); outline-offset: 2px; }
+.pui-knob-dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.pui-knob-track, .pui-knob-arc { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 75 100; transform: rotate(135deg); transform-box: view-box; transform-origin: center; }
+.pui-knob-track { stroke: color-mix(in srgb, var(--pui-border) 70%, transparent); }
+.pui-knob-arc { stroke: var(--pui-accent); stroke-dasharray: 0 100; }
+.pui-knob-value { position: relative; max-width: 34px; overflow: hidden; text-overflow: ellipsis; color: var(--pui-text); font-size: 0.68rem; font-variant-numeric: tabular-nums; text-align: center; pointer-events: none; }
+.pui-knob.is-mixed .pui-knob-value { color: var(--pui-muted); }
+.pui-impulse { touch-action: manipulation; }
+.pui-impulse:active { border-color: var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 18%, var(--pui-surface-2)); }
 .pui-scrub { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 20px; min-height: 28px; padding: 0; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface-2); color: var(--pui-muted); font: inherit; font-size: 0.8rem; line-height: 1; cursor: ew-resize; touch-action: none; user-select: none; }
 .pui-scrub::before { content: "↔"; }
 .pui-scrub:hover, .pui-scrub:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
@@ -163,6 +174,8 @@
 .pui[data-embedded="true"] .pui-section { background: transparent; border: 0; border-radius: 0; padding: 0; }
 .pui[data-embedded="true"] .pui-header, .pui[data-embedded="true"] .pui-page-title { display: none; }
 .pui[data-density="compact"] { --pui-row-pad: 1px; --pui-gap: 6px; font-size: 13px; }
+.pui[data-density="compact"] .pui-knob { width: 42px; height: 42px; }
+.pui[data-density="compact"] .pui-knob-value { font-size: 0.62rem; max-width: 30px; }
 .pui[data-density="comfortable"] { --pui-row-pad: 2px; }
 .pui[data-density="touch"] { --pui-row-pad: 6px; --pui-gap: 12px; }
 .pui[data-theme="light"] {

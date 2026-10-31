@@ -7253,7 +7253,7 @@
     } else if (widget === "readout" || widget === "none") {
       this.buildReadoutInto(root, field, rec);
     } else {
-      if (widget !== "button") {
+      if (widget !== "button" && widget !== "impulse") {
         var cap = caption(field, id);
         root.appendChild(cap);
         rec.label = cap;
@@ -7266,7 +7266,7 @@
       }
       var control = this.controlFor(field, widget, id, rec);
       if (!control) return el("p", {class: "pui-missing", text: "(no widget for " + widget + ")"});
-      if (widget !== "button") {
+      if (widget !== "button" && widget !== "impulse") {
         var row = el("div", {class: "pui-control-row"});
         row.appendChild(control);
         var reset = this.resetButton(field, path);
@@ -7437,6 +7437,103 @@
       rec.range = range; rec.number = number;
       rec.control = range;
       return row;
+    }
+    if (widget === "knob") {
+      var knob = el("div", {class: "pui-knob", id: id, role: "slider", tabindex: "0", "data-pui-bind": path});
+      var min = field.min !== undefined ? Number(field.min) : 0;
+      var max = field.max !== undefined ? Number(field.max) : 1;
+      if (!isFinite(min)) min = 0;
+      if (!isFinite(max) || max <= min) max = min + 1;
+      var step = Number(field.step) > 0 ? Number(field.step) : 0.01;
+      var dial = svgEl("svg", {class: "pui-knob-dial", viewBox: "0 0 48 48", "aria-hidden": "true", focusable: "false"});
+      dial.appendChild(svgEl("circle", {class: "pui-knob-track", cx: "24", cy: "24", r: "19", pathLength: "100"}));
+      var arc = svgEl("circle", {class: "pui-knob-arc", cx: "24", cy: "24", r: "19", pathLength: "100"});
+      dial.appendChild(arc);
+      knob.appendChild(dial);
+      var readout = el("span", {class: "pui-knob-value"});
+      knob.appendChild(readout);
+      knob.setAttribute("aria-valuemin", String(min));
+      knob.setAttribute("aria-valuemax", String(max));
+      rec.knobArc = arc;
+      rec.knobValue = readout;
+      rec.knob = knob;
+      var readKnob = function () {
+        var value = self.value(rec);
+        return value === undefined || value === null || isMixedValue(value) ? NaN : Number(value);
+      };
+      var paintKnob = function (value, mixed) {
+        var ratio = mixed ? 0 : Math.max(0, Math.min(1, (Number(value) - min) / (max - min)));
+        arc.style.setProperty("stroke-dasharray", (ratio * 75).toFixed(2) + " 100");
+        readout.textContent = mixed ? "—" : formatNumeric(Number(value), field);
+        knob.setAttribute("aria-valuenow", String(mixed ? min : Number(value)));
+        knob.setAttribute("aria-valuetext", mixed ? "mixed" : valueText(Number(value), field));
+        rec.root.classList.toggle("is-mixed", !!mixed);
+      };
+      var applyKnob = function (value, final) {
+        var next = Number(value);
+        if (!isFinite(next)) return;
+        if (step > 0) next = min + Math.round((next - min) / step) * step;
+        next = Math.max(min, Math.min(max, next));
+        var precision = numericPrecision(field);
+        if (precision !== null) next = Number(next.toFixed(precision));
+        paintKnob(next, false);
+        self.writeRecord(rec, next);
+        if (final) rec.dragging = false;
+      };
+      var knobNudge = function (direction, event) {
+        if (event.preventDefault) event.preventDefault();
+        var amount = step * (event.shiftKey ? 10 : (event.altKey ? 0.1 : 1));
+        var current = readKnob();
+        applyKnob(isNaN(current) ? min : current + direction * amount, true);
+      };
+      knob.addEventListener("wheel", function (event) { knobNudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
+      knob.addEventListener("keydown", function (event) {
+        var key = String(event.key || "");
+        if (["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", "Home", "End"].indexOf(key) < 0) return;
+        if (key === "Home") { event.preventDefault(); applyKnob(min, true); return; }
+        if (key === "End") { event.preventDefault(); applyKnob(max, true); return; }
+        knobNudge(key === "ArrowUp" || key === "ArrowRight" ? 1 : -1, event);
+      });
+      knob.addEventListener("dblclick", function (event) {
+        if (event.preventDefault) event.preventDefault();
+        applyKnob(field.default === undefined ? min : Number(field.default), true);
+      });
+      var knobDrag = null;
+      var knobMove = function (event) {
+        if (!knobDrag) return;
+        var delta = knobDrag.y - Number(event.clientY || 0);
+        applyKnob(knobDrag.value + (delta / 120) * (max - min), false);
+      };
+      var knobEnd = function () {
+        if (!knobDrag) return;
+        knobDrag = null;
+        rec.dragging = false;
+        if (typeof document !== "undefined" && document.removeEventListener) {
+          document.removeEventListener("pointermove", knobMove);
+          document.removeEventListener("pointerup", knobEnd);
+          document.removeEventListener("pointercancel", knobEnd);
+        }
+        var current = readKnob();
+        if (!isNaN(current)) applyKnob(current, true);
+      };
+      knob.addEventListener("pointerdown", function (event) {
+        if (event.button !== undefined && event.button !== 0) return;
+        if (event.preventDefault) event.preventDefault();
+        if (knob.focus) knob.focus();
+        var current = readKnob();
+        knobDrag = {y: Number(event.clientY || 0), value: isNaN(current) ? min : current};
+        rec.dragging = true;
+        if (typeof document !== "undefined" && document.addEventListener) {
+          document.addEventListener("pointermove", knobMove);
+          document.addEventListener("pointerup", knobEnd);
+          document.addEventListener("pointercancel", knobEnd);
+        }
+      });
+      rec.knobPaint = paintKnob;
+      paintKnob(this.value(rec), isMixedValue(this.value(rec)));
+      rec.control = knob;
+      rec.inputs = [knob];
+      return knob;
     }
     if (widget === "number") {
       var spin = el("input", {type: "number", id: id, "data-pui-bind": path});
@@ -7697,6 +7794,22 @@
         })(i);
       }
       return vector;
+    }
+    if (widget === "impulse") {
+      var pulse = el("button", {type: "button", class: "pui-button pui-impulse", id: id, "data-pui-bind": path, text: this.labelText(field)});
+      var fireImpulse = function (event) {
+        if (event && event.preventDefault) event.preventDefault();
+        self.writeRecord(rec, null);
+      };
+      pulse.addEventListener("pointerdown", function (event) {
+        if (event.button !== undefined && event.button !== 0) return;
+        fireImpulse(event);
+      });
+      pulse.addEventListener("click", function (event) {
+        if (!event.detail) fireImpulse(event);
+      });
+      rec.inputs = [pulse];
+      return pulse;
     }
     if (widget === "flags") {
       var bits = el("fieldset", {class: "pui-flags", id: id, "data-pui-bind": path});
@@ -10573,6 +10686,12 @@
       rec.range.value = String(Number(value));
       rec.number.value = formatNumeric(value, rec.block);
       rec.control.setAttribute("aria-valuetext", valueText(value, rec.block));
+      return;
+    }
+    if (rec.widget === "knob") {
+      if (rec.dragging || active === rec.control) return;
+      if (isMixedValue(value)) { if (rec.knobPaint) rec.knobPaint(rec.block.min !== undefined ? Number(rec.block.min) : 0, true); return; }
+      if (rec.knobPaint) rec.knobPaint(Number(value), false);
       return;
     }
     if (rec.widget === "number") {
