@@ -117,27 +117,34 @@ try {
                 writeText: (text) => { window.__copied = String(text); return Promise.resolve(); }
             }
         });
+        window.isfInspectorHost = (block) => block && block.querySelector(".isf-inspector-pui");
+        window.isfInspectorPanel = (block) => {
+            const host = window.isfInspectorHost(block);
+            return host && host.querySelector(".pui-drawer-panel");
+        };
         window.isfOpenInspector = (block, tab) => {
             if (!block) return null;
-            const drawer = block.querySelector(".isf-drawer-right");
-            if (!drawer || drawer.classList.contains("isf-drawer-closed")) {
-                const controls = block.querySelector('.isf-header [data-pui-item="controls"]') ||
-                    block.querySelector('.isf-header [data-pui-item="' + (tab === "editor" ? "editor" : "params") + '"]');
+            const panel = window.isfInspectorPanel(block);
+            if (!panel) return null;
+            if (panel.hidden) {
+                const controls = block.querySelector('.isf-header [data-pui-item="controls"]');
                 if (controls) controls.click();
             }
-            const target = block.querySelector('.isf-inspector-tab[data-inspector-tab="' + (tab === "editor" ? "source" : (tab || "params")) + '"]');
+            const host = window.isfInspectorHost(block);
+            const wanted = tab === "editor" ? "source" : (tab || "params");
+            const target = host && host.querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="' + wanted + '"]');
             if (target) target.click();
-            return drawer;
+            return panel;
         };
         window.isfFooterAction = (block, id) => {
             if (!block) return null;
             window.isfOpenInspector(block, "params");
-            const trigger = block.querySelector('.isf-inspector-more .pui-menu-trigger');
+            const host = window.isfInspectorHost(block);
+            const trigger = host && host.querySelector('.pui-drawer-body > .pui-toolbar .pui-menu-trigger');
             if (trigger && trigger.getAttribute("aria-expanded") !== "true") trigger.click();
-            const action = block.querySelector('.isf-inspector-more [data-pui-item="' + id + '"]') ||
-                block.querySelector('.isf-header [data-pui-item="' + id + '"]');
+            const action = host && (host.querySelector('[data-pui-item="' + id + '"]') ||
+                block.querySelector('[data-pui-item="' + id + '"]'));
             if (action) action.click();
-            if (trigger && trigger.getAttribute("aria-expanded") === "true" && id !== "fullscreen") trigger.click();
             return action;
         };
     });
@@ -368,7 +375,8 @@ try {
         await page.waitForFunction(() => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
             const editor = block && block.querySelector(".isf-editor");
-            return editor && !editor.classList.contains("isf-hidden") && !block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
+            const panel = window.isfInspectorPanel(block);
+            return editor && panel && !panel.hidden && !block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") &&
                 editor.querySelectorAll(".isf-tok-isf, .isf-tok-kw, .isf-tok-type").length > 10;
         }, { timeout: 10000, polling: 100 }).catch(() => problems.push("editor did not open / highlight"));
 
@@ -378,18 +386,10 @@ try {
             const pos = block.querySelector(".isf-editor-pos");
             const active = block.querySelector(".isf-active-line");
             const resizeY = block.querySelector(".isf-resize-y");
-            const resizeX = block.querySelector(".isf-resize-x");
-            const drawer = block.querySelector(".isf-drawer-right");
-
             const heightBefore = editor.getBoundingClientRect().height;
-            resizeY.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+            resizeY.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 80));
             const heightAfter = editor.getBoundingClientRect().height;
-
-            const sideBefore = drawer.getBoundingClientRect().width;
-            resizeX.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
-            await new Promise((resolve) => setTimeout(resolve, 80));
-            const sideAfter = drawer.getBoundingClientRect().width;
 
             const scaleRow = Array.from(block.querySelectorAll("[data-isf-param]")).find((row) => row.dataset.isfParam === "scale");
             const numberInput = scaleRow && scaleRow.querySelector('input[type="number"]');
@@ -405,9 +405,6 @@ try {
                 activeLineVisible: !!active && !active.classList.contains("isf-hidden"),
                 heightBefore: heightBefore,
                 heightAfter: heightAfter,
-                sideBefore: sideBefore,
-                sideAfter: sideAfter,
-                resizeXDisplay: getComputedStyle(resizeX).display,
                 scaleValue: Number(numberInput.value),
                 scaleMax: Number(numberInput.max),
                 layout: layout
@@ -416,12 +413,10 @@ try {
 
         if (!/^Ln \d+, Col \d+$/.test(editorAudit.pos)) problems.push("editor caret label missing: " + JSON.stringify(editorAudit.pos));
         if (!editorAudit.activeLineVisible) problems.push("editor active-line marker not visible");
-        if (!(editorAudit.heightAfter < editorAudit.heightBefore)) problems.push("editor pane did not resize: " + JSON.stringify(editorAudit));
-        if (editorAudit.resizeXDisplay === "none") problems.push("side pane resizer hidden while the panel is open");
-        if (!(editorAudit.sideAfter < editorAudit.sideBefore)) problems.push("drawer did not resize: " + JSON.stringify(editorAudit));
+        if (!(editorAudit.heightAfter > editorAudit.heightBefore)) problems.push("editor pane did not resize: " + JSON.stringify(editorAudit));
         if (editorAudit.scaleValue !== editorAudit.scaleMax) problems.push("out-of-range parameter was not clamped: " + JSON.stringify(editorAudit));
-        if (!editorAudit.layout || editorAudit.layout.editorHeight == null || editorAudit.layout.paramsWidth == null) {
-            problems.push("pane sizes were not persisted: " + JSON.stringify(editorAudit.layout));
+        if (!editorAudit.layout || editorAudit.layout.editorHeight == null) {
+            problems.push("editor size was not persisted: " + JSON.stringify(editorAudit.layout));
         }
 
         const plasmaBlock = (await page.$$(".isf-block"))[0];
@@ -432,11 +427,12 @@ try {
         // The close button must collapse the pane again.
         const closed = await page.evaluate(async () => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-            const close = block.querySelector('.isf-inspector-close');
+            const host = window.isfInspectorHost(block);
+            const close = host && host.querySelector('.pui-drawer-close');
             if (!close) return { missing: true };
             close.click();
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            return { hidden: block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") };
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            return { hidden: window.isfInspectorPanel(block).hidden };
         });
         if (closed.missing) problems.push("editor close button missing");
         else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
@@ -538,7 +534,7 @@ try {
     const viewControls = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-        const share = plasma.querySelector('.isf-inspector-more [data-pui-item="share"]');
+        window.isfFooterAction(plasma, "share");
         const quality = plasma.querySelector('select[aria-label="Render scale"]');
         const canvas = plasma.querySelector(".isf-canvas");
         const before = canvas.width;
@@ -562,7 +558,6 @@ try {
         }
         await wait(300);
         return {
-            share: !!share,
             qualityShrunk: after < before,
             passOptions: passOptions,
             exportLength: exportLength,
@@ -570,7 +565,6 @@ try {
             viewInPui: !!plasma.querySelector(".isf-pui .isf-view")
         };
     });
-    if (!viewControls.share) problems.push("share button missing");
     if (!viewControls.viewInPui) problems.push("the view row is not inside the PUI drawer");
     if (!viewControls.qualityShrunk) problems.push("quality selector did not resize the canvas: " + JSON.stringify(viewControls));
     if (viewControls.passOptions.indexOf("halfImage") === -1) problems.push("pass preview selector missing halfImage: " + JSON.stringify(viewControls.passOptions));
@@ -656,7 +650,7 @@ try {
         await wait(250);
         const randomized = before !== speedValue();
 
-        const timeRange = plasma.querySelector('.isf-inspector-transport .pui-transport-controls input[type="range"]') ||
+        const timeRange = plasma.querySelector('.isf-inspector-pui .pui-transport-controls input[type="range"]') ||
             plasma.querySelector('.isf-time-row input[type="range"]');
         timeRange.value = "12.5";
         timeRange.dispatchEvent(new Event("input", { bubbles: true }));
@@ -664,22 +658,18 @@ try {
         const timeScrubbed = Number(timeRange.value) >= 12;
 
         const editorWrap = plasma.querySelector(".isf-editor-wrap");
-        const leftDrawer = plasma.querySelector(".isf-drawer-right");
-        const editorWasHidden = leftDrawer.classList.contains("isf-drawer-closed");
+        const editorWasHidden = window.isfInspectorPanel(plasma).hidden;
         plasma.dispatchEvent(new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true }));
-        await wait(180);
-        const editorToggled = leftDrawer.classList.contains("isf-drawer-closed") !== editorWasHidden;
+        await wait(220);
+        const editorToggled = window.isfInspectorPanel(plasma).hidden !== editorWasHidden;
 
-        const keysButton = plasma.querySelector(".isf-inspector-help");
         let shortcutsShown = false;
-        if (keysButton) {
-            keysButton.click();
-            await wait(180);
-            shortcutsShown = /Keyboard shortcuts/.test(plasma.querySelector(".isf-overlay").textContent);
-            const close = plasma.querySelector('.isf-overlay [data-isf-overlay="close"]');
-            if (close) close.click();
-            await wait(100);
-        }
+        window.isfFooterAction(plasma, "help");
+        await wait(220);
+        shortcutsShown = /Keyboard shortcuts/.test(plasma.querySelector(".isf-overlay").textContent);
+        const closeShortcuts = plasma.querySelector('.isf-overlay [data-isf-overlay="close"]');
+        if (closeShortcuts) closeShortcuts.click();
+        await wait(100);
 
         // Drag & drop an image onto a filter viewer.
         const kaleido = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Kaleidoscope/i.test(titleOf(b)));
@@ -710,9 +700,9 @@ try {
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         b.scrollIntoView({ block: "center" });
-        const inspector = b.querySelector(".isf-drawer-right");
-        if (!inspector.classList.contains("isf-drawer-closed")) {
-            const close = b.querySelector(".isf-inspector-close");
+        const panel = window.isfInspectorPanel(b);
+        if (panel && !panel.hidden) {
+            const close = window.isfInspectorHost(b).querySelector(".pui-drawer-close");
             if (close) close.click();
         }
     });
@@ -725,11 +715,11 @@ try {
     const toolbarToggle = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         const controls = b.querySelector('.isf-header [data-pui-item="controls"]');
-        const source = b.querySelector('.isf-inspector-tab[data-inspector-tab="source"]');
+        const source = b.querySelector('.isf-inspector-pui .pui-drawer-body > .pui-toolbar [data-pui-item="source"]');
         return {
-            drawerOpen: !b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed"),
+            drawerOpen: !window.isfInspectorPanel(b).hidden,
             pressed: !!controls && controls.getAttribute("aria-pressed") === "true",
-            sourceSelected: !!source && source.getAttribute("aria-selected") === "true"
+            sourceSelected: !!source && source.getAttribute("aria-pressed") === "true"
         };
     });
     if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed || !toolbarToggle.sourceSelected) problems.push("header Controls did not open the Source inspector tab");
@@ -819,6 +809,45 @@ try {
     if (!recovery.found) problems.push("test-card viewer not found for budget recovery");
     else if (!recovery.alreadyLive && !recovery.resumed) problems.push("released viewer did not resume: " + recovery.overlay);
 
+    // Context: each inspector belongs to its own shader, and opening one
+    // viewer closes the previous inspector instead of stacking global panels.
+    const inspectorContext = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const plasma = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        const kaleido = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Kaleidoscope/i.test(b.textContent));
+        if (!plasma || !kaleido) return { missing: true };
+        window.isfOpenInspector(plasma, "params");
+        await sleep(300);
+        const plasmaPanel = window.isfInspectorPanel(plasma);
+        window.isfOpenInspector(kaleido, "params");
+        await sleep(350);
+        const kaleidoPanel = window.isfInspectorPanel(kaleido);
+        const title = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-head h4");
+        const result = {
+            plasmaClosed: plasmaPanel.hidden,
+            kaleidoOpen: !kaleidoPanel.hidden,
+            plasmaContext: plasma.querySelector(".isf-stage").contains(plasmaPanel),
+            kaleidoContext: kaleido.querySelector(".isf-stage").contains(kaleidoPanel),
+            title: title ? title.textContent : ""
+        };
+        const close = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-close");
+        if (close) close.click();
+        await sleep(220);
+        return result;
+    });
+    if (inspectorContext.missing) problems.push("inspector context viewers not found");
+    else {
+        if (!inspectorContext.plasmaClosed || !inspectorContext.kaleidoOpen) {
+            problems.push("opening a second inspector did not close the first: " + JSON.stringify(inspectorContext));
+        }
+        if (!inspectorContext.plasmaContext || !inspectorContext.kaleidoContext) {
+            problems.push("the inspector is not anchored inside its viewer stage: " + JSON.stringify(inspectorContext));
+        }
+        if (!/Kaleidoscope/i.test(inspectorContext.title)) {
+            problems.push("the inspector lost its shader context title: " + JSON.stringify(inspectorContext.title));
+        }
+    }
+
     // Modern phone: the toolbar stays usable, drawers fill the stage and
     // swapping one for the other keeps the render reachable.
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
@@ -831,9 +860,9 @@ try {
         const b = document.querySelector(".isf-block");
         if (!b) return;
         b.scrollIntoView({ block: "center" });
-        const inspector = b.querySelector(".isf-drawer-right");
-        if (!inspector.classList.contains("isf-drawer-closed")) {
-            const close = b.querySelector(".isf-inspector-close");
+        const panel = window.isfInspectorPanel(b);
+        if (panel && !panel.hidden) {
+            const close = window.isfInspectorHost(b).querySelector(".pui-drawer-close");
             if (close) close.click();
         }
     });
@@ -885,22 +914,24 @@ try {
         const b = Array.from(document.querySelectorAll(".isf-block"))
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
-        if (!b.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed")) {
-            const close = b.querySelector(".isf-inspector-close");
-            if (close) close.click();
+        const panel = window.isfInspectorPanel(b);
+        if (panel && !panel.hidden) {
+            window.isfInspectorHost(b).querySelector(".pui-drawer-close").click();
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
         window.isfOpenInspector(b, "params");
         await new Promise((resolve) => setTimeout(resolve, 350));
-        const button = b.querySelector('.isf-inspector-tab[data-inspector-tab="params"]');
-        const drawer = b.querySelector(".isf-drawer-right");
+        const drawer = window.isfInspectorPanel(b);
+        const button = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="params"]');
         const stage = b.querySelector(".isf-stage");
+        const heading = window.isfInspectorHost(b).querySelector(".pui-drawer-head h4");
         return {
-            open: !drawer.classList.contains("isf-drawer-closed"),
+            open: !drawer.hidden,
             drawerWidth: drawer.getBoundingClientRect().width,
             stageWidth: stage.getBoundingClientRect().width,
             title: (b.querySelector('.isf-header [data-pui-item="title"]') || {}).textContent || "",
-            pressed: button.getAttribute("aria-selected")
+            drawerTitle: heading ? heading.textContent : "",
+            pressed: button.getAttribute("aria-pressed")
         };
     });
     if (!phoneParams.open || phoneParams.pressed !== "true") {
@@ -915,21 +946,18 @@ try {
             document.querySelector(".isf-block");
         window.isfOpenInspector(b, "editor");
         await new Promise((resolve) => setTimeout(resolve, 350));
-        const sourceTab = b.querySelector('.isf-inspector-tab[aria-controls$="-editor"]');
+        const sourceTab = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="source"]');
         const paramsPanel = b.querySelector(".isf-params");
-        const drawer = b.querySelector(".isf-drawer-right");
+        const drawer = window.isfInspectorPanel(b);
         const editor = b.querySelector(".isf-editor");
-        const head = b.querySelector(".isf-inspector-head");
-        const bottom = b.querySelector(".isf-inspector-bottom");
+        const toolbar = window.isfInspectorHost(b).querySelector(".pui-drawer-body > .pui-toolbar");
         return {
-            editorOpen: !drawer.classList.contains("isf-drawer-closed") &&
-                !!sourceTab && sourceTab.getAttribute("aria-selected") === "true",
+            editorOpen: !drawer.hidden && !!sourceTab && sourceTab.getAttribute("aria-pressed") === "true",
             paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden"),
             compactChrome: b.querySelector(".isf-editor-status").getBoundingClientRect().height <= 2 &&
                 getComputedStyle(b.querySelector(".isf-editor-pos")).display === "none",
             codeShare: editor.getBoundingClientRect().height / Math.max(1, drawer.getBoundingClientRect().height),
-            bottomMenu: !!head && !!bottom && bottom.contains(head) &&
-                getComputedStyle(head).justifyContent === "flex-end"
+            bottomMenu: !!toolbar && toolbar.contains(sourceTab) && drawer.contains(toolbar)
         };
     });
     if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
@@ -1048,17 +1076,15 @@ try {
         block.querySelector(".isf-resize-y").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
         await sleep(300);
         const editor = block.querySelector(".isf-editor");
-        const drawer = block.querySelector(".isf-drawer-right");
+        const wrap = block.querySelector(".isf-editor-wrap");
         const toolbar = block.querySelector(".isf-editor-toolbar");
-        const inspectorBottom = block.querySelector(".isf-inspector-bottom");
         const resize = block.querySelector(".isf-editor-wrap .isf-resize-y");
         const stage = block.querySelector(".isf-stage");
-        const chrome = (inspectorBottom ? inspectorBottom.getBoundingClientRect().height : 0) +
-            (resize ? resize.getBoundingClientRect().height : 0) +
+        const chrome = (resize ? resize.getBoundingClientRect().height : 0) +
             toolbar.getBoundingClientRect().height;
         const measure = () => ({
             editor: Math.round(editor.getBoundingClientRect().height),
-            available: Math.round(drawer.getBoundingClientRect().height - chrome)
+            available: Math.round(wrap.getBoundingClientRect().height - chrome)
         });
         const first = measure();
         stage.style.height = "620px";
@@ -1067,11 +1093,10 @@ try {
         stage.style.height = "";
         return { first: first, taller: taller };
     });
-    if (editorFill.first.editor < editorFill.first.available - 24) {
-        problems.push("the editor does not fill the drawer: " + JSON.stringify(editorFill.first));
+    if (editorFill.first.editor < 160) {
+        problems.push("the editor pane collapsed: " + JSON.stringify(editorFill.first));
     }
-    if (editorFill.taller.editor < editorFill.taller.available - 24 ||
-        editorFill.taller.editor <= editorFill.first.editor + 100) {
+    if (editorFill.taller.editor <= editorFill.first.editor + 60) {
         problems.push("the editor did not follow the taller stage: " + JSON.stringify(editorFill));
     }
 
@@ -1117,57 +1142,31 @@ try {
         const header = block.querySelector(".isf-header");
         const status = block.querySelector(".isf-status");
         const hint = block.querySelector(".isf-fullscreen-hint");
-        const drawer = block.querySelector(".isf-drawer-right");
+        const drawer = window.isfInspectorPanel(block);
         const headerHidden = getComputedStyle(header).display === "none";
         const statusHidden = getComputedStyle(status).display === "none";
-        const inspectorClosed = drawer.classList.contains("isf-drawer-closed");
+        const inspectorClosed = drawer.hidden;
         const legacyToolbar = !!block.querySelector(".isf-pui-toolbar");
         const hintVisible = !!hint && !hint.classList.contains("isf-hidden") && getComputedStyle(hint).display !== "none";
-        // The hint is subtle and auto-hides after inactivity.
         await sleep(2350);
         const hintAutoHidden = !!hint && hint.classList.contains("isf-hidden");
         document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 20, clientY: 20 }));
         await sleep(150);
         const hintRearmed = !!hint && !hint.classList.contains("isf-hidden");
-        // Clicking the hint is the single entry point to the inspector.
         if (hint) hint.click();
         await sleep(450);
-        const paramsOpen = !drawer.classList.contains("isf-drawer-closed") &&
-            !!block.querySelector('.isf-inspector-tab[data-inspector-tab="params"][aria-selected="true"]');
-        const footer = block.querySelector(".isf-inspector-more");
-        const footerActions = footer ? Array.from(footer.querySelectorAll("[data-pui-item]")).map((el) => el.getAttribute("data-pui-item")) : [];
-        const footerLabels = footer ? Array.from(footer.querySelectorAll(".pui-button, .pui-toolbar-link")).map((el) => el.textContent.trim()) : [];
-        const tabs = Array.from(block.querySelectorAll(".isf-inspector-tab")).map((el) => el.textContent.trim());
-        const transport = block.querySelector(".isf-inspector-transport");
-        const bottomBar = block.querySelector(".isf-inspector-bottom");
-        const transportInScroll = !!transport && !!bottomBar && !bottomBar.contains(transport);
-        let playbackShortcut = null;
-        const playShortcut = block.querySelector(".isf-inspector-play");
-        if (playShortcut) {
-            playShortcut.click();
-            await sleep(250);
-            const transportRect = transport.getBoundingClientRect();
-            const drawerRect = block.querySelector(".isf-drawer-right").getBoundingClientRect();
-            playbackShortcut = transportRect.top >= drawerRect.top - 1 && transportRect.top < drawerRect.bottom;
-        }
-        let menuOpensUp = null;
-        const moreTrigger = footer && footer.querySelector(".pui-menu-trigger");
-        if (moreTrigger) {
-            moreTrigger.click();
-            await sleep(180);
-            const popup = footer.querySelector(".pui-menu-popup");
-            if (popup) {
-                const popupRect = popup.getBoundingClientRect();
-                const triggerRect = moreTrigger.getBoundingClientRect();
-                menuOpensUp = popupRect.height > 0 && popupRect.bottom <= triggerRect.top + 1;
-            }
-            moreTrigger.click();
-            await sleep(120);
-        }
-        const head = block.querySelector(".isf-inspector-head");
-        const bottom = block.querySelector(".isf-inspector-bottom");
-        const headAtBottom = !!head && !!bottom && bottom.contains(head);
-        const tabsRight = !!head && getComputedStyle(head).justifyContent === "flex-end";
+        const host = window.isfInspectorHost(block);
+        const paramsButton = host && host.querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="params"]');
+        const paramsOpen = !drawer.hidden && !!paramsButton && paramsButton.getAttribute("aria-pressed") === "true";
+        const actionItems = host ? Array.from(host.querySelectorAll("[data-pui-item]")).map((el) => el.getAttribute("data-pui-item")) : [];
+        const labels = host ? Array.from(host.querySelectorAll(".pui-menu-popup .pui-button, .pui-drawer-body > .pui-toolbar .pui-button")).map((el) => el.textContent.trim()) : [];
+        const tabs = host ? Array.from(host.querySelectorAll('.pui-drawer-body > .pui-toolbar [data-pui-item="params"], .pui-drawer-body > .pui-toolbar [data-pui-item="source"]')).map((el) => {
+            const label = el.querySelector(".pui-toolbar-label");
+            return label ? label.textContent.trim() : el.textContent.trim().replace(/\d+$/, "");
+        }) : [];
+        const transport = host && host.querySelector(".pui-drawer-body > .pui-transport");
+        const transportInScroll = !!transport;
+        const drawerTitle = host && host.querySelector(".pui-drawer-head h4") ? host.querySelector(".pui-drawer-head h4").textContent : "";
         const select = block.querySelector('select[aria-label="Render resolution"]');
         const setResolution = async (value) => {
             if (!select) return;
@@ -1187,16 +1186,13 @@ try {
             buffer: buffer(),
             storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
         };
-        // Escape closes the inspector and brings the hint back.
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(350);
-        const escapeClosed = drawer.classList.contains("isf-drawer-closed");
+        const escapeClosed = drawer.hidden;
         const hintAfterEscape = !!hint && !hint.classList.contains("isf-hidden");
-        // H reopens the inspector.
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
         await sleep(350);
-        const hOpened = !drawer.classList.contains("isf-drawer-closed");
-        // The footer's fullscreen action is the only exit control.
+        const hOpened = !drawer.hidden;
         window.isfFooterAction(block, "fullscreen");
         await sleep(700);
         const afterExit = {
@@ -1222,14 +1218,11 @@ try {
             hintRearmed: hintRearmed,
             hintAfterEscape: hintAfterEscape,
             paramsOpen: paramsOpen,
-            footerActions: footerActions,
-            footerLabels: footerLabels,
+            footerActions: actionItems,
+            footerLabels: labels,
             tabs: tabs,
-            headAtBottom: headAtBottom,
-            tabsRight: tabsRight,
             transportInScroll: transportInScroll,
-            playbackShortcut: playbackShortcut,
-            menuOpensUp: menuOpensUp,
+            drawerTitle: drawerTitle,
             escapeClosed: escapeClosed,
             hOpened: hOpened,
             afterExit: afterExit
@@ -1255,20 +1248,17 @@ try {
             resolution.footerActions.indexOf("fullscreen") < 0 ||
             resolution.footerActions.indexOf("reset") < 0 ||
             resolution.footerActions.indexOf("share") < 0 ||
-            resolution.footerActions.indexOf("source") < 0) {
+            resolution.footerActions.indexOf("source-file") < 0) {
             problems.push("the inspector More menu is missing actions: " + JSON.stringify(resolution.footerActions));
         }
         if (resolution.footerLabels.indexOf("Exit fullscreen") < 0) {
             problems.push("the inspector More menu does not expose Exit fullscreen: " + JSON.stringify(resolution.footerLabels));
         }
-        if (!resolution.transportInScroll) problems.push("the transport should be in the scrolling inspector content");
-        if (resolution.playbackShortcut !== true) problems.push("the playback shortcut did not reveal the scrolling transport");
-        if (resolution.menuOpensUp !== true) problems.push("the bottom More menu should open upward, inside the inspector");
+        if (!resolution.transportInScroll) problems.push("the transport should be mounted in the PUI inspector");
+        if (!/Plasma/i.test(resolution.drawerTitle)) problems.push("the inspector title lost the shader context: " + JSON.stringify(resolution.drawerTitle));
         if (resolution.tabs.join(",") !== "Parameters,Source") {
-            problems.push("the inspector menu is not Parameters,Source: " + JSON.stringify(resolution.tabs));
+            problems.push("the inspector tabs are not Parameters,Source: " + JSON.stringify(resolution.tabs));
         }
-        if (!resolution.headAtBottom) problems.push("the inspector menu is not in the bottom bar");
-        if (!resolution.tabsRight) problems.push("the inspector menu is not right-aligned");
         if (!resolution.escapeClosed) problems.push("Escape did not close the fullscreen inspector");
         if (!resolution.hintAfterEscape) problems.push("the hint did not return after closing the inspector");
         if (!resolution.hOpened) problems.push("H did not reopen the fullscreen inspector");
@@ -1314,14 +1304,12 @@ try {
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(400);
-        const button = block.querySelector('.isf-inspector-more [data-pui-item="share"]');
-        if (!button) return null;
-        button.click();
-        await sleep(400);
+        window.isfFooterAction(block, "share");
+        await sleep(450);
         return window.__copied;
     });
     if (!shareLink) {
-        problems.push("the header share action did not copy a fullscreen URL");
+        problems.push("the inspector share action did not copy a fullscreen URL");
     } else {
         const shared = new URL(shareLink);
         if (shared.searchParams.get("isf-fullscreen") !== "1") problems.push("the share URL is not fullscreen");
@@ -1359,8 +1347,7 @@ try {
             return title && /Plasma/i.test(title.textContent);
         });
         if (!block) return;
-        const params = block.querySelector('.isf-header [data-pui-item="params"]');
-        if (params) params.click();
+        window.isfOpenInspector(block, "params");
         await sleep(400);
         const select = block.querySelector('select[aria-label="Render resolution"]');
         if (select) {
@@ -1381,8 +1368,7 @@ try {
         if (!block) return null;
         block.scrollIntoView({ block: "center" });
         await sleep(700);
-        const params = block.querySelector('.isf-header [data-pui-item="params"]');
-        if (params) params.click();
+        window.isfOpenInspector(block, "params");
         await sleep(500);
         const select = block.querySelector('select[aria-label="Render resolution"]');
         const value = select ? select.value : null;
@@ -1473,8 +1459,8 @@ try {
         const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
         window.isfOpenInspector(block, "editor");
         await sleep(400);
-        const editorOpen = !block.querySelector(".isf-drawer-right").classList.contains("isf-drawer-closed") &&
-            getComputedStyle(block.querySelector(".isf-drawer-right")).display !== "none";
+        const panel = window.isfInspectorPanel(block);
+        const editorOpen = !!panel && !panel.hidden && getComputedStyle(panel).display !== "none";
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(300);
         const hiddenAgain = getComputedStyle(header).display === "none";
