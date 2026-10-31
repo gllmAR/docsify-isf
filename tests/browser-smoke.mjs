@@ -122,18 +122,30 @@ try {
             const host = window.isfInspectorHost(block);
             return host && host.querySelector(".pui-drawer-panel");
         };
+        window.isfEditorHost = (block) => block && block.querySelector(".isf-editor-pui");
+        window.isfEditorPanel = (block) => {
+            const host = window.isfEditorHost(block);
+            return host && host.querySelector(".pui-drawer-panel");
+        };
+        window.isfOpenEditor = (block) => {
+            if (!block) return null;
+            const panel = window.isfEditorPanel(block);
+            if (!panel) return null;
+            if (panel.hidden) {
+                const controls = block.querySelector('.isf-header [data-pui-item="editor"]');
+                if (controls) controls.click();
+            }
+            return panel;
+        };
         window.isfOpenInspector = (block, tab) => {
             if (!block) return null;
+            if (tab === "editor" || tab === "source") return window.isfOpenEditor(block);
             const panel = window.isfInspectorPanel(block);
             if (!panel) return null;
             if (panel.hidden) {
                 const controls = block.querySelector('.isf-header [data-pui-item="controls"]');
                 if (controls) controls.click();
             }
-            const host = window.isfInspectorHost(block);
-            const wanted = tab === "editor" ? "source" : (tab || "params");
-            const target = host && host.querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="' + wanted + '"]');
-            if (target) target.click();
             return panel;
         };
         window.isfFooterAction = (block, id) => {
@@ -387,7 +399,7 @@ try {
         await page.waitForFunction(() => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
             const editor = block && block.querySelector(".isf-editor");
-            const panel = window.isfInspectorPanel(block);
+            const panel = window.isfEditorPanel(block);
             return editor && panel && !panel.hidden && !block.querySelector(".isf-editor-wrap").classList.contains("isf-hidden") &&
                 editor.querySelectorAll(".isf-tok-isf, .isf-tok-kw, .isf-tok-type").length > 10;
         }, { timeout: 10000, polling: 100 }).catch(() => problems.push("editor did not open / highlight"));
@@ -439,12 +451,12 @@ try {
         // The close button must collapse the pane again.
         const closed = await page.evaluate(async () => {
             const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
-            const host = window.isfInspectorHost(block);
-            const close = host && host.querySelector('.pui-drawer-close');
+            const host = window.isfEditorHost(block);
+            const close = host && host.querySelector('.isf-editor-head .isf-panel-close');
             if (!close) return { missing: true };
             close.click();
             await new Promise((resolve) => setTimeout(resolve, 200));
-            return { hidden: window.isfInspectorPanel(block).hidden };
+            return { hidden: window.isfEditorPanel(block).hidden };
         });
         if (closed.missing) problems.push("editor close button missing");
         else if (!closed.hidden) problems.push("editor close button did not collapse the pane");
@@ -670,10 +682,10 @@ try {
         const timeScrubbed = Number(timeRange.value) >= 12;
 
         const editorWrap = plasma.querySelector(".isf-editor-wrap");
-        const editorWasHidden = window.isfInspectorPanel(plasma).hidden;
+        const editorWasHidden = window.isfEditorPanel(plasma).hidden;
         plasma.dispatchEvent(new KeyboardEvent("keydown", { key: "b", ctrlKey: true, bubbles: true }));
         await wait(220);
-        const editorToggled = window.isfInspectorPanel(plasma).hidden !== editorWasHidden;
+        const editorToggled = window.isfEditorPanel(plasma).hidden !== editorWasHidden;
 
         let shortcutsShown = false;
         window.isfFooterAction(plasma, "help");
@@ -714,7 +726,7 @@ try {
         b.scrollIntoView({ block: "center" });
         const panel = window.isfInspectorPanel(b);
         if (panel && !panel.hidden) {
-            const close = window.isfInspectorHost(b).querySelector(".pui-drawer-close");
+            const close = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="close"]');
             if (close) close.click();
         }
     });
@@ -722,19 +734,19 @@ try {
     const lateralTabs = await page.$$eval(".isf-block .isf-edge-tab", (elements) => elements.length);
     if (lateralTabs !== 0) problems.push("lateral edge tabs should be gone, found " + lateralTabs);
 
-    await page.evaluate(() => window.isfOpenInspector(document.querySelector(".isf-block"), "editor"));
+    await page.evaluate(() => window.isfOpenEditor(document.querySelector(".isf-block")));
     await new Promise((resolve) => setTimeout(resolve, 350));
     const toolbarToggle = await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
-        const controls = b.querySelector('.isf-header [data-pui-item="controls"]');
-        const source = b.querySelector('.isf-inspector-pui .pui-drawer-body > .pui-toolbar [data-pui-item="source"]');
+        const editorTrigger = b.querySelector('.isf-header [data-pui-item="editor"]');
+        const inspectorTrigger = b.querySelector('.isf-header [data-pui-item="controls"]');
         return {
-            drawerOpen: !window.isfInspectorPanel(b).hidden,
-            pressed: !!controls && controls.getAttribute("aria-pressed") === "true",
-            sourceSelected: !!source && source.getAttribute("aria-pressed") === "true"
+            drawerOpen: !window.isfEditorPanel(b).hidden,
+            pressed: !!editorTrigger && editorTrigger.getAttribute("aria-pressed") === "true",
+            inspectorSeparate: !!inspectorTrigger && inspectorTrigger.getAttribute("aria-pressed") === "false"
         };
     });
-    if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed || !toolbarToggle.sourceSelected) problems.push("header Controls did not open the Source inspector tab");
+    if (!toolbarToggle.drawerOpen || !toolbarToggle.pressed || !toolbarToggle.inspectorSeparate) problems.push("the header source trigger did not open the left editor drawer");
 
     await page.evaluate(() => window.isfOpenInspector(document.querySelector(".isf-block"), "params"));
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -834,7 +846,7 @@ try {
         window.isfOpenInspector(kaleido, "params");
         await sleep(350);
         const kaleidoPanel = window.isfInspectorPanel(kaleido);
-        const title = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-head h4");
+        const title = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-body > .pui-toolbar .pui-toolbar-label");
         const trigger = kaleido.querySelector('.isf-header [data-pui-item="controls"]');
         const triggerRect = trigger.getBoundingClientRect();
         const panelRect = kaleidoPanel.getBoundingClientRect();
@@ -847,7 +859,7 @@ try {
                 panelRect.top >= triggerRect.bottom - 2 && panelRect.top - triggerRect.bottom <= 24,
             title: title ? title.textContent : ""
         };
-        const close = window.isfInspectorHost(kaleido).querySelector(".pui-drawer-close");
+        const close = window.isfInspectorHost(kaleido).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="close"]');
         if (close) close.click();
         await sleep(220);
         return result;
@@ -866,6 +878,68 @@ try {
         if (!inspectorContext.triggerNear) {
             problems.push("the inspector trigger is not anchored at the edge of its panel: " + JSON.stringify(inspectorContext));
         }
+    }
+
+    // Desktop: Parameters on the right and Source on the left coexist, each
+    // trigger sits at its drawer edge, and the drawer heads stay compact.
+    const splitDrawers = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.textContent));
+        if (!block) return { missing: true };
+        window.isfOpenEditor(block);
+        await sleep(300);
+        window.isfOpenInspector(block, "params");
+        await sleep(350);
+        const editorPanel = window.isfEditorPanel(block);
+        const inspectorPanel = window.isfInspectorPanel(block);
+        const editorTrigger = block.querySelector('.isf-header [data-pui-item="editor"]');
+        const inspectorTrigger = block.querySelector('.isf-header [data-pui-item="controls"]');
+        const er = editorPanel.getBoundingClientRect();
+        const ir = inspectorPanel.getBoundingClientRect();
+        const et = editorTrigger.getBoundingClientRect();
+        const it = inspectorTrigger.getBoundingClientRect();
+        const inspectorHost = window.isfInspectorHost(block);
+        const editorHost = window.isfEditorHost(block);
+        const result = {
+            editorOpen: !editorPanel.hidden,
+            inspectorOpen: !inspectorPanel.hidden,
+            separated: er.right <= ir.left + 1,
+            editorTriggerNear: Math.abs(et.left - er.left) <= 24 && er.top >= et.bottom - 2 && er.top - et.bottom <= 24,
+            inspectorTriggerNear: Math.abs(it.right - ir.right) <= 24 && ir.top >= it.bottom - 2 && ir.top - it.bottom <= 24,
+            inspectorHeadless: getComputedStyle(inspectorHost.querySelector(".pui-drawer-head")).display === "none",
+            editorHeadless: getComputedStyle(editorHost.querySelector(".pui-drawer-head")).display === "none",
+            editorTitleBar: (() => {
+                const head = editorHost.querySelector(".isf-editor-head");
+                return !!head && getComputedStyle(head).display !== "none";
+            })(),
+            translucent: getComputedStyle(editorPanel).backdropFilter !== "none",
+            inspectorTitle: (() => {
+                const label = inspectorHost.querySelector(".pui-drawer-body > .pui-toolbar .pui-toolbar-label");
+                return label ? label.textContent : "";
+            })()
+        };
+        const editorClose = editorHost.querySelector(".isf-editor-head .isf-panel-close");
+        if (editorClose) editorClose.click();
+        const inspectorClose = inspectorHost.querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="close"]');
+        if (inspectorClose) inspectorClose.click();
+        await sleep(250);
+        result.closedAgain = window.isfEditorPanel(block).hidden && window.isfInspectorPanel(block).hidden;
+        return result;
+    });
+    if (splitDrawers.missing) problems.push("split drawer viewer not found");
+    else {
+        if (!splitDrawers.editorOpen || !splitDrawers.inspectorOpen || !splitDrawers.separated) {
+            problems.push("desktop source/parameters drawers do not coexist: " + JSON.stringify(splitDrawers));
+        }
+        if (!splitDrawers.editorTriggerNear || !splitDrawers.inspectorTriggerNear) {
+            problems.push("a drawer trigger is not anchored at its drawer edge: " + JSON.stringify(splitDrawers));
+        }
+        if (!splitDrawers.inspectorHeadless || !splitDrawers.editorHeadless || !splitDrawers.editorTitleBar) {
+            problems.push("the drawers did not merge their title chrome: " + JSON.stringify(splitDrawers));
+        }
+        if (!splitDrawers.translucent) problems.push("the source drawer should be translucent");
+        if (!/Plasma/i.test(splitDrawers.inspectorTitle)) problems.push("the parameters drawer title lost its shader context");
+        if (!splitDrawers.closedAgain) problems.push("the split drawers did not close");
     }
 
     // Modern phone: the toolbar stays usable, drawers fill the stage and
@@ -916,7 +990,7 @@ try {
     if (phone.docWidth > phone.viewport + 1) problems.push("mobile: the document scrolls horizontally (" + phone.docWidth + " > " + phone.viewport + ")");
     if (phone.overflow > 1) problems.push("mobile: viewer has horizontal overflow (" + phone.overflow + "px) " + JSON.stringify({wide: phone.wide, layout: phone.layout}));
     if (phone.minButton < 32) problems.push("mobile: touch target under 32px (" + phone.minButton.toFixed(1) + ")");
-    if (phone.actionButtons > 1) problems.push("mobile: the header should expose only the inspector toggle: " + JSON.stringify(phone));
+    if (phone.actionButtons > 2) problems.push("mobile: the header should expose only the source and inspector toggles: " + JSON.stringify(phone));
 
     // Wait for the target's controls: a budget-released viewer rebuilds them
     // when it resumes, and the test must click after that settled.
@@ -936,15 +1010,16 @@ try {
             document.querySelector(".isf-block");
         const panel = window.isfInspectorPanel(b);
         if (panel && !panel.hidden) {
-            window.isfInspectorHost(b).querySelector(".pui-drawer-close").click();
+            const close = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="close"]');
+            if (close) close.click();
         }
         await new Promise((resolve) => setTimeout(resolve, 250));
         window.isfOpenInspector(b, "params");
         await new Promise((resolve) => setTimeout(resolve, 350));
         const drawer = window.isfInspectorPanel(b);
-        const button = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="params"]');
+        const button = b.querySelector('.isf-header [data-pui-item="controls"]');
         const stage = b.querySelector(".isf-stage");
-        const heading = window.isfInspectorHost(b).querySelector(".pui-drawer-head h4");
+        const heading = window.isfInspectorHost(b).querySelector(".pui-drawer-body > .pui-toolbar .pui-toolbar-label");
         return {
             open: !drawer.hidden,
             drawerWidth: drawer.getBoundingClientRect().width,
@@ -955,7 +1030,7 @@ try {
         };
     });
     if (!phoneParams.open || phoneParams.pressed !== "true") {
-        problems.push("mobile: parameters did not open from the bottom inspector menu (" +
+        problems.push("mobile: parameters did not open from the inspector trigger (" +
             JSON.stringify(phoneParams) + ")");
     }
     if (phoneParams.drawerWidth < phoneParams.stageWidth - 2) problems.push("mobile: parameters drawer should fill the stage width");
@@ -964,26 +1039,28 @@ try {
         const b = Array.from(document.querySelectorAll(".isf-block"))
             .find((block) => /Plasma generator/i.test(block.textContent)) ||
             document.querySelector(".isf-block");
-        window.isfOpenInspector(b, "editor");
+        window.isfOpenEditor(b);
         await new Promise((resolve) => setTimeout(resolve, 350));
-        const sourceTab = window.isfInspectorHost(b).querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="source"]');
-        const paramsPanel = b.querySelector(".isf-params");
-        const drawer = window.isfInspectorPanel(b);
+        const editorTrigger = b.querySelector('.isf-header [data-pui-item="editor"]');
+        const drawer = window.isfEditorPanel(b);
         const editor = b.querySelector(".isf-editor");
-        const toolbar = window.isfInspectorHost(b).querySelector(".pui-drawer-body > .pui-toolbar");
+        const editorHead = window.isfEditorHost(b).querySelector(".isf-editor-head");
+        const panelStyle = getComputedStyle(drawer);
         return {
-            editorOpen: !drawer.hidden && !!sourceTab && sourceTab.getAttribute("aria-pressed") === "true",
-            paramsClosed: !!paramsPanel && paramsPanel.classList.contains("isf-hidden"),
+            editorOpen: !drawer.hidden && editorTrigger.getAttribute("aria-pressed") === "true",
+            inspectorClosed: window.isfInspectorPanel(b).hidden,
             compactChrome: b.querySelector(".isf-editor-status").getBoundingClientRect().height <= 2 &&
                 getComputedStyle(b.querySelector(".isf-editor-pos")).display === "none",
             codeShare: editor.getBoundingClientRect().height / Math.max(1, drawer.getBoundingClientRect().height),
-            bottomMenu: !!toolbar && toolbar.contains(sourceTab) && drawer.contains(toolbar)
+            transparent: panelStyle.backdropFilter !== "none" && /rgba|color\(/i.test(panelStyle.backgroundColor),
+            editorChrome: !!editorHead && getComputedStyle(editorHead).display !== "none"
         };
     });
-    if (!phoneSwap.editorOpen || !phoneSwap.paramsClosed) problems.push("mobile: opening the editor should close the parameters drawer");
+    if (!phoneSwap.editorOpen || !phoneSwap.inspectorClosed) problems.push("mobile: opening the source drawer should close the inspector");
+    if (!phoneSwap.transparent) problems.push("mobile: the source drawer is not translucent");
+    if (!phoneSwap.editorChrome) problems.push("mobile: the source editor lost its compact title bar");
     if (!phoneSwap.compactChrome) problems.push("mobile: the editor should drop the status/caret chrome");
     if (phoneSwap.codeShare < 0.5) problems.push("mobile: the code pane got less than half the inspector: " + phoneSwap.codeShare.toFixed(2));
-    if (!phoneSwap.bottomMenu) problems.push("mobile: the Parameters/Source menu is not right-aligned in the bottom bar");
     await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
 
     const phoneFold = await page.evaluate(async () => {
@@ -1043,7 +1120,7 @@ try {
                 collapsed: toolbar.__puiToolbarLayout.collapsed,
                 main: toolbar.__puiToolbarLayout.main.map((entry) => ({id: entry.item.id, hidden: entry.node.hidden, w: Math.round(entry.node.getBoundingClientRect().width), p: entry.item.priority}))
             } : null,
-            unexpectedPressed: pressedItems.filter((id) => ["controls", "fullscreen"].indexOf(id) < 0)
+            unexpectedPressed: pressedItems.filter((id) => ["controls", "editor", "fullscreen"].indexOf(id) < 0)
         };
     });
     if (!badgeHome.headerToolbar || badgeHome.inStage || badgeHome.outsideHeader) {
@@ -1176,17 +1253,15 @@ try {
         if (hint) hint.click();
         await sleep(450);
         const host = window.isfInspectorHost(block);
-        const paramsButton = host && host.querySelector('.pui-drawer-body > .pui-toolbar [data-pui-item="params"]');
+        const paramsButton = block.querySelector('.isf-header [data-pui-item="controls"]');
         const paramsOpen = !drawer.hidden && !!paramsButton && paramsButton.getAttribute("aria-pressed") === "true";
         const actionItems = host ? Array.from(host.querySelectorAll("[data-pui-item]")).map((el) => el.getAttribute("data-pui-item")) : [];
         const labels = host ? Array.from(host.querySelectorAll(".pui-menu-popup .pui-button, .pui-drawer-body > .pui-toolbar .pui-button")).map((el) => el.textContent.trim()) : [];
-        const tabs = host ? Array.from(host.querySelectorAll('.pui-drawer-body > .pui-toolbar [data-pui-item="params"], .pui-drawer-body > .pui-toolbar [data-pui-item="source"]')).map((el) => {
-            const label = el.querySelector(".pui-toolbar-label");
-            return label ? label.textContent.trim() : el.textContent.trim().replace(/\d+$/, "");
-        }) : [];
+        const inspectorTitle = host ? host.querySelector(".pui-drawer-body > .pui-toolbar .pui-toolbar-label") : null;
+        const tabs = [];
         const transport = host && host.querySelector(".pui-drawer-body > .pui-transport");
         const transportInScroll = !!transport;
-        const drawerTitle = host && host.querySelector(".pui-drawer-head h4") ? host.querySelector(".pui-drawer-head h4").textContent : "";
+        const drawerTitle = inspectorTitle ? inspectorTitle.textContent : "";
         const select = block.querySelector('select[aria-label="Render resolution"]');
         const setResolution = async (value) => {
             if (!select) return;
@@ -1276,8 +1351,8 @@ try {
         }
         if (!resolution.transportInScroll) problems.push("the transport should be mounted in the PUI inspector");
         if (!/Plasma/i.test(resolution.drawerTitle)) problems.push("the inspector title lost the shader context: " + JSON.stringify(resolution.drawerTitle));
-        if (resolution.tabs.join(",") !== "Parameters,Source") {
-            problems.push("the inspector tabs are not Parameters,Source: " + JSON.stringify(resolution.tabs));
+        if (!/Plasma/i.test(resolution.drawerTitle)) {
+            problems.push("the inspector title lost the shader context: " + JSON.stringify(resolution.drawerTitle));
         }
         if (!resolution.escapeClosed) problems.push("Escape did not close the fullscreen inspector");
         if (!resolution.hintAfterEscape) problems.push("the hint did not return after closing the inspector");
@@ -1479,7 +1554,7 @@ try {
         const revealed = block.classList.contains("isf-revealed") && getComputedStyle(header).display !== "none";
         window.isfOpenInspector(block, "editor");
         await sleep(400);
-        const panel = window.isfInspectorPanel(block);
+        const panel = window.isfEditorPanel(block);
         const editorOpen = !!panel && !panel.hidden && getComputedStyle(panel).display !== "none";
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(300);

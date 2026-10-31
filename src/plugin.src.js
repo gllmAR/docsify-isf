@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.29.2
+ * docsify-isf v1.30.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.29.2";
+    var VERSION = "1.30.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3627,6 +3627,7 @@
             "@keyframes isf-pui-editor-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}",
             ".isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-editor-in .18s ease both}",
             "@media (prefers-reduced-motion:reduce){.isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
+            "@media (max-width:600px){.isf-editor-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}}",
             ".isf-inspector-head{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:.3rem .5rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 92%,transparent)}",
             ".isf-inspector-tabs{display:flex;gap:.15rem;flex:0 1 auto;min-width:0}",
             ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",

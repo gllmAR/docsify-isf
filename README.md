@@ -242,25 +242,29 @@ Every viewer also exposes `DocsifyISF` on `window` for scripting
 (`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, …).
 `PupitreUI`/`PupitreISF` become available once the first inspector or
 transport mounts; `await DocsifyISF.loadPUI()` loads the toolkit explicitly.
-The viewer is a **studio shell** built around a PUI inspector drawer anchored
-inside the shader stage. The header is a PUI `toolbar` with one inspector
-toggle, the source-link title/ISF chip and the live FPS/size readout. The
-inspector is a PUI `drawer` titled with the shader name; its toolbar owns the
-**Parameters | Source** view switcher and a **More** menu (fullscreen, reset,
-share, help, open source), followed by the active parameters/editor surface and
-a native PUI **transport** (play/pause/stop and shader-time seek). The
-Parameters view is a PUI document generated from the normalised `INPUTS` by the
-vendored ISF adapter; the Source view is the host GLSL editor mounted as a PUI
-custom slot. Only one shader inspector is open at a time, so multiple viewers
-never stack drawers on top of each other. The bottom status line is a PUI
-statusbar with a tone, and transient feedback uses a dismissible PUI toast
-stack.
+The viewer is a **studio shell** with two contextual PUI drawers anchored
+inside the shader stage. Parameters is the right PUI `drawer`; Source is a
+translucent left PUI `drawer` for the host GLSL editor and import surface.
+The header is a PUI `toolbar` with the Source toggle at the left edge, the
+source-link title/ISF chip and FPS/size readout in the middle, and the
+Parameters toggle at the right edge — each trigger sits directly above the
+drawer edge it opens. Drawer heads are merged into compact toolbars instead of
+stealing a second title row.
+
+The Parameters drawer toolbar carries the shader name and a **More** menu
+(fullscreen, reset, share, help, open source), followed by the PUI parameters
+document generated from the normalised `INPUTS` and a native PUI **transport**
+(play/pause/stop and shader-time seek). The Source drawer uses the host
+editor’s own compact title bar and a transparent, blurred panel so the shader
+stays visible while editing. On desktop both drawers can coexist; on narrow
+screens they are mutually exclusive. Only one Parameters drawer is open at a
+time across viewers, so panels never stack on the page. The bottom status line
+is a PUI statusbar with a tone; feedback uses a dismissible PUI toast stack.
 
 The host header remains only as the pre-load/failure fallback; the code editor
-and stage remain host surfaces. The header toggle exposes `aria-pressed`; the
-drawer owns focus, Escape and close; the transport is driven through PUI
-bindings. `params:"auto"` only auto-opens the inspector for the viewer in view,
-and never steals it from another open viewer.
+and stage remain host surfaces. Both header toggles expose `aria-pressed`; the
+drawers own focus/Escape/close; the transport is driven through PUI bindings.
+`params:"auto"` only auto-opens the inspector for the viewer in view.
 
 ## OBS / fullscreen link
 
@@ -295,28 +299,27 @@ parameters to the shader defaults; the Resolution menu's **Default** returns
 the cap to the site default. The bare viewer never writes local storage.
 
 The in-page fullscreen button (or double-clicking the canvas) makes the whole
-viewer block fill the display. The header and status line are hidden and the
-inspector starts closed, so the shader gets the whole viewport. A subtle
+viewer block fill the display. The header and status line are hidden and both
+drawers start closed, so the shader gets the whole viewport. A subtle
 inspector pill sits at the top-left (32 px, low opacity); it fades after about
-2.2 s of inactivity and reappears on pointer/keyboard activity. Click it (or
-press **H**) to open the contextual PUI drawer for this shader; **Escape**
-closes it and brings the hint back. There is no second fullscreen toolbox:
-**Exit fullscreen**, Reset, Share and Open source live in the inspector’s More
-menu, and play/seek remain in its transport. The same Resolution/Scale cap
-applies, so a 4K fullscreen still renders at SD by default until you pick
-HD/FHD/Native. If the PUI assets cannot load, the normal header falls back.
+2.2 s and reappears on activity. Click it (or press **H**) to open the
+Parameters drawer; **Ctrl/Cmd+B** opens the Source drawer; **Escape** closes
+the active drawer and brings the hint back. **Exit fullscreen**, Reset, Share
+and Open source live in the Parameters More menu, and play/seek remain in its
+transport. The same Resolution/Scale cap applies. If the PUI assets cannot
+load, the normal header falls back.
 
 ## Editor
 
-The Source view fills the inspector drawer; dragging its splitter pins a manual
-height (double-click resets it), and folding the editor toolbar grows the pane
-by exactly the freed rows. The Parameters/Source switcher, More actions and
-transport live in the PUI drawer around the host editor. On phones the drawer
-takes the full viewport, the caret readout is hidden and the editor status is
-visually hidden but still announced, so compile feedback survives while the
-code pane keeps most of the height.
+The Source surface fills its own translucent left PUI drawer, with the host
+editor’s compact title bar. Dragging its splitter pins a manual height
+(double-click resets it), and folding the editor toolbar grows the pane by the
+freed rows. The More actions and transport stay in the Parameters drawer. On
+phones the Source drawer takes the full viewport, the caret readout is hidden
+and the editor status is visually hidden but still announced, so compile
+feedback survives while the code pane keeps most of the height.
 
-Open **Source** from the inspector toolbar (or press Ctrl/Cmd+B):
+Open **Source** from the left header toggle (or press Ctrl/Cmd+B):
 
 - **GLSL syntax highlighting** for keywords, types, built-ins, ISF functions
   and the ISF uniforms, with an **active-line highlight**, a **line-number
@@ -373,16 +376,18 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   values are clamped to `MIN`/`MAX`, `long` values snap to `VALUES`, and
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
-- `width`, `height` and `aspectRatio` size the preview. The **inspector** is
-  a PUI drawer anchored inside the shader stage, so it stays visually tied to
-  the preview and one shader inspector is open at a time. Its toolbar switches
-  Parameters/Source, its More menu carries view actions, and its native PUI
-  transport owns play/seek. It never changes the render size.
-- The header is responsive: on narrow screens it keeps the inspector toggle
-  and title (the stats readout is hidden), while view actions stay in the
-  inspector More menu; controls stay at least 32–36 px tall on touch devices
-  and the drawer tabs, transport and form fields respect the notch safe areas
-  and coarse-pointer sizing.
+- `width`, `height` and `aspectRatio` size the preview. **Parameters** is a
+  right PUI drawer and **Source** is a translucent left PUI drawer, both
+  anchored inside the shader stage. Desktop can show both, with the shader
+  visible between them; narrow screens keep only one drawer open. Each header
+  toggle sits at the edge of the drawer it opens. The Parameters drawer’s More
+  menu carries view actions; its native PUI transport owns play/seek. Neither
+  changes the render size.
+- The header is responsive: the Source toggle stays on the left, the
+  Parameters toggle on the right, and the title/stats fill the middle (stats
+  hidden on phones). Controls stay at least 32–36 px tall on touch devices;
+  the drawers, transport and form fields respect safe areas and coarse-pointer
+  sizing.
 - The preview is keyboard focusable: **Enter/Space** or a double-click toggles
   fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
   `aria-expanded`, and the status regions are `aria-live`.

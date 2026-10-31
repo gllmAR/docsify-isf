@@ -1,6 +1,6 @@
 {
   "name": "docsify-isf",
-  "version": "1.29.2",
+  "version": "1.30.0",
   "description": "Docsify plugin that turns Markdown links to ISF shader files into interactive WebGL viewers with parameter controls and a live GLSL editor.",
   "main": "docsify-isf.js",
   "files": [
