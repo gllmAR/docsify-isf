@@ -212,6 +212,7 @@
       timelineAction: options.timelineAction || null,
       stageAction: options.stageAction || null,
       treeAction: options.treeAction || null,
+      pageAction: options.pageAction || null,
       moveTreeNode: options.moveTreeNode || null,
       selectionAction: options.selectionAction || null,
       projectAction: options.projectAction || null,
@@ -600,6 +601,7 @@
       }
     }
     this.signature = key;
+    this.syncPageBindings();
     this.apply();
     this.bindShortcuts();
     this.applyRoute();
@@ -766,7 +768,7 @@
     var embedded = panel.embedded === true;
     this._pageEmbedded = embedded;
     var panelEl = el("section", {class: "pui-panel", role: "region"});
-    var panelRecord = {element: panelEl, tablist: null, pages: [], active: 0};
+    var panelRecord = {element: panelEl, tablist: null, pages: [], active: 0, pageBind: String(panel.page_bind || "")};
     this.panelRecords.push(panelRecord);
     var title = String(panel.title || panel.id || "Pupitre");
     var headingId = this.id("panel-title");
@@ -787,6 +789,10 @@
     if (!pages.length) return panelEl;
     if (panel.default_page) {
       for (var d = 0; d < pages.length; d++) if (String(pages[d].id || "") === String(panel.default_page)) panelRecord.active = d;
+    }
+    if (panelRecord.pageBind) {
+      var bound = this.adapter.getValue(panelRecord.pageBind);
+      for (var pb = 0; pb < pages.length; pb++) if (String(pages[pb].id || "") === String(bound || "")) panelRecord.active = pb;
     }
     var tablist = null;
     var panels = [];
@@ -844,7 +850,42 @@
     this.activatePage(panelRecord, index);
     var tabs = tablist.querySelectorAll('[role="tab"]');
     if (tabs[index]) tabs[index].focus();
+    this.writePage(panelRecord, index);
     this.routePage(panelRecord.pages[index] && panelRecord.pages[index].page);
+  };
+
+  /** Host-bound page state: the panel declares `page_bind`, the host stores
+   * the active page id and can switch pages without rebuilding the document. */
+  Renderer.prototype.writePage = function (panelRecord, index) {
+    if (!panelRecord || !panelRecord.pageBind) return false;
+    var rec = panelRecord.pages[index];
+    var page = rec && rec.page;
+    if (!page) return false;
+    var id = String(page.id || "");
+    if (!id) return false;
+    try { this.setPath(panelRecord.pageBind, id); }
+    catch (error) { this.adapter.announce("error", "Page bind failed: " + String(error && error.message || error)); return false; }
+    if (typeof this.adapter.pageAction === "function") {
+      try { this.adapter.pageAction({op: "page.select", id: id, index: index, page: page}, id, panelRecord); }
+      catch (error) { this.adapter.announce("error", "Page action failed: " + String(error && error.message || error)); }
+    }
+    return true;
+  };
+
+  Renderer.prototype.syncPageBindings = function () {
+    for (var i = 0; i < this.panelRecords.length; i++) {
+      var panelRecord = this.panelRecords[i];
+      if (!panelRecord.pageBind) continue;
+      var bound = this.adapter.getValue(panelRecord.pageBind);
+      for (var p = 0; p < panelRecord.pages.length; p++) {
+        if (String(panelRecord.pages[p].page && panelRecord.pages[p].page.id || "") !== String(bound || "")) continue;
+        if (panelRecord.active !== p) {
+          this.activatePage(panelRecord, p);
+          this.routePage(panelRecord.pages[p] && panelRecord.pages[p].page);
+        }
+        break;
+      }
+    }
   };
 
   Renderer.prototype.activatePage = function (panelRecord, index) {
@@ -3143,31 +3184,47 @@
   Renderer.prototype.buildDrawer = function (block) {
     var self = this;
     var modal = block.modal !== false;
+    var contained = block.contained === true;
+    var headless = block.headless === true;
+    var translucent = block.translucent === true;
     var side = String(block.side || "right").toLowerCase();
     if (side !== "left" && side !== "right" && side !== "top" && side !== "bottom") side = "right";
-    var root = el("section", {class: "pui-drawer", "data-pui-drawer": String(block.id || "")});
-    var trigger = el("button", {type: "button", class: "pui-drawer-trigger pui-button", text: String(block.trigger || block.label || "Open")});
-    trigger.setAttribute("aria-expanded", "false");
-    root.appendChild(trigger);
+    var size = function (value, fallback) {
+      if (value === undefined || value === null || value === "") return String(fallback) + "px";
+      return typeof value === "number" ? String(value) + "px" : String(value);
+    };
+    var root = el("section", {class: "pui-drawer" + (contained ? " is-contained" : "") + (headless ? " is-headless" : ""), "data-pui-drawer": String(block.id || "")});
+    var trigger = null;
+    if (block.trigger !== false) {
+      trigger = el("button", {type: "button", class: "pui-drawer-trigger pui-button", text: String(block.trigger || block.label || "Open")});
+      trigger.setAttribute("aria-expanded", "false");
+      root.appendChild(trigger);
+    }
     var panelId = this.id("drawer");
     var backdrop = el("div", {class: "pui-drawer-backdrop", hidden: true});
-    var panel = el("aside", {class: "pui-drawer-panel is-" + side, id: panelId, hidden: true,
+    var panel = el("aside", {class: "pui-drawer-panel is-" + side + (contained ? " is-contained" : "") + (headless ? " is-headless" : "") + (translucent ? " is-translucent" : ""), id: panelId, hidden: true,
       role: modal ? "dialog" : "region"});
     if (modal) panel.setAttribute("aria-modal", "true");
-    trigger.setAttribute("aria-controls", panelId);
+    if (trigger) trigger.setAttribute("aria-controls", panelId);
     var titleId = this.id("drawer-title");
-    panel.setAttribute("aria-labelledby", titleId);
-    var head = el("div", {class: "pui-drawer-head"});
-    head.appendChild(el("h4", {id: titleId, text: String(block.label || block.id || "Panel")}));
-    var close = el("button", {type: "button", class: "pui-drawer-close", text: "×", "aria-label": "Close " + String(block.label || "panel")});
-    head.appendChild(close);
-    panel.appendChild(head);
+    if (!headless) {
+      panel.setAttribute("aria-labelledby", titleId);
+      var head = el("div", {class: "pui-drawer-head"});
+      head.appendChild(el("h4", {id: titleId, text: String(block.label || block.id || "Panel")}));
+      var close = el("button", {type: "button", class: "pui-drawer-close", text: "×", "aria-label": "Close " + String(block.label || "panel")});
+      head.appendChild(close);
+      panel.appendChild(head);
+      panel._puiClose = close;
+    } else {
+      panel.setAttribute("aria-label", String(block.label || block.id || "Panel"));
+      panel.tabIndex = -1;
+    }
     var body = el("div", {class: "pui-drawer-body"});
     (block.blocks || []).forEach(function (child) { body.appendChild(self.buildBlock(child)); });
     panel.appendChild(body);
     if (modal) root.appendChild(backdrop);
     root.appendChild(panel);
-    var rec = {block: block, root: root, panel: panel, backdrop: backdrop, trigger: trigger, body: body, open: false, localOpen: block.open === true};
+    var rec = {block: block, root: root, panel: panel, backdrop: backdrop, trigger: trigger, body: body, open: false, localOpen: block.open === true, returnFocus: null};
     var readOpen = function () {
       if (block.open_bind) {
         var value = self.adapter.getValue(String(block.open_bind));
@@ -3178,38 +3235,77 @@
     var render = function () {
       var open = readOpen();
       rec.open = open;
-      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      if (trigger) trigger.setAttribute("aria-expanded", open ? "true" : "false");
       panel.hidden = !open;
       if (modal) backdrop.hidden = !open;
-      panel.style.setProperty("--pui-drawer-width", String(block.width || 480) + "px");
+      panel.style.setProperty("--pui-drawer-width", size(block.width, 480));
       if (side === "top" || side === "bottom") {
-        panel.style.setProperty("--pui-drawer-height", String(block.height || 260) + "px");
+        panel.style.setProperty("--pui-drawer-height", size(block.height, 260));
       }
       root.classList.toggle("is-open", open);
     };
     var toggle = function (open) {
-      if (block.open_bind) self.setPath(String(block.open_bind), !!open, block);
-      else rec.localOpen = !!open;
+      open = !!open;
+      if (open && block.group) {
+        for (var i = 0; i < self.drawerRecords.length; i++) {
+          var other = self.drawerRecords[i];
+          if (other !== rec && other.open && other.block && String(other.block.group || "") === String(block.group)) {
+            other.toggle(false);
+          }
+        }
+      }
+      if (open) {
+        var active = typeof document !== "undefined" ? document.activeElement : null;
+        rec.returnFocus = active && active !== panel && !(panel.contains && panel.contains(active)) ? active : rec.trigger;
+      }
+      if (block.open_bind) self.setPath(String(block.open_bind), open, block);
+      else rec.localOpen = open;
       if (typeof self.adapter.drawerAction === "function") {
-        try { self.adapter.drawerAction({op: open ? "drawer.open" : "drawer.close", id: block.id}, !!open, block); } catch (error) { self.adapter.announce("error", "Drawer action failed: " + String(error && error.message || error)); }
+        try { self.adapter.drawerAction({op: open ? "drawer.open" : "drawer.close", id: block.id}, open, block); } catch (error) { self.adapter.announce("error", "Drawer action failed: " + String(error && error.message || error)); }
       }
       render();
       if (open) {
-        var first = body.querySelector("button, input, select, textarea") ||
-          head.querySelector("button, input, select, textarea");
+        var first = body.querySelector("button, input, select, textarea");
+        if (!first && !headless) first = panel.querySelector(".pui-drawer-head button, .pui-drawer-head input, .pui-drawer-head select, .pui-drawer-head textarea");
         if (first && first.focus) first.focus();
+        else if (headless && panel.focus) panel.focus();
       } else {
-        if (trigger.focus) trigger.focus();
+        var back = rec.returnFocus || rec.trigger;
+        if (back && back.focus) back.focus();
       }
     };
-    trigger.addEventListener("click", function () { toggle(!readOpen()); });
-    close.addEventListener("click", function () { toggle(false); });
+    trigger && trigger.addEventListener("click", function () { toggle(!readOpen()); });
+    if (panel._puiClose) panel._puiClose.addEventListener("click", function () { toggle(false); });
     if (modal) backdrop.addEventListener("click", function () { toggle(false); });
     panel.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); toggle(false); } });
     rec.render = render;
+    rec.toggle = toggle;
     this.drawerRecords.push(rec);
     render();
     return root;
+  };
+
+  Renderer.prototype.drawerRecord = function (id) {
+    for (var i = 0; i < this.drawerRecords.length; i++) {
+      if (String(this.drawerRecords[i].block && this.drawerRecords[i].block.id || "") === String(id || "")) return this.drawerRecords[i];
+    }
+    return null;
+  };
+
+  Renderer.prototype.setDrawerOpen = function (id, open) {
+    var rec = this.drawerRecord(id);
+    if (!rec) return false;
+    rec.toggle(!!open);
+    return true;
+  };
+
+  Renderer.prototype.openDrawer = function (id) { return this.setDrawerOpen(id, true); };
+  Renderer.prototype.closeDrawer = function (id) { return this.setDrawerOpen(id, false); };
+  Renderer.prototype.toggleDrawer = function (id) {
+    var rec = this.drawerRecord(id);
+    if (!rec) return false;
+    rec.toggle(!rec.open);
+    return true;
   };
 
   Renderer.prototype.buildCurve = function (block) {
@@ -11075,7 +11171,7 @@
 
   function structureKey(doc) {
     return JSON.stringify((doc.panels || []).map(function (panel) {
-      return [str(panel.id), str(panel.title), str(panel.default_page), !!panel.embedded, (panel.actions || []).map(actionShape),
+      return [str(panel.id), str(panel.title), str(panel.default_page), str(panel.page_bind), !!panel.embedded, (panel.actions || []).map(actionShape),
         (panel.pages || []).map(function (page) {
           return [str(page.id), str(page.title), (page.sections || []).map(function (section) {
             return [str(section.id), str(section.title), !!section.help, (section.actions || []).map(actionShape),
@@ -11111,7 +11207,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.7.0",
+    version: "1.8.0",
     create: create,
     validate: validate,
     expandTemplates: expandTemplates,

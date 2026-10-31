@@ -787,6 +787,13 @@
 .pui-drawer-close { margin-inline-start: auto; border: 0; background: transparent; color: var(--pui-muted); font-size: 1.2rem; cursor: pointer; }
 .pui-drawer-body { padding: 10px; overflow: auto; flex: 1 1 auto; min-height: 0; }
 .pui-drawer-body .pui-code { height: 100%; }
+.pui-drawer-panel.is-translucent { background: color-mix(in srgb, var(--pui-surface) 82%, transparent); -webkit-backdrop-filter: blur(18px) saturate(145%); backdrop-filter: blur(18px) saturate(145%); }
+.pui-drawer-panel.is-headless .pui-drawer-body { padding-top: 10px; }
+.pui-drawer.is-contained { position: static; }
+.pui-drawer.is-contained .pui-drawer-trigger { position: relative; z-index: 1; pointer-events: auto; }
+.pui-drawer.is-contained .pui-drawer-panel { position: absolute; inset-block: 0; z-index: 10; width: min(100%, var(--pui-drawer-width, 480px)); max-width: 100%; pointer-events: auto; }
+.pui-drawer.is-contained .pui-drawer-panel.is-top,
+.pui-drawer.is-contained .pui-drawer-panel.is-bottom { inset-block: auto; inset-inline: 0; width: 100%; max-width: 100%; }
 .pui-macros { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px; }
 .pui-macros-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .pui-macros-head h4 { margin: 0; font-size: 0.85rem; }

@@ -507,7 +507,9 @@ PUI `transport`. The left Source drawer hosts the host editor/import surfaces
 through custom slots and uses the editor’s own compact title bar. Both
 `open_bind`s reflect host state; the right drawer’s title carries the shader
 context, and opening another viewer’s Parameters drawer closes the previous
-one. The fullscreen menu label follows the host state; icon-only items keep an
+one. The drawers use PUI 1.8.0's contained/headless/external-trigger, CSS-length
+width and translucent drawer options; no host positioning/head CSS is needed
+beyond the stage overlay margins. The fullscreen menu label follows the host state; icon-only items keep an
 `aria-label`/`title`. All actions call back into the viewer. Playback lives
 only in the Parameters transport. The separate fullscreen toolbox and the host
 bottom row were removed.

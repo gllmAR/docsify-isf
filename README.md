@@ -266,6 +266,11 @@ and stage remain host surfaces. Both header toggles expose `aria-pressed`; the
 drawers own focus/Escape/close; the transport is driven through PUI bindings.
 `params:"auto"` only auto-opens the inspector for the viewer in view.
 
+The split surfaces use PUI **1.8.0** drawer options: `contained`, `headless`,
+`trigger:false`, CSS-length `width` and `translucent`. The renderer/adapter are
+vendored from the tagged `v1.8.0` snapshot. The same options are available to
+other PUI consumers (see `spec/OPERATOR.md`).
+
 ## OBS / fullscreen link
 
 The share button copies a URL shaped like

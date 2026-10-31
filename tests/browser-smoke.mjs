@@ -906,13 +906,16 @@ try {
             separated: er.right <= ir.left + 1,
             editorTriggerNear: Math.abs(et.left - er.left) <= 24 && er.top >= et.bottom - 2 && er.top - et.bottom <= 24,
             inspectorTriggerNear: Math.abs(it.right - ir.right) <= 24 && ir.top >= it.bottom - 2 && ir.top - it.bottom <= 24,
-            inspectorHeadless: getComputedStyle(inspectorHost.querySelector(".pui-drawer-head")).display === "none",
-            editorHeadless: getComputedStyle(editorHost.querySelector(".pui-drawer-head")).display === "none",
+            inspectorHeadless: !inspectorHost.querySelector(".pui-drawer-head"),
+            editorHeadless: !editorHost.querySelector(".pui-drawer-head"),
             editorTitleBar: (() => {
                 const head = editorHost.querySelector(".isf-editor-head");
                 return !!head && getComputedStyle(head).display !== "none";
             })(),
-            translucent: getComputedStyle(editorPanel).backdropFilter !== "none",
+            translucent: editorPanel.classList.contains("is-translucent") && getComputedStyle(editorPanel).backdropFilter !== "none",
+            contained: inspectorPanel.classList.contains("is-contained") && editorPanel.classList.contains("is-contained"),
+            externalTriggers: !inspectorHost.querySelector(".pui-drawer-trigger") && !editorHost.querySelector(".pui-drawer-trigger"),
+            declaredWidths: [inspectorPanel, editorPanel].map((panel) => panel.style.getPropertyValue("--pui-drawer-width")),
             inspectorTitle: (() => {
                 const label = inspectorHost.querySelector(".pui-drawer-body > .pui-toolbar .pui-toolbar-label");
                 return label ? label.textContent : "";
@@ -937,7 +940,13 @@ try {
         if (!splitDrawers.inspectorHeadless || !splitDrawers.editorHeadless || !splitDrawers.editorTitleBar) {
             problems.push("the drawers did not merge their title chrome: " + JSON.stringify(splitDrawers));
         }
-        if (!splitDrawers.translucent) problems.push("the source drawer should be translucent");
+        if (!splitDrawers.translucent) problems.push("the source drawer should use the PUI translucent surface");
+        if (!splitDrawers.contained || !splitDrawers.externalTriggers) {
+            problems.push("the split drawers did not use PUI contained/external-trigger options: " + JSON.stringify(splitDrawers));
+        }
+        if (splitDrawers.declaredWidths.join(",") !== "min(420px, 40%),min(560px, 48%)") {
+            problems.push("the split drawers lost their PUI CSS-length widths: " + JSON.stringify(splitDrawers.declaredWidths));
+        }
         if (!/Plasma/i.test(splitDrawers.inspectorTitle)) problems.push("the parameters drawer title lost its shader context");
         if (!splitDrawers.closedAgain) problems.push("the split drawers did not close");
     }

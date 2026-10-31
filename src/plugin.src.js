@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.30.0
+ * docsify-isf v1.31.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.30.0";
+    var VERSION = "1.31.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3607,13 +3607,11 @@
             ".isf-inspector-pui .pui-menu-popup .pui-toolbar-label{display:inline;padding:0;color:var(--isf-text);font-size:.76rem}",
             ".isf-inspector-pui .pui-menu-popup .pui-toolbar-link{text-decoration:none}",
             "@media (pointer:coarse){.isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-head .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-pui .pui-menu-popup .pui-button{min-height:36px}}",
-            "@media (max-width:600px){.isf-inspector-pui .pui-drawer-panel,.isf-editor-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
+            "@media (max-width:600px){.isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:fixed;inset:0;width:100vw!important;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
             ".isf-editor-pui{position:absolute;inset:0;z-index:10;pointer-events:none}",
             ".isf-editor-pui .pui{--pui-bg:transparent;--pui-surface:var(--isf-surface);--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
             ".isf-editor-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
-            ".isf-editor-pui .pui-drawer-trigger{display:none}",
-            ".isf-editor-pui .pui-drawer-head{display:none!important}",
-            ".isf-editor-pui .pui-drawer-panel{position:absolute;inset:8px auto 8px 8px;width:min(560px,48%);max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:color-mix(in srgb,var(--isf-drawer-bg) 82%,transparent)!important;-webkit-backdrop-filter:blur(18px) saturate(145%);backdrop-filter:blur(18px) saturate(145%);color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
+            ".isf-editor-pui .pui-drawer-panel{position:absolute;inset:8px auto 8px 8px;height:auto;z-index:20;pointer-events:auto;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
             ".isf-editor-pui .pui-drawer-body{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;min-height:0;background:transparent}",
             ".isf-editor-pui .pui-slot{min-height:0;overflow:auto;background:transparent}",
             ".isf-editor-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex:1 1 auto;flex-direction:column;overflow:hidden;min-height:0;padding:0}",
@@ -6945,8 +6943,9 @@
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-inspector", title: String(viewer.title || "Shader") + " controls", embedded: true, pages: [{id: "inspector", title: "Inspector", sections: [{
                     id: "inspector", title: "Inspector", blocks: [{
-                        kind: "drawer", id: "inspector", label: String(viewer.title || "Shader") + " controls", trigger: "Inspector",
-                        open_bind: "/isf/ui/inspectorOpen", side: "right", width: 460, modal: false,
+                        kind: "drawer", id: "inspector", label: String(viewer.title || "Shader") + " controls", trigger: false,
+                        open_bind: "/isf/ui/inspectorOpen", side: "right", width: "min(420px, 40%)", modal: false,
+                        contained: true, headless: true,
                         blocks: [
                             {kind: "toolbar", id: "inspector-toolbar", label: "Inspector", align: "start", items: items},
                             {kind: "custom", slot: "isf.params", a11y: {name: "Parameters", role: "region"}},
@@ -6963,8 +6962,9 @@
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-editor", title: String(viewer.title || "Shader") + " source", embedded: true, pages: [{id: "editor", title: "Source editor", sections: [{
                     id: "editor", title: "Source editor", blocks: [{
-                        kind: "drawer", id: "source-editor", label: String(viewer.title || "Shader") + " source", trigger: "Source editor",
-                        open_bind: "/isf/ui/editorOpen", side: "left", width: 560, modal: false,
+                        kind: "drawer", id: "source-editor", label: String(viewer.title || "Shader") + " source", trigger: false,
+                        open_bind: "/isf/ui/editorOpen", side: "left", width: "min(560px, 48%)", modal: false,
+                        contained: true, headless: true, translucent: true,
                         blocks: [
                             {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
                             {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}}
