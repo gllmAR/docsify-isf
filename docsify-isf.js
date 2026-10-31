@@ -5486,7 +5486,26 @@
             ".isf-inspector-pui .pui-menu-popup .pui-toolbar-label{display:inline;padding:0;color:var(--isf-text);font-size:.76rem}",
             ".isf-inspector-pui .pui-menu-popup .pui-toolbar-link{text-decoration:none}",
             "@media (pointer:coarse){.isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-head .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-pui .pui-menu-popup .pui-button{min-height:36px}}",
-            "@media (max-width:600px){.isf-inspector-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
+            "@media (max-width:600px){.isf-inspector-pui .pui-drawer-panel,.isf-editor-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
+            ".isf-editor-pui{position:absolute;inset:0;z-index:10;pointer-events:none}",
+            ".isf-editor-pui .pui{--pui-bg:transparent;--pui-surface:var(--isf-surface);--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
+            ".isf-editor-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
+            ".isf-editor-pui .pui-drawer-trigger{display:none}",
+            ".isf-editor-pui .pui-drawer-head{display:none!important}",
+            ".isf-editor-pui .pui-drawer-panel{position:absolute;inset:8px auto 8px 8px;width:min(560px,48%);max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:color-mix(in srgb,var(--isf-drawer-bg) 82%,transparent)!important;-webkit-backdrop-filter:blur(18px) saturate(145%);backdrop-filter:blur(18px) saturate(145%);color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
+            ".isf-editor-pui .pui-drawer-body{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;min-height:0;background:transparent}",
+            ".isf-editor-pui .pui-slot{min-height:0;overflow:auto;background:transparent}",
+            ".isf-editor-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex:1 1 auto;flex-direction:column;overflow:hidden;min-height:0;padding:0}",
+            ".isf-editor-pui .pui-slot[data-pui-slot=isf.editor] .isf-editor-wrap{flex:1 1 auto;height:100%;min-height:0;background:transparent}",
+            ".isf-editor-pui .pui-slot[data-pui-slot=isf.import]{flex:1 1 auto;padding:.6rem .7rem;background:var(--isf-surface)}",
+            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title{display:flex;padding:.25rem .4rem;background:color-mix(in srgb,var(--isf-surface) 88%,transparent);position:static}",
+            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title > span{font-size:.76rem;font-weight:600}",
+            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title .isf-btn{min-width:30px;min-height:30px}",
+            ".isf-editor-pui .isf-editor-toolbar{background:color-mix(in srgb,var(--isf-surface) 88%,transparent)}",
+            ".isf-editor-pui .isf-editor{background:var(--isf-code-bg)}",
+            "@keyframes isf-pui-editor-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}",
+            ".isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-editor-in .18s ease both}",
+            "@media (prefers-reduced-motion:reduce){.isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
             ".isf-inspector-head{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:.3rem .5rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 92%,transparent)}",
             ".isf-inspector-tabs{display:flex;gap:.15rem;flex:0 1 auto;min-width:0}",
             ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",
@@ -5755,10 +5774,11 @@
         chevron: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         more: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>',
         help: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5.1.7c0 1.5-1.2 2.1-2.1 2.7-.5.3-.8.7-.8 1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="12" cy="17" r="1.1" fill="currentColor"/></svg>',
+        close: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         inspector: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9 4v16" stroke="currentColor" stroke-width="2"/></svg>'
     };
 
-    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more", "help", "inspector"];
+    var HEADER_ICON_NAMES = ["editor", "params", "play", "pause", "reset", "fullscreen", "source", "share", "more", "help", "close", "inspector"];
     var HEADER_ICONS = {};
     HEADER_ICON_NAMES.forEach(function (name) {
         HEADER_ICONS[name] = function () {
@@ -7702,6 +7722,7 @@
         viewer.state = "idle";
         viewer.inspectorTab = "params";
         viewer.inspectorOpen = false;
+        viewer.editorOpen = false;
         viewer.inspectorImport = false;
         // A viewer released by the context budget rebuilds its controls when it
         // resumes; the auto-open decision must not override a drawer the user
@@ -7807,9 +7828,11 @@
         paramsPanel.appendChild(paramsList);
 
         var inspectorPUIHost = h("div", "isf-pui isf-inspector-pui isf-hidden", { id: uid + "-inspector-pui" });
-        // The PUI drawer is anchored to this viewer's stage; it keeps the
-        // inspector visually tied to its shader and one open at a time.
+        var editorPUIHost = h("div", "isf-pui isf-editor-pui isf-hidden", { id: uid + "-editor-pui" });
+        // Two contextual PUI drawers: Parameters on the right, the source
+        // editor on the left. They are anchored to this viewer's stage.
         stage.appendChild(inspectorPUIHost);
+        stage.appendChild(editorPUIHost);
 
         var editor = null;
         if (config.editor) {
@@ -7893,6 +7916,7 @@
             statusPUIHost: statusPUIHost,
             headerPUIHost: headerPUIHost,
             inspectorPUIHost: inspectorPUIHost,
+            editorPUIHost: editorPUIHost,
             fullscreenHint: fullscreenHint
         };
         viewer.editor = editor;
@@ -8037,15 +8061,18 @@
             overlay.style.display = show ? "flex" : "none";
         };
         function setInspectorPanel() {
-            var source = !!(viewer.editor && viewer.inspectorTab === "source");
-            paramsPanel.classList.toggle("isf-hidden", source);
-            if (viewer.editor) viewer.editor.el.classList.toggle("isf-hidden", !source || !!viewer.inspectorImport);
-            importPanel.classList.toggle("isf-hidden", !(source && viewer.inspectorImport));
+            paramsPanel.classList.remove("isf-hidden");
             if (viewer.applyPUIInspector) viewer.applyPUIInspector();
+        }
+        function setEditorPanel() {
+            if (viewer.editor) viewer.editor.el.classList.toggle("isf-hidden", !!viewer.inspectorImport);
+            importPanel.classList.toggle("isf-hidden", !viewer.inspectorImport);
+            if (viewer.applyPUIEditor) viewer.applyPUIEditor();
         }
         function updateDrawerButtons() {
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
             if (viewer.applyPUIInspector) viewer.applyPUIInspector();
+            if (viewer.applyPUIEditor) viewer.applyPUIEditor();
         }
         var hintTimer = null;
         function clearHintTimer() {
@@ -8071,12 +8098,27 @@
         function focusInspector() {
             requestAnimationFrame(function () {
                 if (!viewer.inspectorOpen) return;
-                if (viewer.inspectorImport) { try { importArea.focus(); } catch (error) { /* ignore */ } return; }
-                if (viewer.inspectorTab === "source" && viewer.editor) { viewer.editor.focus(); return; }
                 var host = viewer.dom.inspectorPUIHost;
                 var target = host && host.querySelector('.isf-params [data-pui-bind], .isf-params button, .isf-params input');
                 if (target && target.focus) target.focus();
             });
+        }
+        function focusEditor() {
+            requestAnimationFrame(function () {
+                if (!viewer.editorOpen) return;
+                if (viewer.inspectorImport) { try { importArea.focus(); } catch (error) { /* ignore */ } return; }
+                if (viewer.editor) viewer.editor.focus();
+            });
+        }
+        function focusEditorTrigger() {
+            setTimeout(function () {
+                if (isFullscreenActive() && viewer.dom.canvas) {
+                    try { viewer.dom.canvas.focus(); } catch (error) { /* ignore */ }
+                    return;
+                }
+                var trigger = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="editor"]');
+                if (trigger && trigger.focus) trigger.focus();
+            }, 40);
         }
         function focusInspectorTrigger() {
             setTimeout(function () {
@@ -8090,6 +8132,7 @@
         }
         viewer.setInspectorOpen = function (open) {
             open = !!open;
+            if (open && isNarrowLayout() && viewer.editorOpen) viewer.setEditorOpen(false);
             if (open && window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
                 var previous = window.__isfActiveInspector;
                 window.__isfActiveInspector = null;
@@ -8100,45 +8143,63 @@
             if (viewer.inspectorOpen === open) {
                 setInspectorPanel();
                 updateDrawerButtons();
-                if (viewer.applyPUIInspector) viewer.applyPUIInspector();
                 if (open) focusInspector();
                 return;
             }
             viewer.inspectorOpen = open;
-            block.classList.toggle("isf-drawer-open", open);
+            block.classList.toggle("isf-drawer-open", open || viewer.editorOpen);
             setInspectorPanel();
             updateDrawerButtons();
-            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
-            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
             if (open) {
                 if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
                 focusInspector();
             } else {
                 if (viewer.showFullscreenHint) viewer.showFullscreenHint();
-                focusInspectorTrigger();
+                if (!viewer.editorOpen) focusInspectorTrigger();
+            }
+        };
+        viewer.setEditorOpen = function (open) {
+            open = !!open;
+            if (open && isNarrowLayout() && viewer.inspectorOpen) viewer.setInspectorOpen(false);
+            if (viewer.editorOpen === open) {
+                setEditorPanel();
+                updateDrawerButtons();
+                if (open) focusEditor();
+                return;
+            }
+            viewer.editorOpen = open;
+            block.classList.toggle("isf-drawer-open", open || viewer.inspectorOpen);
+            setEditorPanel();
+            updateDrawerButtons();
+            if (open) {
+                if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
+                focusEditor();
+            } else {
+                if (viewer.showFullscreenHint) viewer.showFullscreenHint();
+                if (!viewer.inspectorOpen) focusEditorTrigger();
             }
         };
         function openInspector(tab) {
-            viewer.inspectorTab = tab === "source" && viewer.editor ? "source" : (tab || viewer.inspectorTab || "params");
+            if (tab === "source" || tab === "editor") { viewer.setEditorOpen(true); return; }
+            viewer.inspectorTab = "params";
             viewer.inspectorImport = false;
             viewer.setInspectorOpen(true);
-            if (viewer.editor && viewer.inspectorTab === "source") viewer.editor.focus();
         }
         function closeInspector() {
             viewer.setInspectorOpen(false);
         }
         function showEditorPanel() {
             if (!viewer.editor) { openInspector("params"); return; }
-            openInspector("source");
             viewer.inspectorImport = false;
-            setInspectorPanel();
+            viewer.setEditorOpen(true);
+            setEditorPanel();
             if (viewer.editor.refreshFold) requestAnimationFrame(viewer.editor.refreshFold);
         }
         viewer.openImport = function () {
             if (!viewer.editor) return;
-            openInspector("source");
             viewer.inspectorImport = true;
-            setInspectorPanel();
+            viewer.setEditorOpen(true);
+            setEditorPanel();
             try { importArea.focus(); } catch (err) { /* ignore */ }
         };
         viewer.exportPng = function () {
@@ -8255,31 +8316,33 @@
         // The toolbar buttons are the single control surface for the drawers;
         // keep their pressed/expanded state in sync wherever a drawer changes.
         viewer.setInspectorTab = function (tab) {
-            openInspector(tab);
-            if (tab === "source" && viewer.editor) viewer.editor.focus();
+            if (tab === "source" || tab === "editor") { viewer.setEditorOpen(true); return; }
+            viewer.inspectorTab = "params";
+            viewer.setInspectorOpen(true);
         };
         viewer.isInspectorOpen = function () { return !!viewer.inspectorOpen; };
+        viewer.isEditorOpen = function () { return !!viewer.editorOpen; };
         viewer.setDrawer = function (drawer, open) { viewer.setInspectorOpen(!!open); };
         viewer.isDrawerOpen = function () { return !!viewer.inspectorOpen; };
         viewer.setPanel = function (panel, open) {
             if (panel === viewer.dom.paramsPanel) {
-                if (open) openInspector("params"); else closeInspector();
+                if (open) viewer.setInspectorOpen(true); else closeInspector();
             } else if (panel === viewer.dom.editorPanel) {
-                if (open) { openInspector("source"); showEditorPanel(); } else closeInspector();
+                if (open) viewer.setEditorOpen(true); else viewer.setEditorOpen(false);
             } else {
                 panel.classList.toggle("isf-hidden", !open);
             }
         };
         viewer.toggleParams = function () {
             viewer.drawerTouched = true;
-            if (viewer.inspectorOpen && viewer.inspectorTab === "params") closeInspector();
-            else openInspector("params");
+            if (viewer.inspectorOpen) closeInspector();
+            else viewer.setInspectorOpen(true);
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
             viewer.drawerTouched = true;
-            if (viewer.inspectorOpen && viewer.inspectorTab === "source" && !viewer.inspectorImport) closeInspector();
-            else { openInspector("source"); if (viewer.editor) viewer.editor.focus(); }
+            if (viewer.editorOpen) viewer.setEditorOpen(false);
+            else viewer.setEditorOpen(true);
         };
         viewer.togglePlay = function () {
             var runtime = viewer.runtime;
@@ -8318,6 +8381,7 @@
             if (active) {
                 viewer.setState("");
                 if (viewer.inspectorOpen) closeInspector();
+                if (viewer.editorOpen) viewer.setEditorOpen(false);
                 if (viewer.showFullscreenHint) viewer.showFullscreenHint();
             } else if (viewer.hideFullscreenHint) {
                 viewer.hideFullscreenHint();
@@ -8733,20 +8797,15 @@
             if (!viewer.puiInspector) return;
             try { viewer.puiInspector.ui.apply(); } catch (error) { /* ignore */ }
         };
-        viewer.applyPUITransport = function () { viewer.applyPUIInspector(); };
+        viewer.applyPUIEditor = function () {
+            if (!viewer.puiEditor) return;
+            try { viewer.puiEditor.ui.apply(); } catch (error) { /* ignore */ }
+        };
+        viewer.applyPUITransport = function () { viewer.applyPUIInspector(); viewer.applyPUIEditor(); };
         viewer.buildPUIInspectorDocument = function () {
-            var tabs = [{
-                id: "params", label: "Parameters", icon: "params", title: "Parameters",
-                call: "isf.params", pressed_bind: "/isf/ui/paramsTab",
-                badge_bind: "/isf/ui/inputCount", aria_controls: paramsPanel.id
-            }];
-            if (config.editor) tabs.push({
-                id: "source", label: "Source", icon: "editor", title: "Source editor",
-                call: "isf.editor", pressed_bind: "/isf/ui/sourceTab",
-                aria_controls: editor ? editor.el.id : ""
-            });
-            tabs.push({kind: "spacer"});
-            tabs.push({
+            var items = [{
+                kind: "label", text: String(viewer.title || "Shader")
+            }, {kind: "spacer"}, {
                 kind: "menu", id: "more", label: "More actions", title: "More actions",
                 icon: "more", icon_only: true, items: [
                     {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen", call: "isf.fullscreen"},
@@ -8756,7 +8815,10 @@
                     {id: "help", label: "Keyboard shortcuts", icon: "help", call: "isf.help"},
                     {kind: "link", id: "source-file", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source"}
                 ]
-            });
+            }, {
+                id: "close", label: "Close inspector", title: "Close inspector",
+                icon: "close", icon_only: true, call: "isf.inspectorClose"
+            }];
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-inspector", title: String(viewer.title || "Shader") + " controls", embedded: true, pages: [{id: "inspector", title: "Inspector", sections: [{
@@ -8764,13 +8826,26 @@
                         kind: "drawer", id: "inspector", label: String(viewer.title || "Shader") + " controls", trigger: "Inspector",
                         open_bind: "/isf/ui/inspectorOpen", side: "right", width: 460, modal: false,
                         blocks: [
-                            {kind: "toolbar", id: "inspector-tabs", label: "Inspector", align: "start", items: tabs},
+                            {kind: "toolbar", id: "inspector-toolbar", label: "Inspector", align: "start", items: items},
                             {kind: "custom", slot: "isf.params", a11y: {name: "Parameters", role: "region"}},
-                            {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
-                            {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}},
                             {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"}, transport_options: {rates: [1], labels: {
                                 title: "Playback", play: "Play", pause: "Pause", stop: "Stop", seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
                             }}}
+                        ]
+                    }]
+                }]}]}]
+            };
+        };
+        viewer.buildPUIEditorDocument = function () {
+            return {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-editor", title: String(viewer.title || "Shader") + " source", embedded: true, pages: [{id: "editor", title: "Source editor", sections: [{
+                    id: "editor", title: "Source editor", blocks: [{
+                        kind: "drawer", id: "source-editor", label: String(viewer.title || "Shader") + " source", trigger: "Source editor",
+                        open_bind: "/isf/ui/editorOpen", side: "left", width: 560, modal: false,
+                        blocks: [
+                            {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
+                            {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}}
                         ]
                     }]
                 }]}]}]
@@ -8783,10 +8858,6 @@
             var adapter = {
                 getValue: function (path) {
                     if (path === "/isf/ui/inspectorOpen") return !!viewer.inspectorOpen;
-                    if (path === "/isf/ui/paramsTab") return viewer.inspectorTab === "params";
-                    if (path === "/isf/ui/sourceTab") return viewer.inspectorTab === "source";
-                    if (path === "/isf/ui/importOpen") return !!viewer.inspectorImport;
-                    if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
                     if (path === "/isf/ui/fullscreen") return isFullscreenActive();
                     if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
                     if (path === "/isf/transport") return viewer.transportValue();
@@ -8797,12 +8868,13 @@
                     return false;
                 },
                 callAction: function (name) {
-                    if (name === "isf.inspector") {
-                        if (viewer.inspectorOpen) closeInspector(); else openInspector(viewer.inspectorTab || "params");
+                    if (name === "isf.inspector" || name === "isf.inspectorClose") {
+                        if (name === "isf.inspectorClose" || viewer.inspectorOpen) closeInspector();
+                        else openInspector("params");
                         return true;
                     }
                     if (name === "isf.params") { openInspector("params"); return true; }
-                    if (name === "isf.editor") { openInspector("source"); return true; }
+                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.share") { viewer.copyLink(); return true; }
@@ -8829,8 +8901,6 @@
                 translate: function (key, fallback) { return fallback; }
             });
             ui.registerSlot("isf.params", {mount: function (container) { container.appendChild(paramsPanel); }});
-            ui.registerSlot("isf.editor", {mount: function (container) { if (editor) container.appendChild(editor.el); }});
-            ui.registerSlot("isf.import", {mount: function (container) { container.appendChild(importPanel); }});
             try {
                 ui.render(viewer.buildPUIInspectorDocument());
             } catch (error) {
@@ -8847,12 +8917,68 @@
             if (panel && control) control.setAttribute("aria-controls", panel.id);
             viewer.applyPUIInspector();
         };
-        viewer.mountPUITransport = function () { viewer.mountPUIInspector(); };
+        viewer.mountPUIEditor = function () {
+            if (viewer.puiEditor || viewer.disposed || !puiAvailable() || !viewer.editor) return;
+            var host = viewer.dom.editorPUIHost;
+            if (!host) return;
+            var adapter = {
+                getValue: function (path) {
+                    if (path === "/isf/ui/editorOpen") return !!viewer.editorOpen;
+                    if (path === "/isf/ui/importOpen") return !!viewer.inspectorImport;
+                    return undefined;
+                },
+                setValue: function (path, value) {
+                    if (path === "/isf/ui/editorOpen") { viewer.setEditorOpen(!!value); return true; }
+                    return false;
+                },
+                callAction: function (name) {
+                    if (name === "isf.editorClose") { viewer.setEditorOpen(false); return true; }
+                    return false;
+                },
+                getPathMeta: function () { return {}; },
+                announce: function (level, message) {
+                    if (level === "error") viewer.warn(message);
+                    else viewer.setState(message, level === "success" ? "ok" : "");
+                }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                icons: HEADER_ICONS,
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            ui.registerSlot("isf.editor", {mount: function (container) { container.appendChild(editor.el); }});
+            ui.registerSlot("isf.import", {mount: function (container) { container.appendChild(importPanel); }});
+            try {
+                ui.render(viewer.buildPUIEditorDocument());
+            } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                viewer.warn("PUI source editor unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiEditor = {ui: ui, host: host};
+            host.classList.remove("isf-hidden");
+            setEditorPanel();
+            var panel = host.querySelector(".pui-drawer-panel");
+            var control = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="editor"]');
+            if (panel && control) control.setAttribute("aria-controls", panel.id);
+            viewer.applyPUIEditor();
+        };
+        viewer.mountPUITransport = function () { viewer.mountPUIInspector(); viewer.mountPUIEditor(); };
 
         /* --------------------------------------- PUI header toolbar */
 
         viewer.buildPUIHeaderDocument = function () {
             var items = [{
+                id: "editor", label: "Source editor", icon: "editor", icon_only: true,
+                title: "Source editor", call: "isf.editor",
+                pressed_bind: "/isf/ui/editorOpen", aria_controls: uid + "-editor-pui", collapse: false
+            }, {
                 kind: "link",
                 id: "title",
                 href: viewer.url || "#",
@@ -8895,6 +9021,7 @@
             var adapter = {
                 getValue: function (path) {
                     if (path === "/isf/ui/inspectorOpen") return viewer.isInspectorOpen();
+                    if (path === "/isf/ui/editorOpen") return !!viewer.editorOpen;
                     if (path === "/isf/ui/fullscreen") return isFullscreenActive();
                     if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
                     if (path === "/isf/ui/playLabel") return viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause";
@@ -8945,6 +9072,9 @@
             var drawerPanel = viewer.dom.inspectorPUIHost && viewer.dom.inspectorPUIHost.querySelector(".pui-drawer-panel");
             var control = host.querySelector('[data-pui-item="controls"]');
             if (drawerPanel && control) control.setAttribute("aria-controls", drawerPanel.id);
+            var editorPanel = viewer.dom.editorPUIHost && viewer.dom.editorPUIHost.querySelector(".pui-drawer-panel");
+            var editorControl = host.querySelector('[data-pui-item="editor"]');
+            if (editorPanel && editorControl) editorControl.setAttribute("aria-controls", editorPanel.id);
             if (viewer.dom.title && viewer.dom.title.parentNode) viewer.dom.title.parentNode.removeChild(viewer.dom.title);
             if (viewer.dom.badge && viewer.dom.badge.parentNode) viewer.dom.badge.parentNode.removeChild(viewer.dom.badge);
             if (viewer.dom.actions && viewer.dom.actions.parentNode) viewer.dom.actions.parentNode.removeChild(viewer.dom.actions);
