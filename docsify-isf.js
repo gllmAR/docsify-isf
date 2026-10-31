@@ -5450,6 +5450,38 @@
             ".isf-drawer-right.isf-drawer-closed{transform:translateX(12px)}",
             ".isf-drawer-inner{flex:1 1 auto;min-height:0;overflow:auto}",
             ".isf-inspector-bottom{position:sticky;bottom:0;z-index:7;display:flex;flex-direction:column;background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
+            ".isf-inspector-pui{position:absolute;inset:0;z-index:9;pointer-events:none}",
+            ".isf-inspector-pui .pui{--pui-bg:var(--isf-drawer-bg);--pui-surface:var(--isf-surface);--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
+            ".isf-inspector-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
+            ".isf-inspector-pui .pui-drawer-trigger{display:none}",
+            ".isf-inspector-pui .pui-drawer-panel{position:absolute;inset:8px 8px 8px auto;width:min(460px,calc(100% - 16px));max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:var(--isf-drawer-bg)!important;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
+            ".isf-inspector-pui .pui-drawer-head{padding:.55rem .7rem;background:var(--isf-surface);border-bottom:1px solid var(--isf-border)}",
+            ".isf-inspector-pui .pui-drawer-head h4{margin:0;font-size:.8rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+            ".isf-inspector-pui .pui-drawer-close{width:30px;height:30px;border-radius:6px;color:var(--isf-muted)}",
+            ".isf-inspector-pui .pui-drawer-body{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;min-height:0}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar{position:relative;z-index:6;flex:0 0 auto;padding:.35rem .55rem;border:0;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:30px;font-size:.74rem}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-menu-popup{z-index:90}",
+            ".isf-inspector-pui .pui-slot{flex:1 1 auto;min-height:0;overflow:auto}",
+            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .7rem .4rem}",
+            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex-direction:column;overflow:hidden;padding:0}",
+            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor] .isf-editor-wrap{flex:1 1 auto;height:100%;min-height:0}",
+            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.import]{padding:.6rem .7rem}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-transport{flex:0 0 auto;padding:.35rem .6rem;border-top:1px solid var(--isf-border);background:var(--isf-surface)}",
+            ".isf-inspector-pui .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.45rem;padding:0;border:0;border-radius:0;background:transparent}",
+            ".isf-inspector-pui .pui-transport-head{flex:0 0 auto;gap:.3rem}",
+            ".isf-inspector-pui .pui-transport-head h4{display:none}",
+            ".isf-inspector-pui .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
+            ".isf-inspector-pui .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.4rem}",
+            ".isf-inspector-pui .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
+            ".isf-inspector-pui .pui-transport-time{color:var(--isf-muted);font-size:.68rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
+            ".isf-inspector-pui .pui-transport-loop,.isf-inspector-pui .pui-transport select{display:none}",
+            ".isf-inspector-pui .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:220px;padding:6px;border-radius:9px;background:var(--isf-surface);border-color:var(--isf-border);box-shadow:0 16px 38px rgba(0,0,0,.38);z-index:90}",
+            ".isf-inspector-pui .pui-menu-popup .pui-button{display:flex;align-items:center;gap:.5rem;width:100%;min-height:34px;padding:.35rem .5rem;border:0;background:transparent;text-align:left}",
+            ".isf-inspector-pui .pui-menu-popup .pui-toolbar-label{display:inline;padding:0;color:var(--isf-text);font-size:.76rem}",
+            ".isf-inspector-pui .pui-menu-popup .pui-toolbar-link{text-decoration:none}",
+            "@media (pointer:coarse){.isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-head .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-pui .pui-menu-popup .pui-button{min-height:36px}}",
+            "@media (max-width:600px){.isf-inspector-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
             ".isf-inspector-head{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:.3rem .5rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 92%,transparent)}",
             ".isf-inspector-tabs{display:flex;gap:.15rem;flex:0 1 auto;min-width:0}",
             ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",
@@ -7662,6 +7694,7 @@
         viewer.title = title || basename(viewer.href);
         viewer.state = "idle";
         viewer.inspectorTab = "params";
+        viewer.inspectorOpen = false;
         viewer.inspectorImport = false;
         // A viewer released by the context budget rebuilds its controls when it
         // resumes; the auto-open decision must not override a drawer the user
@@ -7761,64 +7794,23 @@
         var paramsPanel = h("div", "isf-panel isf-params", {
             id: uid + "-params", role: "tabpanel", "aria-label": "Parameters"
         });
-        var paramsTitle = h("div", "isf-panel-title");
-        paramsTitle.appendChild(h("span", null, { text: "Parameters" }));
-        var paramsClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close parameters", title: "Close", text: "×" });
-        paramsTitle.appendChild(paramsClose);
-        paramsPanel.appendChild(paramsTitle);
         var paramsIntro = h("div", "isf-panel-intro isf-hidden");
         paramsPanel.appendChild(paramsIntro);
         var paramsList = h("div", "isf-params-list");
         paramsPanel.appendChild(paramsList);
 
-        var rightResize = h("div", "isf-resize-x isf-resize-right", {
-            role: "separator", "aria-orientation": "vertical",
-            "aria-label": "Resize the inspector", tabindex: "0",
-            title: "Drag to resize the inspector — double-click to reset"
-        });
-        var rightInner = h("div", "isf-drawer-inner");
-
-        var inspectorHead = h("div", "isf-inspector-head");
-        var inspectorTabs = h("div", "isf-inspector-tabs", { role: "tablist", "aria-label": "Inspector" });
-        var paramsTab = h("button", "isf-inspector-tab is-active", {
-            type: "button", role: "tab", id: uid + "-tab-params", "aria-selected": "true",
-            "aria-controls": uid + "-params", "data-inspector-tab": "params", text: "Parameters"
-        });
-        inspectorTabs.appendChild(paramsTab);
-        var sourceTab = null;
-        if (config.editor) {
-            sourceTab = h("button", "isf-inspector-tab", {
-                type: "button", role: "tab", id: uid + "-tab-source", "aria-selected": "false",
-                "aria-controls": uid + "-editor", "data-inspector-tab": "source", text: "Source"
-            });
-            inspectorTabs.appendChild(sourceTab);
-        }
-        inspectorHead.appendChild(inspectorTabs);
-        var inspectorActionsHost = h("div", "isf-inspector-more isf-pui isf-hidden");
-        inspectorHead.appendChild(inspectorActionsHost);
-        var inspectorPlay = h("button", "isf-btn isf-inspector-play isf-hidden", {
-            type: "button", html: ICONS.play, title: "Show playback controls",
-            "aria-label": "Show playback controls", "aria-controls": uid + "-transport"
-        });
-        inspectorHead.appendChild(inspectorPlay);
-        var inspectorHelp = h("button", "isf-btn isf-keys-btn isf-inspector-help", {
-            type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts"
-        });
-        var inspectorClose = h("button", "isf-btn isf-panel-close isf-inspector-close", {
-            type: "button", "aria-label": "Close inspector", title: "Close", text: "×"
-        });
-        inspectorHead.appendChild(inspectorHelp);
-        inspectorHead.appendChild(inspectorClose);
-        rightInner.appendChild(paramsPanel);
+        var inspectorPUIHost = h("div", "isf-pui isf-inspector-pui isf-hidden", { id: uid + "-inspector-pui" });
+        // The PUI drawer is anchored to this viewer's stage; it keeps the
+        // inspector visually tied to its shader and one open at a time.
+        stage.appendChild(inspectorPUIHost);
 
         var editor = null;
         if (config.editor) {
             editor = createEditor(viewer, config);
             editor.el.id = uid + "-editor";
-            editor.el.setAttribute("role", "tabpanel");
+            editor.el.setAttribute("role", "region");
             editor.el.setAttribute("aria-label", "Source editor");
             editor.el.classList.add("isf-hidden");
-            rightInner.appendChild(editor.el);
         }
         var importPanel = h("div", "isf-panel isf-import isf-hidden", { id: uid + "-import", role: "region", "aria-label": "Import Shadertoy or GLSL Sandbox" });
         var importTitle = h("div", "isf-panel-title");
@@ -7838,19 +7830,9 @@
         importPanel.appendChild(importTitle);
         importPanel.appendChild(importArea);
         importPanel.appendChild(importActions);
-        rightInner.appendChild(importPanel);
+        // Parameters, editor and import are host surfaces mounted into the PUI
+        // drawer by custom slots; they are not host chrome.
 
-        var inspectorTransportHost = h("div", "isf-inspector-transport isf-pui isf-hidden", { id: uid + "-transport" });
-        rightInner.appendChild(inspectorTransportHost);
-        var inspectorBottom = h("div", "isf-inspector-bottom");
-        inspectorBottom.appendChild(inspectorHead);
-        rightInner.appendChild(inspectorBottom);
-
-        var rightDrawer = h("div", "isf-drawer isf-drawer-right isf-inspector isf-drawer-closed", { id: uid + "-inspector" });
-        rightDrawer.appendChild(rightResize);
-        rightDrawer.appendChild(rightInner);
-
-        stage.appendChild(rightDrawer);
         var fullscreenHint = h("button", "isf-fullscreen-hint isf-hidden", {
             type: "button", html: ICONS.inspector, title: "Show inspector (H)",
             "aria-label": "Show inspector", "aria-pressed": "false"
@@ -7859,34 +7841,11 @@
         fullscreenHint.addEventListener("click", function () {
             viewer.hideFullscreenHint();
             openInspector(viewer.inspectorTab || "params");
-            if (viewer.editor && viewer.inspectorTab === "source") viewer.editor.focus();
         });
         fullscreenHint.addEventListener("pointerenter", clearHintTimer);
         fullscreenHint.addEventListener("pointerleave", function () { viewer.showFullscreenHint(); });
         fullscreenHint.addEventListener("focus", clearHintTimer);
         fullscreenHint.addEventListener("blur", function () { viewer.showFullscreenHint(); });
-        paramsTab.addEventListener("click", function () { viewer.setInspectorTab("params"); });
-        if (sourceTab) sourceTab.addEventListener("click", function () { showEditorPanel(); });
-        inspectorClose.addEventListener("click", function () { closeInspector(); });
-        inspectorHelp.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
-        inspectorPlay.addEventListener("click", function () {
-            if (!viewer.dom.inspectorTransportHost) return;
-            viewer.dom.inspectorTransportHost.scrollIntoView({ block: "nearest" });
-            var play = viewer.dom.inspectorTransportHost.querySelector(".pui-transport-head .pui-button");
-            if (play) play.focus();
-        });
-        paramsClose.addEventListener("click", function () { closeInspector(); });
-        inspectorTabs.addEventListener("keydown", function (event) {
-            var tabs = [paramsTab].concat(sourceTab ? [sourceTab] : []);
-            var index = tabs.indexOf(document.activeElement);
-            if (index < 0) return;
-            if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-                event.preventDefault();
-                var next = (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
-                tabs[next].focus();
-                viewer.setInspectorTab(next === 0 ? "params" : "source");
-            }
-        });
         body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         var statusText = h("span", "isf-status-text");
@@ -7908,14 +7867,6 @@
             overlay: overlay,
             overlayInner: overlayInner,
             badge: badge,
-            rightDrawer: rightDrawer,
-            rightResize: rightResize,
-            inspectorHead: inspectorHead,
-            inspectorTabs: inspectorTabs,
-            paramsTab: paramsTab,
-            sourceTab: sourceTab,
-            inspectorHelp: inspectorHelp,
-            inspectorClose: inspectorClose,
             body: body,
             paramsPanel: paramsPanel,
             paramsIntro: paramsIntro,
@@ -7934,11 +7885,8 @@
             statusText: statusText,
             statusPUIHost: statusPUIHost,
             headerPUIHost: headerPUIHost,
-            inspectorActionsHost: inspectorActionsHost,
-            inspectorTransportHost: inspectorTransportHost,
-            inspectorPlay: inspectorPlay,
-            fullscreenHint: fullscreenHint,
-            inspectorBottom: inspectorBottom
+            inspectorPUIHost: inspectorPUIHost,
+            fullscreenHint: fullscreenHint
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -8000,81 +7948,7 @@
             if (config.width && config.width !== "100%") block.style.maxWidth = config.width;
         }
 
-        function maxDrawerWidth() {
-            var stageWidth = stage.getBoundingClientRect().width || (typeof window !== "undefined" ? window.innerWidth : 1200);
-            return Math.max(240, Math.min(820, stageWidth * 0.64));
-        }
-
-        function isDrawerClosed(drawer) {
-            return drawer.classList.contains("isf-drawer-closed");
-        }
-
-        function clampDrawerWidths() {
-            if (rightDrawer.style.width) rightDrawer.style.width = clamp(parseFloat(rightDrawer.style.width) || 380, 240, maxDrawerWidth()) + "px";
-        }
-
-        function setDrawerWidth(drawer, px, key, persist) {
-            var width = clamp(px, 240, maxDrawerWidth());
-            drawer.style.width = width + "px";
-            if (persist) {
-                var patch = {};
-                patch[key] = width;
-                viewer.saveLayout(patch);
-            }
-            return width;
-        }
-
-        // The inspector is a single right dock; resizing it never changes the
-        // render size.
-        function bindDrawerResize(handle, drawer, key, direction) {
-            var startX = 0;
-            var startWidth = 0;
-            handle.addEventListener("pointerdown", function (event) {
-                event.preventDefault();
-                startX = event.clientX;
-                startWidth = drawer.getBoundingClientRect().width;
-                handle.classList.add("is-dragging");
-                try { handle.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
-            });
-            handle.addEventListener("pointermove", function (event) {
-                if (!handle.classList.contains("is-dragging")) return;
-                setDrawerWidth(drawer, startWidth + (event.clientX - startX) * direction, key, false);
-            });
-            var endDrag = function (event) {
-                if (!handle.classList.contains("is-dragging")) return;
-                handle.classList.remove("is-dragging");
-                try { handle.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
-                var patch = {};
-                patch[key] = drawer.getBoundingClientRect().width;
-                viewer.saveLayout(patch);
-            };
-            handle.addEventListener("pointerup", endDrag);
-            handle.addEventListener("pointercancel", endDrag);
-            handle.addEventListener("dblclick", function () {
-                drawer.style.width = "";
-                var patch = {};
-                patch[key] = null;
-                viewer.saveLayout(patch);
-            });
-            handle.addEventListener("keydown", function (event) {
-                var current = drawer.getBoundingClientRect().width;
-                var delta = event.shiftKey ? 64 : 16;
-                if (event.key === "ArrowRight") { event.preventDefault(); setDrawerWidth(drawer, current + delta * direction, key, true); }
-                else if (event.key === "ArrowLeft") { event.preventDefault(); setDrawerWidth(drawer, current - delta * direction, key, true); }
-                else if (event.key === "Home") { event.preventDefault(); setDrawerWidth(drawer, 240, key, true); }
-                else if (event.key === "End") { event.preventDefault(); setDrawerWidth(drawer, maxDrawerWidth(), key, true); }
-            });
-        }
-
         applyStageLayout();
-        bindDrawerResize(rightResize, rightDrawer, "paramsWidth", -1);
-        var storedRight = viewer.layout.paramsWidth || viewer.layout.sideWidth || viewer.layout.leftWidth || viewer.layout.editorWidth;
-        if (storedRight && config.persistLayout !== false) setDrawerWidth(rightDrawer, storedRight, "paramsWidth", false);
-        var drawerMetricsHandler = function () {
-            clampDrawerWidths();
-        };
-        window.addEventListener("resize", drawerMetricsHandler);
-        viewer.listeners.push(function () { window.removeEventListener("resize", drawerMetricsHandler); });
         stage.addEventListener("dblclick", function (event) {
             if (event.target === canvas) viewer.toggleFullscreen();
         });
@@ -8160,27 +8034,11 @@
             paramsPanel.classList.toggle("isf-hidden", source);
             if (viewer.editor) viewer.editor.el.classList.toggle("isf-hidden", !source || !!viewer.inspectorImport);
             importPanel.classList.toggle("isf-hidden", !(source && viewer.inspectorImport));
-            paramsTab.setAttribute("aria-selected", source ? "false" : "true");
-            paramsTab.tabIndex = source ? -1 : 0;
-            if (sourceTab) {
-                sourceTab.setAttribute("aria-selected", source ? "true" : "false");
-                sourceTab.tabIndex = source ? 0 : -1;
-            }
+            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
         }
         function updateDrawerButtons() {
-            var open = !isDrawerClosed(rightDrawer);
-            var tab = viewer.inspectorTab || "params";
-            var paramsOpen = open && tab === "params";
-            var editorOpen = open && tab === "source";
-            paramsButton.setAttribute("aria-pressed", paramsOpen ? "true" : "false");
-            paramsButton.setAttribute("aria-expanded", paramsOpen ? "true" : "false");
-            paramsButton.classList.toggle("is-active", paramsOpen);
-            if (editorButton) {
-                editorButton.setAttribute("aria-pressed", editorOpen ? "true" : "false");
-                editorButton.setAttribute("aria-expanded", editorOpen ? "true" : "false");
-                editorButton.classList.toggle("is-active", editorOpen);
-            }
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
         }
         var hintTimer = null;
         function clearHintTimer() {
@@ -8203,21 +8061,64 @@
             if (!isFullscreenActive() || config.bare) return;
             viewer.showFullscreenHint();
         };
+        function focusInspector() {
+            requestAnimationFrame(function () {
+                if (!viewer.inspectorOpen) return;
+                if (viewer.inspectorImport) { try { importArea.focus(); } catch (error) { /* ignore */ } return; }
+                if (viewer.inspectorTab === "source" && viewer.editor) { viewer.editor.focus(); return; }
+                var host = viewer.dom.inspectorPUIHost;
+                var target = host && host.querySelector('.isf-params [data-pui-bind], .isf-params button, .isf-params input');
+                if (target && target.focus) target.focus();
+            });
+        }
+        function focusInspectorTrigger() {
+            setTimeout(function () {
+                if (isFullscreenActive() && viewer.dom.fullscreenHint) {
+                    try { viewer.dom.fullscreenHint.focus(); } catch (error) { /* ignore */ }
+                    return;
+                }
+                var trigger = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="controls"]');
+                if (trigger && trigger.focus) trigger.focus();
+            }, 40);
+        }
+        viewer.setInspectorOpen = function (open) {
+            open = !!open;
+            if (open && window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
+                var previous = window.__isfActiveInspector;
+                window.__isfActiveInspector = null;
+                try { previous.setInspectorOpen(false); } catch (error) { /* ignore */ }
+            }
+            if (open) window.__isfActiveInspector = viewer;
+            else if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
+            if (viewer.inspectorOpen === open) {
+                setInspectorPanel();
+                updateDrawerButtons();
+                if (viewer.applyPUIInspector) viewer.applyPUIInspector();
+                if (open) focusInspector();
+                return;
+            }
+            viewer.inspectorOpen = open;
+            block.classList.toggle("isf-drawer-open", open);
+            setInspectorPanel();
+            updateDrawerButtons();
+            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
+            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
+            if (open) {
+                if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
+                focusInspector();
+            } else {
+                if (viewer.showFullscreenHint) viewer.showFullscreenHint();
+                focusInspectorTrigger();
+            }
+        };
         function openInspector(tab) {
             viewer.inspectorTab = tab === "source" && viewer.editor ? "source" : (tab || viewer.inspectorTab || "params");
             viewer.inspectorImport = false;
-            rightDrawer.classList.remove("isf-drawer-closed");
-            block.classList.add("isf-drawer-open");
-            clampDrawerWidths();
-            setInspectorPanel();
-            updateDrawerButtons();
-            if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
+            viewer.setInspectorOpen(true);
+            if (viewer.editor && viewer.inspectorTab === "source") viewer.editor.focus();
         }
         function closeInspector() {
-            rightDrawer.classList.add("isf-drawer-closed");
-            block.classList.remove("isf-drawer-open");
-            updateDrawerButtons();
-            if (viewer.showFullscreenHint) viewer.showFullscreenHint();
+            viewer.setInspectorOpen(false);
         }
         function showEditorPanel() {
             if (!viewer.editor) { openInspector("params"); return; }
@@ -8350,14 +8251,9 @@
             openInspector(tab);
             if (tab === "source" && viewer.editor) viewer.editor.focus();
         };
-        viewer.isInspectorOpen = function () { return !isDrawerClosed(rightDrawer); };
-        viewer.setDrawer = function (drawer, open) {
-            if (open) openInspector(viewer.inspectorTab || "params");
-            else closeInspector();
-        };
-        viewer.isDrawerOpen = function (drawer) {
-            return !isDrawerClosed(rightDrawer);
-        };
+        viewer.isInspectorOpen = function () { return !!viewer.inspectorOpen; };
+        viewer.setDrawer = function (drawer, open) { viewer.setInspectorOpen(!!open); };
+        viewer.isDrawerOpen = function () { return !!viewer.inspectorOpen; };
         viewer.setPanel = function (panel, open) {
             if (panel === viewer.dom.paramsPanel) {
                 if (open) openInspector("params"); else closeInspector();
@@ -8369,13 +8265,13 @@
         };
         viewer.toggleParams = function () {
             viewer.drawerTouched = true;
-            if (!isDrawerClosed(rightDrawer) && viewer.inspectorTab === "params") closeInspector();
+            if (viewer.inspectorOpen && viewer.inspectorTab === "params") closeInspector();
             else openInspector("params");
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
             viewer.drawerTouched = true;
-            if (!isDrawerClosed(rightDrawer) && viewer.inspectorTab === "source" && !viewer.inspectorImport) closeInspector();
+            if (viewer.inspectorOpen && viewer.inspectorTab === "source" && !viewer.inspectorImport) closeInspector();
             else { openInspector("source"); if (viewer.editor) viewer.editor.focus(); }
         };
         viewer.togglePlay = function () {
@@ -8383,11 +8279,9 @@
             if (!runtime) return;
             var playing = !runtime.playing;
             runtime.setPlaying(playing);
-            viewer.dom.playButton.innerHTML = playing ? ICONS.pause : ICONS.play;
-            viewer.dom.playButton.title = playing ? "Pause" : "Play";
             viewer.updateBadge(playing ? "" : "paused");
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
-            if (viewer.applyPUITransport) viewer.applyPUITransport();
+            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
         };
         viewer.resetAll = function () {
             viewer.resetParameters();
@@ -8412,18 +8306,17 @@
         viewer.syncFullscreen = function () {
             var active = isFullscreenActive();
             block.classList.toggle("isf-fullscreen", active);
-            viewer.dom.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
             applyStageLayout();
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) {
                 viewer.setState("");
-                if (!isDrawerClosed(rightDrawer)) closeInspector();
+                if (viewer.inspectorOpen) closeInspector();
                 if (viewer.showFullscreenHint) viewer.showFullscreenHint();
             } else if (viewer.hideFullscreenHint) {
                 viewer.hideFullscreenHint();
             }
             if (viewer.applyPUIHeader) viewer.applyPUIHeader();
-            if (viewer.applyPUITransport) viewer.applyPUITransport();
+            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
         };
 
         paramsButton.addEventListener("click", viewer.toggleParams);
@@ -8829,31 +8722,84 @@
             }
             return false;
         };
-        viewer.applyPUITransport = function () {
-            if (viewer.puiTransport) {
-                try { viewer.puiTransport.ui.apply(); } catch (error) { /* ignore */ }
-            }
-            if (viewer.puiActions) {
-                try { viewer.puiActions.ui.apply(); } catch (error) { /* ignore */ }
-            }
+        viewer.applyPUIInspector = function () {
+            if (!viewer.puiInspector) return;
+            try { viewer.puiInspector.ui.apply(); } catch (error) { /* ignore */ }
         };
-        viewer.mountPUITransport = function () {
-            if (viewer.disposed || !puiAvailable()) return;
-            var actionsHost = viewer.dom.inspectorActionsHost;
-            var transportHost = viewer.dom.inspectorTransportHost;
-            if (!actionsHost || !transportHost) return;
+        viewer.applyPUITransport = function () { viewer.applyPUIInspector(); };
+        viewer.buildPUIInspectorDocument = function () {
+            var tabs = [{
+                id: "params", label: "Parameters", icon: "params", title: "Parameters",
+                call: "isf.params", pressed_bind: "/isf/ui/paramsTab",
+                badge_bind: "/isf/ui/inputCount", aria_controls: paramsPanel.id
+            }];
+            if (config.editor) tabs.push({
+                id: "source", label: "Source", icon: "editor", title: "Source editor",
+                call: "isf.editor", pressed_bind: "/isf/ui/sourceTab",
+                aria_controls: editor ? editor.el.id : ""
+            });
+            tabs.push({kind: "spacer"});
+            tabs.push({
+                kind: "menu", id: "more", label: "More actions", title: "More actions",
+                icon: "more", icon_only: true, items: [
+                    {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen", call: "isf.fullscreen"},
+                    {id: "reset", label: "Reset parameters", icon: "reset", call: "isf.reset"},
+                    {id: "share", label: "Copy OBS link", icon: "share", call: "isf.share"},
+                    {kind: "separator"},
+                    {id: "help", label: "Keyboard shortcuts", icon: "more", call: "isf.help"},
+                    {kind: "link", id: "source-file", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source"}
+                ]
+            });
+            return {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-inspector", title: String(viewer.title || "Shader") + " controls", embedded: true, pages: [{id: "inspector", title: "Inspector", sections: [{
+                    id: "inspector", title: "Inspector", blocks: [{
+                        kind: "drawer", id: "inspector", label: String(viewer.title || "Shader") + " controls", trigger: "Inspector",
+                        open_bind: "/isf/ui/inspectorOpen", side: "right", width: 460, modal: false,
+                        blocks: [
+                            {kind: "toolbar", id: "inspector-tabs", label: "Inspector", align: "start", items: tabs},
+                            {kind: "custom", slot: "isf.params", a11y: {name: "Parameters", role: "region"}},
+                            {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
+                            {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}},
+                            {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"}, transport_options: {rates: [1], labels: {
+                                title: "Playback", play: "Play", pause: "Pause", stop: "Stop", seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
+                            }}}
+                        ]
+                    }]
+                }]}]}]
+            };
+        };
+        viewer.mountPUIInspector = function () {
+            if (viewer.puiInspector || viewer.disposed || !puiAvailable()) return;
+            var host = viewer.dom.inspectorPUIHost;
+            if (!host) return;
             var adapter = {
                 getValue: function (path) {
-                    if (path === "/isf/transport") return viewer.transportValue();
+                    if (path === "/isf/ui/inspectorOpen") return !!viewer.inspectorOpen;
+                    if (path === "/isf/ui/paramsTab") return viewer.inspectorTab === "params";
+                    if (path === "/isf/ui/sourceTab") return viewer.inspectorTab === "source";
+                    if (path === "/isf/ui/importOpen") return !!viewer.inspectorImport;
+                    if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
                     if (path === "/isf/ui/fullscreen") return isFullscreenActive();
                     if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
+                    if (path === "/isf/transport") return viewer.transportValue();
                     return undefined;
                 },
-                setValue: function () { return false; },
+                setValue: function (path, value) {
+                    if (path === "/isf/ui/inspectorOpen") { viewer.setInspectorOpen(!!value); return true; }
+                    return false;
+                },
                 callAction: function (name) {
+                    if (name === "isf.inspector") {
+                        if (viewer.inspectorOpen) closeInspector(); else openInspector(viewer.inspectorTab || "params");
+                        return true;
+                    }
+                    if (name === "isf.params") { openInspector("params"); return true; }
+                    if (name === "isf.editor") { openInspector("source"); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.share") { viewer.copyLink(); return true; }
+                    if (name === "isf.help") { viewer.showShortcuts(); return true; }
                     return false;
                 },
                 getPathMeta: function () { return {}; },
@@ -8863,72 +8809,38 @@
                     else viewer.setState(message, level === "success" ? "ok" : "");
                 }
             };
-            function createInspectorUI(mount) {
-                return PupitreUI.create({
-                    mount: mount,
-                    density: "compact",
-                    icons: HEADER_ICONS,
-                    getValue: adapter.getValue,
-                    setValue: adapter.setValue,
-                    callAction: adapter.callAction,
-                    getPathMeta: adapter.getPathMeta,
-                    transportAction: adapter.transportAction,
-                    announce: adapter.announce,
-                    translate: function (key, fallback) { return fallback; }
-                });
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                icons: HEADER_ICONS,
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                transportAction: adapter.transportAction,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            ui.registerSlot("isf.params", {mount: function (container) { container.appendChild(paramsPanel); }});
+            ui.registerSlot("isf.editor", {mount: function (container) { if (editor) container.appendChild(editor.el); }});
+            ui.registerSlot("isf.import", {mount: function (container) { container.appendChild(importPanel); }});
+            try {
+                ui.render(viewer.buildPUIInspectorDocument());
+            } catch (error) {
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                viewer.warn("PUI inspector unavailable: " + (error && error.message ? error.message : error));
+                return;
             }
-            if (!viewer.puiActions) {
-                var actionsUI = createInspectorUI(actionsHost);
-                var actionsDoc = {
-                    format: "pupitre-ui", version: 1, host: "docsify-isf",
-                    panels: [{id: "isf-inspector-actions", title: "Inspector actions", embedded: true, pages: [{id: "actions", title: "Inspector actions", sections: [{
-                        id: "actions", title: "Inspector actions", blocks: [{
-                            kind: "menu", id: "more", label: "More inspector actions", title: "More inspector actions", icon: "more", icon_only: true, items: [
-                                {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen", call: "isf.fullscreen"},
-                                {id: "reset", label: "Reset parameters", icon: "reset", call: "isf.reset"},
-                                {id: "share", label: "Copy OBS link", icon: "share", call: "isf.share"},
-                                {kind: "separator"},
-                                {kind: "link", id: "source", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source"}
-                            ]
-                        }]
-                    }]}]}]
-                };
-                try {
-                    actionsUI.render(actionsDoc);
-                    viewer.puiActions = {ui: actionsUI, host: actionsHost};
-                    actionsHost.classList.remove("isf-hidden");
-                } catch (error) {
-                    try { actionsUI.destroy(); } catch (destroyError) { /* ignore */ }
-                    viewer.warn("Inspector actions unavailable: " + (error && error.message ? error.message : error));
-                }
-            }
-            if (!viewer.puiTransport) {
-                var transportUI = createInspectorUI(transportHost);
-                var transportDoc = {
-                    format: "pupitre-ui", version: 1, host: "docsify-isf",
-                    panels: [{id: "isf-inspector-transport", title: "Playback", embedded: true, pages: [{id: "transport", title: "Playback", sections: [{
-                        id: "transport", title: "Playback", blocks: [
-                            {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"}, transport_options: {rates: [1], labels: {
-                                title: "Playback", play: "Play", pause: "Pause", stop: "Stop", seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
-                            }}}
-                        ]
-                    }]}]}]
-                };
-                try {
-                    transportUI.render(transportDoc);
-                    viewer.puiTransport = {ui: transportUI, host: transportHost};
-                    transportHost.classList.remove("isf-hidden");
-                    if (viewer.dom.inspectorPlay) viewer.dom.inspectorPlay.classList.remove("isf-hidden");
-                } catch (error) {
-                    try { transportUI.destroy(); } catch (destroyError) { /* ignore */ }
-                    viewer.warn("Inspector transport unavailable: " + (error && error.message ? error.message : error));
-                }
-            }
-            if (viewer.dom.timeRow && (viewer.puiTransport || viewer.puiActions)) {
-                viewer.dom.timeRow.classList.add("isf-hidden");
-            }
-            viewer.applyPUITransport();
+            viewer.puiInspector = {ui: ui, host: host};
+            host.classList.remove("isf-hidden");
+            setInspectorPanel();
+            if (viewer.dom.timeRow) viewer.dom.timeRow.classList.add("isf-hidden");
+            var panel = host.querySelector(".pui-drawer-panel");
+            var control = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="controls"]');
+            if (panel && control) control.setAttribute("aria-controls", panel.id);
+            viewer.applyPUIInspector();
         };
+        viewer.mountPUITransport = function () { viewer.mountPUIInspector(); };
 
         /* --------------------------------------- PUI header toolbar */
 
@@ -8951,6 +8863,22 @@
                 kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
                 a11y: {name: "Render statistics"},
                 collapse: false
+            }, {
+                kind: "menu", id: "actions", label: "Viewer actions", title: "Viewer actions",
+                icon: "more", icon_only: true, collapse: false, items: [{
+                    id: "play", label_bind: "/isf/ui/playLabel", title_bind: "/isf/ui/playLabel",
+                    icon_bind: "/isf/ui/playIcon", call: "isf.play"
+                }, {
+                    id: "reset", label: "Reset parameters", icon: "reset",
+                    title: "Reset parameters and time", call: "isf.reset"
+                }, {
+                    id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel",
+                    title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen",
+                    call: "isf.fullscreen", pressed_bind: "/isf/ui/fullscreen"
+                }, {
+                    id: "share", label: "Copy OBS link", icon: "share",
+                    title: "Copy a fullscreen link for OBS", call: "isf.share"
+                }]
             }];
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
@@ -9023,6 +8951,9 @@
             }
             viewer.puiHeader = {ui: ui, host: host};
             host.classList.remove("isf-hidden");
+            var drawerPanel = viewer.dom.inspectorPUIHost && viewer.dom.inspectorPUIHost.querySelector(".pui-drawer-panel");
+            var control = host.querySelector('[data-pui-item="controls"]');
+            if (drawerPanel && control) control.setAttribute("aria-controls", drawerPanel.id);
             if (viewer.dom.title && viewer.dom.title.parentNode) viewer.dom.title.parentNode.removeChild(viewer.dom.title);
             if (viewer.dom.badge && viewer.dom.badge.parentNode) viewer.dom.badge.parentNode.removeChild(viewer.dom.badge);
             if (viewer.dom.actions && viewer.dom.actions.parentNode) viewer.dom.actions.parentNode.removeChild(viewer.dom.actions);
@@ -9067,7 +8998,6 @@
             // panel; while the assets load (or if they fail) it stays a sibling
             // so pass/quality/time remain usable.
             if (!viewer.pui) paramsList.insertBefore(viewer.buildViewControls(inputs), controlsHost);
-            viewer.dom.paramsCount.textContent = inputs.length ? String(inputs.length) : "";
             if (viewer.puiHeader) viewer.refreshPUIHeader();
             var open;
             if (!config.controls) open = false;
@@ -9075,9 +9005,7 @@
             else if (config.params === "closed") open = false;
             else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
             if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
-            if (!viewer.drawerTouched) viewer.setDrawer(rightDrawer, open);
-            var hasControls = config.controls && inputs.length > 0;
-            paramsButton.classList.toggle("isf-hidden", !hasControls);
+            if (!viewer.drawerTouched) viewer.setDrawer(null, open);
         };
 
         /* ----------------------------------------------------- loading */
@@ -9423,13 +9351,14 @@
                 try { viewer.puiStatus.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.puiStatus = null;
             }
+            if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
             if (viewer.puiHeader) {
                 try { viewer.puiHeader.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.puiHeader = null;
             }
-            if (viewer.puiTransport) {
-                try { viewer.puiTransport.ui.destroy(); } catch (error) { /* ignore */ }
-                viewer.puiTransport = null;
+            if (viewer.puiInspector) {
+                try { viewer.puiInspector.ui.destroy(); } catch (error) { /* ignore */ }
+                viewer.puiInspector = null;
             }
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
