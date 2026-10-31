@@ -3574,11 +3574,12 @@
             ".isf-inspector-pui .pui{--pui-bg:var(--isf-drawer-bg);--pui-surface:var(--isf-surface);--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
             ".isf-inspector-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
             ".isf-inspector-pui .pui-drawer-trigger{display:none}",
-            ".isf-inspector-pui .pui-drawer-panel{position:absolute;inset:8px 8px 8px auto;width:min(460px,calc(100% - 16px));max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:var(--isf-drawer-bg)!important;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
+            ".isf-inspector-pui .pui-drawer-panel{position:absolute;inset:8px 8px 8px auto;width:min(420px,40%);max-width:calc(100% - 16px);height:auto;z-index:20;pointer-events:auto;background:var(--isf-drawer-bg)!important;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
             "@keyframes isf-pui-drawer-in{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}",
             ".isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-drawer-in .18s ease both}",
             "@media (prefers-reduced-motion:reduce){.isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
-            ".isf-inspector-pui .pui-drawer-head{padding:.55rem .7rem;background:var(--isf-surface);border-bottom:1px solid var(--isf-border)}",
+            ".isf-inspector-pui .pui-drawer-head{display:none!important}",
+            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-toolbar-label{flex:1 1 auto;min-width:0;max-width:none;padding:0;color:var(--isf-text);font-size:.78rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-inspector-pui .pui-drawer-head h4{margin:0;font-size:.8rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
             ".isf-inspector-pui .pui-drawer-close{width:30px;height:30px;border-radius:6px;color:var(--isf-muted)}",
             ".isf-inspector-pui .pui-drawer-body{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:0;overflow:hidden;min-height:0}",
@@ -7157,6 +7158,7 @@
                         else openInspector(viewer.inspectorTab || "params");
                         return true;
                     }
+                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
                     if (name === "isf.play") { viewer.togglePlay(); return true; }
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
