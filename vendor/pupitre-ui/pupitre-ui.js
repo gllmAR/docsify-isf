@@ -382,6 +382,7 @@
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
+    this.disconnectGraphBodies();
     this.doc = doc;
     this.loadPreferences();
     this.lang = this.resolveLanguage(doc);
@@ -1050,16 +1051,27 @@
       rec.panes[region] = node;
       return {node: node, id: paneId, title: paneTitle};
     };
-    var leftInfo = pane("left", "aside");
+    // An empty pane is not an affordance: only create a left/right region
+    // when it has sections or an explicit layout entry. This keeps a tab with
+    // only a stage from wasting a third of the window on an empty "LEFT".
+    var hasLeft = groups.left.length > 0 || isObject(layout.left);
+    var hasRight = groups.right.length > 0 || isObject(layout.right);
+    var leftInfo = hasLeft ? pane("left", "aside") : null;
     var stageInfo = pane("stage", "main");
-    var rightInfo = pane("right", "aside");
-    body.appendChild(leftInfo.node);
-    var leftResize = el("div", {class: "pui-workbench-resizer is-left", role: "separator", "aria-label": "Resize left pane", tabindex: "0"});
-    body.appendChild(leftResize);
+    var rightInfo = hasRight ? pane("right", "aside") : null;
+    var leftResize = null;
+    var rightResize = null;
+    if (leftInfo) {
+      body.appendChild(leftInfo.node);
+      leftResize = el("div", {class: "pui-workbench-resizer is-left", role: "separator", "aria-label": "Resize left pane", tabindex: "0"});
+      body.appendChild(leftResize);
+    }
     body.appendChild(stageInfo.node);
-    var rightResize = el("div", {class: "pui-workbench-resizer is-right", role: "separator", "aria-label": "Resize right pane", tabindex: "0"});
-    body.appendChild(rightResize);
-    body.appendChild(rightInfo.node);
+    if (rightInfo) {
+      rightResize = el("div", {class: "pui-workbench-resizer is-right", role: "separator", "aria-label": "Resize right pane", tabindex: "0"});
+      body.appendChild(rightResize);
+      body.appendChild(rightInfo.node);
+    }
     rec.resizers = {left: leftResize, right: rightResize};
     wb.appendChild(body);
     var bottomInfo = null;
@@ -1078,8 +1090,8 @@
       rec.buttons[region] = button;
       tools.appendChild(button);
     };
-    toggle("left", leftInfo, "Control+Alt+L");
-    toggle("right", rightInfo, "Control+Alt+R");
+    if (leftInfo) toggle("left", leftInfo, "Control+Alt+L");
+    if (rightInfo) toggle("right", rightInfo, "Control+Alt+R");
     if (bottomInfo) toggle("bottom", bottomInfo, "Control+Alt+B");
     rec.buttons.left && (rec.buttons.left.title = "Toggle left pane");
     rec.buttons.right && (rec.buttons.right.title = "Toggle right pane");
@@ -1111,8 +1123,8 @@
         if (event.stopPropagation) event.stopPropagation();
       };
     };
-    leftResize.addEventListener("pointerdown", resizeStart("left"));
-    rightResize.addEventListener("pointerdown", resizeStart("right"));
+    if (leftResize) leftResize.addEventListener("pointerdown", resizeStart("left"));
+    if (rightResize) rightResize.addEventListener("pointerdown", resizeStart("right"));
     wb.addEventListener("pointermove", function (event) {
       if (!rec.resize) return;
       var dx = (event.clientX || 0) - rec.resize.x;
@@ -1334,14 +1346,42 @@
     if (!body) return;
     var height = Number(body.offsetHeight);
     if (!isFinite(height) || height < 0) height = 0;
-    rec.nodeExtraHeights[id] = height > 0 ? height + 4 : 0;
+    var extra = height > 0 ? height + 4 : 0;
+    if (rec.nodeExtraHeights[id] === extra) return;
+    rec.nodeExtraHeights[id] = extra;
     this.graphApplyNodeGeometry(rec, id);
+  };
+
+  Renderer.prototype.graphObserveNodeBodies = function (rec) {
+    if (typeof ResizeObserver === "undefined" || !rec || !rec.bodyEls) return;
+    var self = this;
+    Object.keys(rec.bodyEls).forEach(function (id) {
+      var body = rec.bodyEls[id];
+      if (!body || (rec.bodyObservers && rec.bodyObservers[id])) return;
+      var observer = new ResizeObserver(function () { self.graphMeasureNodeBody(rec, id); });
+      observer.observe(body);
+      rec.bodyObservers = rec.bodyObservers || {};
+      rec.bodyObservers[id] = observer;
+    });
+  };
+
+  Renderer.prototype.graphUnobserveGraphBodies = function (rec) {
+    if (!rec || !rec.bodyObservers) return;
+    Object.keys(rec.bodyObservers).forEach(function (id) {
+      try { rec.bodyObservers[id].disconnect(); } catch (error) { /* cleanup */ }
+    });
+    rec.bodyObservers = {};
+  };
+
+  Renderer.prototype.disconnectGraphBodies = function () {
+    for (var i = 0; i < this.graphRecords.length; i++) this.graphUnobserveGraphBodies(this.graphRecords[i]);
   };
 
   Renderer.prototype.graphLayoutGraphBodies = function (rec) {
     if (!rec || !rec.bodyEls) return;
     var self = this;
     Object.keys(rec.bodyEls).forEach(function (id) { self.graphMeasureNodeBody(rec, id); });
+    this.graphObserveNodeBodies(rec);
   };
 
   Renderer.prototype.graphLayoutBodies = function () {
@@ -1430,7 +1470,7 @@
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
       viewport: viewport, content: content, cableGroup: cableGroup,
-      metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}};
+      metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
     rec.head = head;
     rec.bookmarkBar = el("div", {class: "pui-graph-bookmarks", "aria-label": "Camera bookmarks"});
@@ -3266,6 +3306,7 @@
     if (!rec.root || !rec.root.parentNode) return;
     var parent = rec.root.parentNode;
     var index = this.graphRecords.indexOf(rec);
+    this.graphUnobserveGraphBodies(rec);
     var newRoot = this.buildGraph(rec.block, navStack || rec.navStack);
     var newRec = this.graphRecords[this.graphRecords.length - 1];
     if (newRec) {
@@ -9908,6 +9949,7 @@
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
+    this.disconnectGraphBodies();
     this.unbindShortcuts();
     this.unbindPaletteShortcut();
     this.unbindHistoryShortcut();
