@@ -478,8 +478,13 @@
 .pui-timeline-tick-label { position: absolute; top: 3px; left: 3px; white-space: nowrap; }
 .pui-timeline-lane { position: relative; height: 44px; border-top: 1px solid var(--pui-border); cursor: crosshair; outline-offset: -2px; }
 .pui-timeline-lane:focus-visible { outline: 2px solid var(--pui-accent); }
+.pui-timeline-curve { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pui-timeline-curve-path { fill: none; stroke: var(--pui-accent); stroke-width: 2; vector-effect: non-scaling-stroke; opacity: 0.85; }
+.pui-timeline-scope { border: 1px solid var(--pui-accent); border-radius: 999px; padding: 0 6px; color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.6); }
 .pui-timeline-key { position: absolute; top: 50%; width: 15px; height: 15px; transform: translate(-50%, -50%) rotate(45deg); border: 2px solid var(--pui-accent); background: var(--pui-surface); padding: 0; cursor: grab; }
 .pui-timeline-key.is-hold { border-radius: 0; transform: translate(-50%, -50%); }
+.pui-timeline.is-clip-automation { border-inline-start: 3px solid var(--pui-warning); }
+.pui-timeline.is-clip-automation .pui-timeline-curve-path { stroke-dasharray: 5 3; }
 .pui-timeline-key.is-selected { background: var(--pui-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pui-accent) 28%, transparent); }
 .pui-timeline-key:focus-visible { outline: 3px solid var(--pui-warning); outline-offset: 2px; }
 .pui-timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--pui-warning); pointer-events: none; z-index: 2; }
@@ -1039,7 +1044,7 @@
    making the pane scroll. */
 .pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-workbench-pane-content { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 .pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-workbench-pane-content > .pui-section { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-fields { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-fields { display: flex; flex-direction: column; align-items: stretch; flex: 1 1 auto; min-height: 0; }
 .pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-fields > * { min-height: 0; }
 .pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-canvas,
 .pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-slot,
@@ -1066,3 +1071,16 @@
 .pui-pane-tab[aria-selected="true"] { color: var(--pui-text); background: var(--pui-surface-2); border-color: var(--pui-border); }
 .pui-pane-tab:focus-visible { outline: 2px solid var(--pui-accent); outline-offset: -2px; }
 .pui-pane-tabpanel { min-height: 0; }
+
+/* Title-bar menu: one compact trigger, an overlay with editable context and
+   actions. The workbench toolbar owns the trigger position. */
+.pui-header-menu { position: relative; display: inline-flex; }
+.pui-header-menu-trigger { display: inline-flex; align-items: center; gap: 5px; }
+.pui-header-menu-icon { font-size: 1.05em; line-height: 1; }
+.pui-header-menu-popup { position: absolute; z-index: 30; top: calc(100% + 6px); inset-inline-end: 0; width: min(460px, calc(100vw - 28px)); max-height: min(72vh, 680px); overflow: auto; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); box-shadow: 0 12px 32px rgba(0,0,0,0.3); }
+.pui-header-menu-popup[hidden] { display: none; }
+.pui-header-menu-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--pui-border); }
+.pui-header-menu-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.9); }
+.pui-header-menu-close { margin-inline-start: auto; border: 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 1.1); cursor: pointer; }
+.pui-header-menu-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.pui-header-menu-body .pui-fields { --pui-columns: 1; }

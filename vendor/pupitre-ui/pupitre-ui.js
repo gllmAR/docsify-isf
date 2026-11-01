@@ -1044,6 +1044,7 @@
     var toolbar = el("header", {class: "pui-workbench-toolbar"});
     toolbar.appendChild(el("h2", {class: "pui-page-title", id: titleId, text: title}));
     var tools = el("div", {class: "pui-workbench-tools"});
+    if (isObject(layout.header_menu)) tools.appendChild(this.buildHeaderMenu(layout.header_menu));
     toolbar.appendChild(tools);
     var toolbarBlocks = el("div", {class: "pui-workbench-toolbar-blocks"});
     groups.toolbar.forEach(function (section, index) { toolbarBlocks.appendChild(self.buildSection(section, self._pageRecordIndex, index)); });
@@ -7095,6 +7096,47 @@
 
   /** Generic timeline view: host owns playback/interpolation, PUI owns the
    * tracks/keys/playhead geometry, editing intents and accessibility. */
+  Renderer.prototype.timelineTime = function (seconds, value) {
+    if (value && value.fps && global.PupitreTimeline && global.PupitreTimeline.formatTimecode) {
+      return global.PupitreTimeline.formatTimecode(seconds, value.fps, {drop_frame: value.drop_frame === true});
+    }
+    return global.PupitreTimeline ? global.PupitreTimeline.formatTime(seconds) : String(seconds);
+  };
+
+  Renderer.prototype.timelineCurvePath = function (track, value, duration) {
+    var Timeline = global.PupitreTimeline;
+    if (!Timeline) return "";
+    var keys = Timeline.keysForTrack(value, track.id).filter(function (key) {
+      return isObject(key) && isFinite(Number(key.time)) && isFinite(Number(key.value));
+    });
+    if (!keys.length) return "";
+    var min = track.min !== undefined && isFinite(Number(track.min)) ? Number(track.min) : Infinity;
+    var max = track.max !== undefined && isFinite(Number(track.max)) ? Number(track.max) : -Infinity;
+    if (!isFinite(min) || !isFinite(max) || max <= min) {
+      min = Math.min.apply(null, keys.map(function (key) { return Number(key.value); }));
+      max = Math.max.apply(null, keys.map(function (key) { return Number(key.value); }));
+    }
+    if (!isFinite(min) || !isFinite(max) || max <= min) { min -= 1; max += 1; }
+    var span = max - min;
+    var x = function (time) { return Timeline.timeToPercent(time, duration); };
+    var y = function (value) { return 100 - Math.max(0, Math.min(1, (Number(value) - min) / span)) * 100; };
+    var points = [[0, y(keys[0].value)]];
+    keys.forEach(function (key, index) {
+      points.push([x(key.time), y(key.value)]);
+      var next = keys[index + 1];
+      if (!next) return;
+      for (var step = 1; step <= 12; step++) {
+        var t = step / 12;
+        var eased = String(key.curve || "linear") === "hold" ? 0 : ease(key.curve, t);
+        points.push([x(Number(key.time) + (Number(next.time) - Number(key.time)) * t), y(Number(key.value) + (Number(next.value) - Number(key.value)) * eased)]);
+      }
+    });
+    points.push([x(duration), y(keys[keys.length - 1].value)]);
+    return points.map(function (point, index) {
+      return (index ? "L " : "M ") + point[0].toFixed(3) + " " + point[1].toFixed(3);
+    }).join(" ");
+  };
+
   Renderer.prototype.buildTimeline = function (block) {
     var self = this;
     var Timeline = global.PupitreTimeline;
@@ -7106,6 +7148,8 @@
     var a11y = isObject(block.a11y) ? block.a11y : {};
     var options = isObject(block.timeline_options) ? block.timeline_options : {};
     var root = el("section", {class: "pui-timeline", "data-pui-timeline": path, role: "group"});
+    if (options.scope === "clip") root.classList.add("is-clip-automation");
+    if (options.scope) root.setAttribute("data-scope", String(options.scope));
     if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
     var rec = {
       block: block, path: path, value: value, root: root, options: options,
@@ -7114,6 +7158,7 @@
     };
     var head = el("div", {class: "pui-timeline-head"});
     head.appendChild(el("h4", {text: label}));
+    if (options.scope === "clip") head.appendChild(el("span", {class: "pui-timeline-scope", text: options.context ? "Clip · " + String(options.context) : "Clip"}));
     var count = el("span", {class: "pui-timeline-count", text: (value.tracks || []).length + " tracks · " + (value.keys || []).length + " keys"});
     head.appendChild(count);
     var loop = el("button", {type: "button", class: "pui-button pui-timeline-loop", text: "Loop"});
@@ -7135,7 +7180,7 @@
     var playheadInput = el("input", {type: "range", min: "0", max: String(Math.max(0.01, Number(value.duration) || 1)), step: "0.01", "aria-label": "Timeline playhead"});
     playheadInput.value = String(Number(value.playhead) || 0);
     playheadInput.disabled = !!block.readonly;
-    var playheadOutput = el("output", {class: "pui-timeline-time", text: Timeline.formatTime(value.playhead)});
+    var playheadOutput = el("output", {class: "pui-timeline-time", text: this.timelineTime(value.playhead, value)});
     playheadInput.addEventListener("input", function () { self.timelineSetPlayhead(rec, Number(playheadInput.value)); });
     playheadLabel.appendChild(playheadInput);
     playheadLabel.appendChild(playheadOutput);
@@ -7176,7 +7221,7 @@
     for (var tick = 0; tick <= 4; tick++) {
       var tickTime = duration * tick / 4;
       var mark = el("span", {class: "pui-timeline-tick", style: "left:" + (tick * 25) + "%;"});
-      mark.appendChild(el("span", {class: "pui-timeline-tick-label", text: Timeline.formatTime(tickTime)}));
+      mark.appendChild(el("span", {class: "pui-timeline-tick-label", text: self.timelineTime(tickTime, value)}));
       ruler.appendChild(mark);
     }
     groups.lanes.appendChild(ruler);
@@ -7199,6 +7244,12 @@
         var box = lane.getBoundingClientRect ? lane.getBoundingClientRect() : {left: 0, width: 1};
         self.timelineSetPlayhead(rec, Timeline.xToTime((event.clientX || 0) - box.left, box.width || 1, duration));
       });
+      var curvePath = self.timelineCurvePath(track, value, duration);
+      if (curvePath) {
+        var curveSvg = svgEl("svg", {class: "pui-timeline-curve", viewBox: "0 0 100 100", preserveAspectRatio: "none", "aria-hidden": "true"});
+        curveSvg.appendChild(svgEl("path", {class: "pui-timeline-curve-path", "data-track-id": trackId, d: curvePath, style: track.color ? "stroke:" + String(track.color) + ";" : ""}));
+        lane.appendChild(curveSvg);
+      }
       Timeline.keysForTrack(value, trackId).forEach(function (key) {
         if (!isObject(key)) return;
         var button = el("button", {type: "button", class: "pui-timeline-key is-" + String(key.curve || "linear") + (rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? " is-selected" : ""), style: "left:" + Timeline.timeToPercent(key.time, duration) + "%;", "data-key-id": String(key.id || "")});
@@ -7221,7 +7272,7 @@
     groups.lanes.appendChild(playhead);
     rec.playheadEl = playhead;
     if (rec.playheadInput) rec.playheadInput.value = String(Number(value.playhead) || 0);
-    if (rec.playheadOutput) rec.playheadOutput.textContent = Timeline.formatTime(value.playhead);
+    if (rec.playheadOutput) rec.playheadOutput.textContent = self.timelineTime(value.playhead, value);
     this.timelineRenderInspector(rec);
   };
 
@@ -7292,7 +7343,7 @@
     rec.value.playhead = next;
     if (rec.playheadInput) rec.playheadInput.value = String(next);
     if (rec.playheadEl) rec.playheadEl.style.left = global.PupitreTimeline.timeToPercent(next, duration) + "%";
-    if (rec.playheadOutput) rec.playheadOutput.textContent = global.PupitreTimeline.formatTime(next);
+    if (rec.playheadOutput) rec.playheadOutput.textContent = this.timelineTime(next, rec.value);
     if (!rec.block.readonly) this.writeTimeline(rec, {op: "playhead.set", time: next});
   };
 
@@ -8583,6 +8634,36 @@
     }
     this.statusRecords.push({root: root, block: block, values: values});
     this.shellCondition(block, root);
+    return root;
+  };
+
+  /** Title-bar menu: a compact trigger in the workbench header opening an
+   * overlay with readouts, editable fields and actions for the current editor.
+   * Kept page-local: it is not a nested dock. */
+  Renderer.prototype.buildHeaderMenu = function (block) {
+    var self = this;
+    var root = el("div", {class: "pui-header-menu"});
+    var popupId = this.id("header-menu");
+    var label = String(block.label || "Menu");
+    var trigger = el("button", {type: "button", class: "pui-button pui-header-menu-trigger", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": popupId, text: label});
+    if (block.icon) trigger.insertBefore(el("span", {class: "pui-header-menu-icon", "aria-hidden": "true", text: String(block.icon)}), trigger.firstChild);
+    var popup = el("div", {class: "pui-header-menu-popup", id: popupId, role: "dialog", "aria-label": String(block.title || label), hidden: true});
+    var head = el("div", {class: "pui-header-menu-head"});
+    head.appendChild(el("h4", {text: String(block.title || label)}));
+    var close = el("button", {type: "button", class: "pui-header-menu-close", text: "×", "aria-label": "Close " + String(block.title || label)});
+    head.appendChild(close);
+    popup.appendChild(head);
+    var body = el("div", {class: "pui-header-menu-body"});
+    (block.blocks || []).forEach(function (child) { body.appendChild(self.buildBlock(child)); });
+    popup.appendChild(body);
+    var closeMenu = function () { popup.hidden = true; trigger.setAttribute("aria-expanded", "false"); if (typeof document !== "undefined") document.removeEventListener("mousedown", outside, true); trigger.focus(); };
+    var outside = function (event) { if (!root.contains(event.target)) closeMenu(); };
+    var openMenu = function () { popup.hidden = false; trigger.setAttribute("aria-expanded", "true"); if (typeof document !== "undefined") document.addEventListener("mousedown", outside, true); var first = popup.querySelector("button, input, select, textarea"); if (first) first.focus(); };
+    trigger.addEventListener("click", function () { if (popup.hidden) openMenu(); else closeMenu(); });
+    close.addEventListener("click", closeMenu);
+    popup.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); closeMenu(); } });
+    root.appendChild(trigger);
+    root.appendChild(popup);
     return root;
   };
 
