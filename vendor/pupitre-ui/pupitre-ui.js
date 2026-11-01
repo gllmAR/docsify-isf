@@ -4937,7 +4937,7 @@
       var rh = Math.max(1, Number(region.h) || 1);
       [["nw", region.x, region.y], ["ne", Number(region.x) + rw, region.y],
         ["sw", region.x, Number(region.y) + rh], ["se", Number(region.x) + rw, Number(region.y) + rh]].forEach(function (entry) {
-        var handle = el("button", {type: "button", class: "pui-canvas-region-handle is-" + entry[0], "data-region-id": regionId, "data-corner": entry[0], style: "left:" + entry[1] + "px;top:" + entry[2] + "px;"});
+        var handle = el("button", {type: "button", class: "pui-canvas-region-handle is-" + entry[0] + (rec.stageMode === "focus" && regionId !== stageActive ? " is-stage-inactive" : ""), "data-region-id": regionId, "data-corner": entry[0], style: "left:" + entry[1] + "px;top:" + entry[2] + "px;"});
         handle.setAttribute("aria-label", "Resize region " + regionId + " " + entry[0]);
         handle.addEventListener("pointerdown", function (event) {
           if (event.stopPropagation) event.stopPropagation();

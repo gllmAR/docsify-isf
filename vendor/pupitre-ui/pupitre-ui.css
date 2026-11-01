@@ -773,7 +773,8 @@
 .pui-canvas-stage-mode { padding: 2px 6px; font-size: calc(var(--pui-type-base) * 0.62); }
 .pui-canvas-stage-mode.is-active { border-color: var(--pui-warning); color: var(--pui-warning); background: color-mix(in srgb, var(--pui-warning) 10%, var(--pui-surface)); }
 .pui-canvas-fit-region { padding: 2px 6px; font-size: calc(var(--pui-type-base) * 0.62); }
-.pui-canvas[data-stage-mode="focus"] .pui-canvas-region.is-stage-inactive { pointer-events: none; }
+.pui-canvas[data-stage-mode="focus"] .pui-canvas-region.is-stage-inactive, .pui-canvas-region-handle.is-stage-inactive { pointer-events: none; }
+.pui-canvas-region-handle.is-stage-inactive { opacity: 0; }
 .pui-canvas-viewport { position: relative; min-height: 360px; height: min(58vh, 520px); overflow: hidden; border: 1px solid var(--pui-border); border-radius: 6px; background: color-mix(in srgb, var(--pui-bg) 88%, var(--pui-surface)); touch-action: none; cursor: grab; outline-offset: 2px; }
 .pui-canvas-viewport:focus-visible { outline: 3px solid var(--pui-accent); }
 .pui-canvas-content { position: absolute; transform-origin: 0 0; inset: 0; }
