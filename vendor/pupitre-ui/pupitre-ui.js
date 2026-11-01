@@ -1558,13 +1558,6 @@
     return rect;
   };
 
-  Renderer.prototype.graphApplyNodeGeometry = function (rec, nodeId) {
-    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
-    var nodeEl = rec.nodeEls && rec.nodeEls[String(nodeId)];
-    if (!node || !nodeEl) return;
-    var rect = this.graphNodeRect(rec, node);
-    if (nodeEl.setAttribute) nodeEl.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
-  };
 
   Renderer.prototype.graphMeasureNodeBody = function (rec, nodeId) {
     var id = String(nodeId);
@@ -1575,7 +1568,7 @@
     var extra = height > 0 ? height + 4 : 0;
     if (rec.nodeExtraHeights[id] === extra) return;
     rec.nodeExtraHeights[id] = extra;
-    this.graphApplyNodeGeometry(rec, id);
+    this.updateGraphDom(rec, [id]);
   };
 
   Renderer.prototype.graphObserveNodeBodies = function (rec) {
@@ -1613,6 +1606,36 @@
   Renderer.prototype.graphLayoutBodies = function () {
     var self = this;
     this.graphRecords.forEach(function (rec) { self.graphLayoutGraphBodies(rec); });
+  };
+
+  /** Graph-space rectangle currently visible in the viewport (with margin). */
+  Renderer.prototype.graphViewportBounds = function (rec, margin) {
+    var view = rec && rec.view || {zoom: 1, panX: 0, panY: 0};
+    if (margin === undefined || !isFinite(margin)) margin = 240;
+    var vw = rec && rec.viewport ? (rec.viewport.clientWidth || 800) : 800;
+    var vh = rec && rec.viewport ? (rec.viewport.clientHeight || 500) : 500;
+    var x1 = -view.panX / view.zoom - margin, y1 = -view.panY / view.zoom - margin;
+    return {x1: x1, y1: y1, x2: x1 + vw / view.zoom + margin * 2, y2: y1 + vh / view.zoom + margin * 2};
+  };
+
+  /** Build detail lazily for nodes entering the viewport or selected. Shells
+   * are cheap and keep the keyed DOM/a11y outline stable; ports, params, host
+   * bodies and previews are created only when they can be seen. */
+  Renderer.prototype.graphMaterializeVisible = function (rec) {
+    if (!rec || !rec.graph || !rec.nodeEls) return 0;
+    var bounds = this.graphViewportBounds(rec, 240);
+    var self = this;
+    var changed = 0;
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      if (!id || rec.materializedNodes[id]) return;
+      var rect = self.graphNodeRect(rec, node);
+      var visible = rec.selected[id] || (rect.x + rect.w >= bounds.x1 && rect.x <= bounds.x2 && rect.y + rect.h >= bounds.y1 && rect.y <= bounds.y2);
+      if (visible && self.graphMaterializeNode(rec, node, rec.nodeEls[id])) changed += 1;
+    });
+    if (changed) this.graphLayoutGraphBodies(rec);
+    return changed;
   };
 
   Renderer.prototype.graphValueTexture = function (node, type) {
@@ -1661,6 +1684,167 @@
     box.appendChild(el("span", {class: "pui-graph-vt-summary", text: summary.join(" · ")}));
     box.title = "Packed parameter texture · " + summary.join(" · ");
     return box;
+  };
+
+  /** Build the expensive detail of one node shell: ports, params, host body,
+   * value texture, graph-on-parent preview and subgraph action. Off-screen
+   * nodes stay lightweight shells until the viewport (or selection) needs
+   * them, following the keyed/culled rendering decision in NODAL_EDITOR §6. */
+  Renderer.prototype.graphMaterializeNode = function (rec, node, nodeEl) {
+    if (!rec || !node || !nodeEl) return false;
+    var id = String(node.id || "");
+    if (!id || (rec.materializedNodes && rec.materializedNodes[id])) return false;
+    var Graph = global.PupitreGraph;
+    if (!Graph) return false;
+    var self = this;
+    var type = rec.typeMap[String(node.type)] || null;
+    var nodeLabel = String(node.label || (type && type.label) || node.type || id);
+    rec.materializedNodes = rec.materializedNodes || {};
+    rec.materializedNodes[id] = true;
+    if (nodeEl.removeAttribute) nodeEl.removeAttribute("data-node-lazy");
+    var hiddenInputs = isArray(node.hidden_inputs) ? node.hidden_inputs.map(String) : [];
+    var hiddenOutputs = isArray(node.hidden_outputs) ? node.hidden_outputs.map(String) : [];
+    var hiddenParams = isArray(node.hidden_params) ? node.hidden_params.map(String) : [];
+    var inputs = Graph.activeInputs(node, type).filter(function (port) { return hiddenInputs.indexOf(String(port.id)) < 0; });
+    var outputs = (type && isArray(type.outputs) ? type.outputs : []).filter(function (port) { return hiddenOutputs.indexOf(String(port.id)) < 0; });
+    var portRows = Math.max(inputs.length, outputs.length);
+    var ports = el("div", {class: "pui-graph-ports"});
+    inputs.forEach(function (port, index) {
+      var portType = String(port.type || "tex");
+      var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
+      var portMeta = Graph.portMeta(type, port.id, true) || port;
+      var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, "data-port-channel": String(portMeta.channel || ""), "data-port-scale": String(portMeta.scale !== undefined ? portMeta.scale : ""), tabindex: "0", role: "button"});
+      dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (portMeta.channel ? ", channel " + portMeta.channel : ""));
+      dot.title = "Input · " + portType + (portMeta.channel ? " · " + portMeta.channel : "") + (portMeta.scale !== undefined ? " · ×" + portMeta.scale : "");
+      rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
+      dot.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphStartWire(rec, id, port.id, true, event);
+      });
+      dot.addEventListener("pointerup", function (event) {
+        if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, port.id, event); }
+      });
+      ports.appendChild(dot);
+    });
+    outputs.forEach(function (port, index) {
+      var portType = String(port.type || "tex");
+      var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
+      var outMeta = Graph.portMeta(type, port.id, false) || port;
+      var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, "data-port-channel": String(outMeta.channel || ""), "data-port-scale": String(outMeta.scale !== undefined ? outMeta.scale : ""), tabindex: "0", role: "button"});
+      dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (outMeta.channel ? ", channel " + outMeta.channel : ""));
+      dot.title = "Output · " + portType + (outMeta.channel ? " · " + outMeta.channel : "") + (outMeta.scale !== undefined ? " · ×" + outMeta.scale : "");
+      rec.portEls[id + ":output:" + String(port.id)] = {el: dot, type: portType, isInput: false};
+      dot.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphStartWire(rec, id, port.id, false, event);
+      });
+      ports.appendChild(dot);
+    });
+    for (var row = 0; row < portRows; row++) {
+      var line = el("div", {class: "pui-graph-port-row"});
+      var inLabel = inputs[row] ? el("span", {class: "pui-graph-port-in", text: String(inputs[row].label || inputs[row].id)}) : el("span");
+      if (inputs[row]) inLabel.title = "in · " + String(inputs[row].type || "tex");
+      var outLabel = outputs[row] ? el("span", {class: "pui-graph-port-out", text: String(outputs[row].label || outputs[row].id)}) : el("span");
+      if (outputs[row]) outLabel.title = "out · " + String(outputs[row].type || "tex");
+      line.appendChild(inLabel);
+      line.appendChild(outLabel);
+      ports.appendChild(line);
+    }
+    nodeEl.appendChild(ports);
+    var paramDefs = type && isArray(type.params) ? type.params.filter(function (param) { return hiddenParams.indexOf(String(param.id)) < 0; }) : [];
+    if (paramDefs.length) {
+      var paramsEl = el("div", {class: "pui-graph-params"});
+      var paramEls = [];
+      paramDefs.forEach(function (param) {
+        var raw = isObject(node.params) ? node.params[param.id] : undefined;
+        var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
+        var line = el("div", {class: "pui-graph-param-line"});
+        line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
+        var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
+        var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
+        var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id)});
+        if (bounded) {
+          var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
+          track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
+          valueButton.appendChild(track);
+        }
+        valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: String(shown)}));
+        valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+        if (numeric) {
+          valueButton.setAttribute("role", "slider");
+          valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
+          if (param.min !== undefined) valueButton.setAttribute("aria-valuemin", String(param.min));
+          if (param.max !== undefined) valueButton.setAttribute("aria-valuemax", String(param.max));
+          valueButton.title = "Drag to adjust · Alt fine · Shift coarse · double-click reset";
+          valueButton.addEventListener("pointerdown", function (event) { self.graphParamScrub(rec, node, param, event); });
+          valueButton.addEventListener("keydown", function (event) { self.graphParamKey(rec, node, param, event); });
+          valueButton.addEventListener("pointermove", function (event) { self.graphParamScrubMove(rec, event); });
+          valueButton.addEventListener("pointerup", function (event) { self.graphParamScrubEnd(rec, event); });
+          valueButton.addEventListener("pointercancel", function () { self.graphParamScrubEnd(rec, null); });
+          valueButton.addEventListener("dblclick", function (event) {
+            if (event.preventDefault) event.preventDefault();
+            self.graphSetNodeParam(rec, node.id, param.id, param.default === undefined ? 0 : param.default);
+          });
+        }
+        self.graphParamPaint(valueButton, param, shown);
+        line.appendChild(valueButton);
+        paramsEl.appendChild(line);
+        paramEls.push(valueButton);
+      });
+      nodeEl.appendChild(paramsEl);
+      rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
+    }
+    if (typeof self.adapter.graphNodeBody === "function") {
+      try {
+        var customBody = self.adapter.graphNodeBody(node, type, rec.block, self);
+        if (customBody && (customBody.nodeType || typeof customBody.tagName === "string")) {
+          customBody.classList.add("pui-graph-node-body");
+          if (self.graphOnParentSettings(node)) {
+            var bodyWrap = el("div", {class: "pui-graph-node-bodies"});
+            bodyWrap.appendChild(customBody);
+            nodeEl.appendChild(bodyWrap);
+            rec.bodyEls[id] = bodyWrap;
+          } else {
+            nodeEl.appendChild(customBody);
+            rec.bodyEls[id] = customBody;
+          }
+        }
+      } catch (error) {
+        self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
+      }
+    }
+    var valueTexture = self.graphValueTexture(node, type);
+    if (valueTexture) {
+      nodeEl.classList.add("is-value-texture");
+      var textureEl = self.graphValueTextureEl(node, valueTexture);
+      var textureHost = rec.bodyEls[id] || nodeEl;
+      textureHost.appendChild(textureEl);
+      if (!rec.bodyEls[id]) rec.bodyEls[id] = textureEl;
+    }
+    var gopSettings = self.graphOnParentSettings(node);
+    if (gopSettings) {
+      var parentPreview = self.graphParentPreview(rec, node, gopSettings);
+      if (parentPreview) {
+        var bodyHost = rec.bodyEls[id] || nodeEl;
+        bodyHost.appendChild(parentPreview);
+        if (!rec.bodyEls[id]) rec.bodyEls[id] = parentPreview;
+      }
+    }
+    var subgraphPath = typeof node.subgraph === "string" ? node.subgraph : "";
+    if (subgraphPath) {
+      nodeEl.classList.add("is-subgraph");
+      nodeEl.setAttribute("data-subgraph", subgraphPath);
+      nodeEl.title = "Double-click to enter subgraph";
+      var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "Open subgraph"});
+      openSubgraph.setAttribute("aria-label", "Open subgraph " + nodeLabel);
+      openSubgraph.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+      openSubgraph.addEventListener("click", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphOpenSubgraph(rec, node);
+      });
+      nodeEl.appendChild(openSubgraph);
+    }
+    return true;
   };
 
   Renderer.prototype.buildGraph = function (block, navStack) {
@@ -1756,9 +1940,10 @@
     var graphOptions = isObject(block.graph_options) ? block.graph_options : {};
     var rec = {block: block, root: root, graph: graph, rootGraph: rootGraph, graphPath: graphPath,
       rootPath: rootPath, navStack: nav, types: types, typeMap: typeMap,
-      nodeEls: {}, cableRefs: [], selected: selected, undo: [], redo: [], dragging: null,
+      nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
+      materializedNodes: {},
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -1811,6 +1996,7 @@
       var nodeEl = el("div", {
         class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : ""),
         "data-node-id": id,
+        "data-node-lazy": "1",
         role: "group",
         tabindex: "0",
         style: "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;"
@@ -1822,148 +2008,7 @@
         el("span", {class: "pui-graph-node-title", text: nodeLabel}),
         el("span", {class: "pui-graph-node-type", text: String((type && type.label) || node.type || "")})
       ));
-      var hiddenInputs = isArray(node.hidden_inputs) ? node.hidden_inputs.map(String) : [];
-      var hiddenOutputs = isArray(node.hidden_outputs) ? node.hidden_outputs.map(String) : [];
-      var hiddenParams = isArray(node.hidden_params) ? node.hidden_params.map(String) : [];
-      var inputs = Graph.activeInputs(node, type).filter(function (port) { return hiddenInputs.indexOf(String(port.id)) < 0; });
-      var outputs = (type && isArray(type.outputs) ? type.outputs : []).filter(function (port) { return hiddenOutputs.indexOf(String(port.id)) < 0; });
-      var portRows = Math.max(inputs.length, outputs.length);
-      var ports = el("div", {class: "pui-graph-ports"});
-      inputs.forEach(function (port, index) {
-        var portType = String(port.type || "tex");
-        var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
-        var portMeta = Graph.portMeta(type, port.id, true) || port;
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, "data-port-channel": String(portMeta.channel || ""), "data-port-scale": String(portMeta.scale !== undefined ? portMeta.scale : ""), tabindex: "0", role: "button"});
-        dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (portMeta.channel ? ", channel " + portMeta.channel : ""));
-        dot.title = "Input · " + portType + (portMeta.channel ? " · " + portMeta.channel : "") + (portMeta.scale !== undefined ? " · ×" + portMeta.scale : "");
-        rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
-        dot.addEventListener("pointerdown", function (event) {
-          if (event.stopPropagation) event.stopPropagation();
-          self.graphStartWire(rec, id, port.id, true, event);
-        });
-        dot.addEventListener("pointerup", function (event) {
-          if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, port.id, event); }
-        });
-        ports.appendChild(dot);
-      });
-      outputs.forEach(function (port, index) {
-        var portType = String(port.type || "tex");
-        var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
-        var outMeta = Graph.portMeta(type, port.id, false) || port;
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, "data-port-channel": String(outMeta.channel || ""), "data-port-scale": String(outMeta.scale !== undefined ? outMeta.scale : ""), tabindex: "0", role: "button"});
-        dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (outMeta.channel ? ", channel " + outMeta.channel : ""));
-        dot.title = "Output · " + portType + (outMeta.channel ? " · " + outMeta.channel : "") + (outMeta.scale !== undefined ? " · ×" + outMeta.scale : "");
-        rec.portEls[id + ":output:" + String(port.id)] = {el: dot, type: portType, isInput: false};
-        dot.addEventListener("pointerdown", function (event) {
-          if (event.stopPropagation) event.stopPropagation();
-          self.graphStartWire(rec, id, port.id, false, event);
-        });
-        ports.appendChild(dot);
-      });
-      for (var row = 0; row < portRows; row++) {
-        var line = el("div", {class: "pui-graph-port-row"});
-        var inLabel = inputs[row] ? el("span", {class: "pui-graph-port-in", text: String(inputs[row].label || inputs[row].id)}) : el("span");
-        if (inputs[row]) inLabel.title = "in · " + String(inputs[row].type || "tex");
-        var outLabel = outputs[row] ? el("span", {class: "pui-graph-port-out", text: String(outputs[row].label || outputs[row].id)}) : el("span");
-        if (outputs[row]) outLabel.title = "out · " + String(outputs[row].type || "tex");
-        line.appendChild(inLabel);
-        line.appendChild(outLabel);
-        ports.appendChild(line);
-      }
-      nodeEl.appendChild(ports);
-      var paramDefs = type && isArray(type.params) ? type.params.filter(function (param) { return hiddenParams.indexOf(String(param.id)) < 0; }) : [];
-      if (paramDefs.length) {
-        var paramsEl = el("div", {class: "pui-graph-params"});
-        var paramEls = [];
-        paramDefs.forEach(function (param) {
-          var raw = isObject(node.params) ? node.params[param.id] : undefined;
-          var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
-          var line = el("div", {class: "pui-graph-param-line"});
-          line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
-          var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
-          var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
-          var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id)});
-          if (bounded) {
-            var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
-            track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
-            valueButton.appendChild(track);
-          }
-          valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: String(shown)}));
-          valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
-          if (numeric) {
-            valueButton.setAttribute("role", "slider");
-            valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
-            if (param.min !== undefined) valueButton.setAttribute("aria-valuemin", String(param.min));
-            if (param.max !== undefined) valueButton.setAttribute("aria-valuemax", String(param.max));
-            valueButton.title = "Drag to adjust · Alt fine · Shift coarse · double-click reset";
-            valueButton.addEventListener("pointerdown", function (event) { self.graphParamScrub(rec, node, param, event); });
-            valueButton.addEventListener("keydown", function (event) { self.graphParamKey(rec, node, param, event); });
-            valueButton.addEventListener("pointermove", function (event) { self.graphParamScrubMove(rec, event); });
-            valueButton.addEventListener("pointerup", function (event) { self.graphParamScrubEnd(rec, event); });
-            valueButton.addEventListener("pointercancel", function () { self.graphParamScrubEnd(rec, null); });
-            valueButton.addEventListener("dblclick", function (event) {
-              if (event.preventDefault) event.preventDefault();
-              self.graphSetNodeParam(rec, node.id, param.id, param.default === undefined ? 0 : param.default);
-            });
-          }
-          self.graphParamPaint(valueButton, param, shown);
-          line.appendChild(valueButton);
-          paramsEl.appendChild(line);
-          paramEls.push(valueButton);
-        });
-        nodeEl.appendChild(paramsEl);
-        rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
-      }
-      if (typeof self.adapter.graphNodeBody === "function") {
-        try {
-          var customBody = self.adapter.graphNodeBody(node, type, rec.block, self);
-          if (customBody && (customBody.nodeType || typeof customBody.tagName === "string")) {
-            customBody.classList.add("pui-graph-node-body");
-            if (self.graphOnParentSettings(node)) {
-              var bodyWrap = el("div", {class: "pui-graph-node-bodies"});
-              bodyWrap.appendChild(customBody);
-              nodeEl.appendChild(bodyWrap);
-              rec.bodyEls[id] = bodyWrap;
-            } else {
-              nodeEl.appendChild(customBody);
-              rec.bodyEls[id] = customBody;
-            }
-          }
-        } catch (error) {
-          self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
-        }
-      }
-      var valueTexture = self.graphValueTexture(node, type);
-      if (valueTexture) {
-        nodeEl.classList.add("is-value-texture");
-        var textureEl = self.graphValueTextureEl(node, valueTexture);
-        var textureHost = rec.bodyEls[id] || nodeEl;
-        textureHost.appendChild(textureEl);
-        if (!rec.bodyEls[id]) rec.bodyEls[id] = textureEl;
-      }
-      var gopSettings = self.graphOnParentSettings(node);
-      if (gopSettings) {
-        var parentPreview = self.graphParentPreview(rec, node, gopSettings);
-        if (parentPreview) {
-          var bodyHost = rec.bodyEls[id] || nodeEl;
-          bodyHost.appendChild(parentPreview);
-          if (!rec.bodyEls[id]) rec.bodyEls[id] = parentPreview;
-        }
-      }
-      var subgraphPath = typeof node.subgraph === "string" ? node.subgraph : "";
-      if (subgraphPath) {
-        nodeEl.classList.add("is-subgraph");
-        nodeEl.setAttribute("data-subgraph", subgraphPath);
-        nodeEl.title = "Double-click to enter subgraph";
-        var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "Open subgraph"});
-        openSubgraph.setAttribute("aria-label", "Open subgraph " + nodeLabel);
-        openSubgraph.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
-        openSubgraph.addEventListener("click", function (event) {
-          if (event.stopPropagation) event.stopPropagation();
-          self.graphOpenSubgraph(rec, node);
-        });
-        nodeEl.appendChild(openSubgraph);
-      }
+      rec.nodeById[id] = node;
       content.appendChild(nodeEl);
       nodeEls[id] = nodeEl;
       (function (nodeId, nodeElement) {
@@ -1971,7 +2016,9 @@
           if (event.button !== undefined && event.button !== 0) return;
           if (event.preventDefault) event.preventDefault();
           self.graphSelect(rec, nodeId, !!(event.shiftKey || event.metaKey || event.ctrlKey));
-          rec.dragging = {start: deepClone(rec.graph), x: event.clientX || 0, y: event.clientY || 0, moved: false, ids: Object.keys(rec.selected), dx: 0, dy: 0};
+          var dragIds = Object.keys(rec.selected);
+          rec.dragging = {start: deepClone(rec.graph), x: event.clientX || 0, y: event.clientY || 0, moved: false, ids: dragIds, dx: 0, dy: 0,
+            alignEdges: self.graphAlignmentEdges(rec, dragIds)};
           if (event.stopPropagation) event.stopPropagation();
         });
         nodeElement.addEventListener("click", function (event) {
@@ -2020,7 +2067,14 @@
         self.graphSelectCable(rec, cable);
       });
       cableGroup.appendChild(path);
-      rec.cableRefs.push({el: path, cable: cable});
+      var cableRef = {el: path, cable: cable};
+      rec.cableRefs.push(cableRef);
+      if (!rec.cableRefsByNode[from.node]) rec.cableRefsByNode[from.node] = [];
+      rec.cableRefsByNode[from.node].push(cableRef);
+      if (to.node !== from.node) {
+        if (!rec.cableRefsByNode[to.node]) rec.cableRefsByNode[to.node] = [];
+        rec.cableRefsByNode[to.node].push(cableRef);
+      }
     });
     rec.guideLayer = el("div", {class: "pui-graph-guides"});
     content.appendChild(rec.guideLayer);
@@ -2058,38 +2112,84 @@
         y: ((event.clientY || 0) - box.top - view.panY) / view.zoom
       };
     }
-    function renderMinimap() {
+    function renderMinimap(dirty) {
       if (!rec.minimap || !Graph) return;
-      var bounds = Graph.graphBounds(rec.graph, rec.types);
-      var pad = 32;
-      var width = Math.max(180, bounds.w + pad * 2), height = Math.max(120, bounds.h + pad * 2);
-      var aspect = 180 / 120;
-      if (width / height > aspect) height = width / aspect;
-      else width = height * aspect;
-      var x1 = bounds.x1 + bounds.w / 2 - width / 2;
-      var y1 = bounds.y1 + bounds.h / 2 - height / 2;
-      rec.minimap.bounds = {x1: x1, y1: y1, w: width, h: height};
-      rec.minimap.svg.setAttribute("viewBox", x1 + " " + y1 + " " + width + " " + height);
-      rec.minimap.svg.textContent = "";
-      (rec.graph.frames || []).forEach(function (frame) {
-        if (!isObject(frame)) return;
-        rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-frame", x: Number(frame.x) || 0, y: Number(frame.y) || 0, width: Number(frame.w) || 0, height: Number(frame.h) || 0}));
-      });
-      (rec.graph.nodes || []).forEach(function (node) {
-        var rect = self.graphNodeRect(rec, node);
-        rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-node", x: rect.x, y: rect.y, width: rect.w, height: rect.h}));
-      });
-      var vw = viewport.clientWidth || 800, vh = viewport.clientHeight || 500;
-      rec.minimap.svg.appendChild(svgEl("rect", {class: "pui-graph-mm-view", x: -view.panX / view.zoom, y: -view.panY / view.zoom, width: vw / view.zoom, height: vh / view.zoom}));
-      rec.minimap.svg.setAttribute("aria-label", "Graph minimap: " + (rec.graph.nodes || []).length + " nodes");
+      var mm = rec.minimap;
+      var onlyView = dirty === "view" && !!mm.nodeEls;
+      var updateAll = !isObject(dirty);
+      var dirtyNodes = isObject(dirty) ? dirty.nodes : null;
+      var dirtyFrames = isObject(dirty) ? dirty.frames : null;
+      if (!mm.nodeEls) {
+        mm.nodeEls = {};
+        mm.frameEls = {};
+        (rec.graph.frames || []).forEach(function (frame) {
+          if (!isObject(frame)) return;
+          var el = svgEl("rect", {class: "pui-graph-mm-frame"});
+          mm.frameEls[String(frame.id || "")] = el;
+          mm.svg.appendChild(el);
+        });
+        (rec.graph.nodes || []).forEach(function (node) {
+          if (!isObject(node)) return;
+          var el = svgEl("rect", {class: "pui-graph-mm-node"});
+          mm.nodeEls[String(node.id || "")] = el;
+          mm.svg.appendChild(el);
+        });
+        mm.viewEl = svgEl("rect", {class: "pui-graph-mm-view"});
+        mm.svg.appendChild(mm.viewEl);
+        updateAll = true;
+        onlyView = false;
+      }
+      if (!onlyView) {
+        var bounds = Graph.graphBounds(rec.graph, rec.types);
+        var pad = 32;
+        var width = Math.max(180, bounds.w + pad * 2), height = Math.max(120, bounds.h + pad * 2);
+        var aspect = 180 / 120;
+        if (width / height > aspect) height = width / aspect;
+        else width = height * aspect;
+        var x1 = bounds.x1 + bounds.w / 2 - width / 2;
+        var y1 = bounds.y1 + bounds.h / 2 - height / 2;
+        mm.bounds = {x1: x1, y1: y1, w: width, h: height};
+        mm.svg.setAttribute("viewBox", x1 + " " + y1 + " " + width + " " + height);
+        mm.svg.setAttribute("aria-label", "Graph minimap: " + (rec.graph.nodes || []).length + " nodes");
+        (rec.graph.frames || []).forEach(function (frame) {
+          if (!isObject(frame)) return;
+          var id = String(frame.id || "");
+          if (!updateAll && !(dirtyFrames && dirtyFrames[id])) return;
+          var el = mm.frameEls[id];
+          if (!el) return;
+          el.setAttribute("x", Number(frame.x) || 0);
+          el.setAttribute("y", Number(frame.y) || 0);
+          el.setAttribute("width", Number(frame.w) || 0);
+          el.setAttribute("height", Number(frame.h) || 0);
+        });
+        (rec.graph.nodes || []).forEach(function (node) {
+          if (!isObject(node)) return;
+          var id = String(node.id || "");
+          if (!updateAll && !(dirtyNodes && dirtyNodes[id])) return;
+          var el = mm.nodeEls[id];
+          if (!el) return;
+          var rect = self.graphNodeRect(rec, node);
+          el.setAttribute("x", rect.x);
+          el.setAttribute("y", rect.y);
+          el.setAttribute("width", rect.w);
+          el.setAttribute("height", rect.h);
+        });
+      }
+      var view = rec.view || {zoom: 1, panX: 0, panY: 0};
+      var vw = rec.viewport.clientWidth || 800, vh = rec.viewport.clientHeight || 500;
+      mm.viewEl.setAttribute("x", -view.panX / view.zoom);
+      mm.viewEl.setAttribute("y", -view.panY / view.zoom);
+      mm.viewEl.setAttribute("width", vw / view.zoom);
+      mm.viewEl.setAttribute("height", vh / view.zoom);
     }
     function applyView() {
       // The content layer owns the graph transform. Cables live inside it, so
       // applying the same transform to the SVG group would pan/scale them twice.
       content.style.transform = "translate(" + view.panX + "px," + view.panY + "px) scale(" + view.zoom + ")";
       if (cableGroup.getAttribute("transform")) cableGroup.removeAttribute("transform");
-      if (rec.renderMinimap) rec.renderMinimap();
+      self.graphMaterializeVisible(rec);
       self.graphCull(rec);
+      if (rec.renderMinimap) rec.renderMinimap("view");
     }
     applyView();
     minimap.addEventListener("pointerdown", function (event) {
@@ -2156,7 +2256,9 @@
         var rh = Math.max(60, rec.frameResize.h + rdy);
         rec.frameResize.frame.w = rw;
         rec.frameResize.frame.h = rh;
-        self.updateGraphDom(rec);
+        var resizedFrames = {};
+        resizedFrames[String(rec.frameResize.frame.id || "")] = true;
+        self.updateGraphDom(rec, {frames: resizedFrames});
         return;
       }
       if (rec.frameDrag) {
@@ -2186,7 +2288,11 @@
             if (node && startNode) { node.x = (Number(startNode.x) || 0) + frameDx; node.y = (Number(startNode.y) || 0) + frameDy; }
           });
         }
-        self.updateGraphDom(rec);
+        var movedFrameNodes = {};
+        rec.frameDrag.ids.forEach(function (id) { movedFrameNodes[String(id)] = true; });
+        var movedFrames = {};
+        movedFrames[String(rec.frameDrag.frame.id || "")] = true;
+        self.updateGraphDom(rec, {nodes: movedFrameNodes, frames: movedFrames});
         return;
       }
       if (rec.dragging) {
@@ -2199,7 +2305,7 @@
         var startNodes = rec.dragging.start.nodes || [];
         var snap = Number(rec.graphOptions.snap || 0);
         if (event.ctrlKey || event.metaKey) snap = 0;
-        var aligned = self.graphAlign(rec, rec.dragging.start, rec.dragging.ids, dx, dy, 6 / Math.max(0.2, view.zoom));
+        var aligned = self.graphAlign(rec, rec.dragging.start, rec.dragging.ids, dx, dy, 6 / Math.max(0.2, view.zoom), rec.dragging.alignEdges);
         var alignedX = !!(aligned && aligned.x !== null && aligned.x !== undefined);
         var alignedY = !!(aligned && aligned.y !== null && aligned.y !== undefined);
         if (aligned) {
@@ -2222,7 +2328,7 @@
           node.x = x;
           node.y = y;
         });
-        self.updateGraphDom(rec);
+        self.updateGraphDom(rec, rec.dragging.ids);
         return;
       }
       if (!drag) return;
@@ -2385,16 +2491,12 @@
     }
   };
 
-  Renderer.prototype.graphAlign = function (rec, snapshot, ids, dx, dy, threshold) {
+  /** Static snap targets for a drag. Computed once at drag start so pointer
+   * moves do not rebuild O(nodes + frames) edge arrays every frame. */
+  Renderer.prototype.graphAlignmentEdges = function (rec, ids) {
     var self = this;
-    var Graph = global.PupitreGraph;
-    if (!Graph || !snapshot) return null;
     var selected = {};
     (ids || []).forEach(function (id) { selected[String(id)] = true; });
-    var moving = (snapshot.nodes || []).filter(function (node) { return selected[String(node.id)]; }).map(function (node) {
-      return {node: node, rect: self.graphNodeRect(rec, node)};
-    });
-    if (!moving.length) return null;
     var staticX = [], staticY = [];
     (rec.graph.nodes || []).forEach(function (node) {
       if (selected[String(node.id)]) return;
@@ -2406,6 +2508,21 @@
       staticX.push(Number(frame.x) || 0, (Number(frame.x) || 0) + (Number(frame.w) || 0) / 2, (Number(frame.x) || 0) + (Number(frame.w) || 0));
       staticY.push(Number(frame.y) || 0, (Number(frame.y) || 0) + (Number(frame.h) || 0) / 2, (Number(frame.y) || 0) + (Number(frame.h) || 0));
     });
+    return {x: staticX, y: staticY};
+  };
+
+  Renderer.prototype.graphAlign = function (rec, snapshot, ids, dx, dy, threshold, edges) {
+    var self = this;
+    var Graph = global.PupitreGraph;
+    if (!Graph || !snapshot) return null;
+    var selected = {};
+    (ids || []).forEach(function (id) { selected[String(id)] = true; });
+    var moving = (snapshot.nodes || []).filter(function (node) { return selected[String(node.id)]; }).map(function (node) {
+      return {node: node, rect: self.graphNodeRect(rec, node)};
+    });
+    if (!moving.length) return null;
+    if (!edges) edges = this.graphAlignmentEdges(rec, ids);
+    var staticX = edges.x, staticY = edges.y;
     var bestX = null, bestY = null;
     moving.forEach(function (entry) {
       var rect = entry.rect;
@@ -2461,7 +2578,9 @@
     var start = deepClone(rec.graph);
     rec.selectedFrame[field] = value;
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    var frameDirty = {};
+    frameDirty[String(rec.selectedFrame.id || "")] = true;
+    this.updateGraphDom(rec, {frames: frameDirty});
     this.writeGraph(rec, {op: "frame." + field, id: rec.selectedFrame.id, value: value});
     return true;
   };
@@ -2485,7 +2604,9 @@
     frame.w = Math.round(x2 - x1 + 32);
     frame.h = Math.round(y2 - y1 + 48);
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    var fitShapes = {};
+    fitShapes[String(frame.id || "")] = true;
+    this.updateGraphDom(rec, {frames: fitShapes});
     this.writeGraph(rec, {op: "frame.fit", id: frame.id});
     if (rec.inspector) this.renderGraphInspector(rec);
     return true;
@@ -2926,12 +3047,10 @@
     var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph) return;
-    var view = rec.view || {zoom: 1, panX: 0, panY: 0};
     var margin = Number(rec.graphOptions.cull_margin);
     if (!isFinite(margin) || margin < 0) margin = 240;
-    var vw = rec.viewport.clientWidth || 800, vh = rec.viewport.clientHeight || 500;
-    var x1 = -view.panX / view.zoom - margin, y1 = -view.panY / view.zoom - margin;
-    var x2 = x1 + vw / view.zoom + margin * 2, y2 = y1 + vh / view.zoom + margin * 2;
+    var bounds = this.graphViewportBounds(rec, margin);
+    var x1 = bounds.x1, y1 = bounds.y1, x2 = bounds.x2, y2 = bounds.y2;
     var visible = {};
     (rec.graph.nodes || []).forEach(function (node) {
       if (!isObject(node)) return;
@@ -3202,7 +3321,7 @@
       node.params[paramId] = value;
     });
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    this.updateGraphDom(rec, ids);
     this.graphRefreshIssues(rec);
     this.writeGraph(rec, {op: "node.param", ids: ids, param: String(paramId), value: value});
     return true;
@@ -3216,7 +3335,7 @@
       if (rec.selected[String(node.id)]) node[field] = value;
     });
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    this.updateGraphDom(rec, ids);
     this.graphRefreshIssues(rec);
     this.writeGraph(rec, {op: "node." + field, ids: ids, value: value});
     return true;
@@ -3630,7 +3749,7 @@
     if (isInt) next = Math.round(next);
     node.params = isObject(node.params) ? node.params : {};
     node.params[param.id] = next;
-    this.updateGraphDom(rec);
+    this.updateGraphDom(rec, [node.id]);
     this.writeGraph(rec, {op: "node.param", ids: [node.id], param: String(param.id), value: next});
   };
 
@@ -3671,7 +3790,7 @@
     node.params = isObject(node.params) ? node.params : {};
     node.params[paramId] = value;
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    this.updateGraphDom(rec, [nodeId]);
     this.writeGraph(rec, {op: "node.param", ids: [String(nodeId)], param: String(paramId), value: value});
     return true;
   };
@@ -3837,13 +3956,32 @@
     return this.setPath(String(rec.graphPath || rec.block.bind || ""), rec.graph, rec.block);
   };
 
-  Renderer.prototype.updateGraphDom = function (rec) {
+  /** Patch graph DOM by key. `dirty` is omitted for a full pass or carries
+   * selected node ids / frame ids so a drag touches only moved nodes, their
+   * incident cables and the corresponding minimap rects. */
+  Renderer.prototype.updateGraphDom = function (rec, dirty) {
     var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph) return;
-    rec.graph.nodes.forEach(function (node) {
-      var el = rec.nodeEls[String(node.id)];
+    var updateAll = !dirty;
+    var dirtyNodes = null, dirtyFrames = null;
+    if (isArray(dirty)) {
+      dirtyNodes = {};
+      dirty.forEach(function (id) { dirtyNodes[String(id)] = true; });
+    } else if (isObject(dirty)) {
+      dirtyNodes = dirty.nodes || null;
+      dirtyFrames = dirty.frames || null;
+    } else if (dirty === true) {
+      updateAll = true;
+    }
+    var materialized = false;
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      if (!updateAll && !(dirtyNodes && dirtyNodes[id])) return;
+      var el = rec.nodeEls[id];
       if (!el) return;
+      if (!updateAll && dirtyNodes && dirtyNodes[id] && rec.materializedNodes && !rec.materializedNodes[id] && self.graphMaterializeNode(rec, node, el)) materialized = true;
       var rect = self.graphNodeRect(rec, node);
       if (el.setAttribute) el.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
       if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
@@ -3867,15 +4005,32 @@
       }
     });
     (rec.graph.frames || []).forEach(function (frame) {
-      var frameEl = rec.frameEls[String(frame.id)];
+      if (!isObject(frame)) return;
+      var id = String(frame.id || "");
+      if (!updateAll && !(dirtyFrames && dirtyFrames[id])) return;
+      var frameEl = rec.frameEls[id];
       if (frameEl && frameEl.setAttribute) frameEl.setAttribute("style", "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;");
     });
-    rec.cableRefs.forEach(function (ref) {
+    var cableRefs = rec.cableRefs || [];
+    if (!updateAll && dirtyNodes) {
+      var seen = {};
+      var incident = [];
+      Object.keys(dirtyNodes).forEach(function (nodeId) {
+        (rec.cableRefsByNode && rec.cableRefsByNode[nodeId] || []).forEach(function (ref) {
+          var key = ref.cable && ref.cable.id !== undefined ? String(ref.cable.id) : String(cableRefs.indexOf(ref));
+          if (seen[key]) return;
+          seen[key] = true;
+          incident.push(ref);
+        });
+      });
+      cableRefs = incident;
+    }
+    cableRefs.forEach(function (ref) {
       var from = Graph.parseRef(ref.cable.from);
       var to = Graph.parseRef(ref.cable.to);
       if (!from || !to) return;
-      var fromNode = rec.graph.nodes.find(function (n) { return String(n.id) === from.node; });
-      var toNode = rec.graph.nodes.find(function (n) { return String(n.id) === to.node; });
+      var fromNode = rec.nodeById && rec.nodeById[from.node];
+      var toNode = rec.nodeById && rec.nodeById[to.node];
       if (!fromNode || !toNode) return;
       var a = Graph.portPosition(fromNode, rec.typeMap[String(fromNode.type)], from.port, false, rec.metrics);
       var b = Graph.portPosition(toNode, rec.typeMap[String(toNode.type)], to.port, true, rec.metrics);
@@ -3883,7 +4038,8 @@
       var p = Graph.cablePath(a, b);
       ref.el.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
     });
-    if (rec.renderMinimap) rec.renderMinimap();
+    if (materialized) this.graphLayoutGraphBodies(rec);
+    if (rec.renderMinimap) rec.renderMinimap(updateAll ? undefined : {nodes: dirtyNodes, frames: dirtyFrames});
   };
 
   Renderer.prototype.graphMove = function (rec, dx, dy) {
@@ -3896,7 +4052,7 @@
       node.y = (Number(node.y) || 0) + dy;
     });
     this.graphPushUndo(rec, start);
-    this.updateGraphDom(rec);
+    this.updateGraphDom(rec, ids);
     this.writeGraph(rec, {op: "node.move", ids: ids, dx: dx, dy: dy});
     return true;
   };
