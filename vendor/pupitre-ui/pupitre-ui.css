@@ -764,6 +764,8 @@
 .pui-canvas-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .pui-canvas-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.9); }
 .pui-canvas-count { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
+.pui-canvas.is-context-only { border: 0; border-radius: 0; background: transparent; padding: 0; }
+.pui-canvas.is-context-only .pui-canvas-contextbar { margin: 0; }
 .pui-canvas-contextbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 6px; padding: 5px 6px; border: 1px solid var(--pui-border); border-radius: 5px; background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface)); }
 .pui-canvas-context-facts { flex: 1 1 100%; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-variant-numeric: tabular-nums; }
 .pui-canvas-contexts, .pui-canvas-stage { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }

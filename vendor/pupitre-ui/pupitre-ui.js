@@ -4655,6 +4655,13 @@
     else if (activeContext && activeContext.region) rec.selectedRegion = activeContext.region;
     if (showContext) root.classList.add("is-contextual");
     root.setAttribute("data-stage-mode", rec.stageMode);
+    if (options.context_only === true) {
+      root.classList.add("is-context-only");
+      rec.render = function () { self.canvasContextOnlyRefresh(rec); };
+      this.canvasRecords.push(rec);
+      rec.render();
+      return root;
+    }
     var head = el("div", {class: "pui-canvas-head"});
     head.appendChild(el("h4", {text: label}));
     var count = el("span", {class: "pui-canvas-count", text: (value.handles || []).length + " handles · " + (value.layers || []).length + " layers"});
@@ -4785,6 +4792,7 @@
   Renderer.prototype.canvasRender = function (rec) {
     var Canvas = global.PupitreCanvas;
     if (!Canvas || !rec) return;
+    if (!rec.viewport) { this.canvasContextOnlyRefresh(rec); return; }
     var self = this;
     if (isObject(rec.value.view) && Number(rec.value.view.zoom) > 0) {
       rec.view = {zoom: Number(rec.value.view.zoom), panX: Number(rec.value.view.panX) || 0, panY: Number(rec.value.view.panY) || 0};
@@ -5048,6 +5056,31 @@
     return (rec.value.regions || []).find(function (region) { return isObject(region) && String(region.id || "") === String(id); }) || null;
   };
 
+  /** Context-only mode lets a host keep its own stage pixels (OBS MPCDI,
+   * live compositors) while PUI owns the MPCDI display/buffer/region context
+   * bar and stage-mode intents. */
+  Renderer.prototype.canvasContextOnlyRefresh = function (rec) {
+    var Canvas = global.PupitreCanvas;
+    if (!rec || !Canvas) return;
+    var contexts = Canvas.contexts(rec.value);
+    var active = Canvas.activeContext(rec.value, contexts);
+    var stage = Canvas.stageState(rec.value);
+    var signature = JSON.stringify({contexts: contexts, active: active && active.id, stage: stage.mode});
+    rec.contexts = contexts;
+    rec.activeContext = active ? active.id : "";
+    rec.stageMode = stage.mode;
+    if (signature !== rec.contextSignature || !rec.contextBar) {
+      rec.contextSignature = signature;
+      rec.root.textContent = "";
+      rec.contextBar = null;
+      rec.contextButtons = {};
+      rec.stageButtons = {};
+      rec.root.appendChild(this.canvasContextBar(rec));
+    } else {
+      this.canvasRefreshContextBar(rec);
+    }
+  };
+
   /** MPCDI context/stage toolbar: display → buffer → region, active context
    * and the edit/composite/focus stage mode. */
   Renderer.prototype.canvasContextBar = function (rec) {
@@ -5092,7 +5125,7 @@
     var active = (rec.contexts || []).find(function (entry) { return entry.id === rec.activeContext; }) || (rec.contexts || [])[0] || null;
     if (rec.contextFacts) {
       rec.contextFacts.textContent = active
-        ? "Display " + active.displayLabel + " · " + active.bufferLabel + " · " + active.coordinate_space
+        ? active.displayLabel + " · " + active.bufferLabel + " · " + active.coordinate_space
         : "";
     }
     Object.keys(rec.contextButtons || {}).forEach(function (id) {
@@ -5141,6 +5174,10 @@
     if (!rec || !rec.selectedRegion) return false;
     var region = this.canvasRegion(rec, rec.selectedRegion);
     if (!region) return false;
+    if (!rec.viewport) {
+      this.writeCanvas(rec, {op: "view.fit_region", region: rec.selectedRegion});
+      return true;
+    }
     var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 450};
     var next = global.PupitreCanvas.fitRegion(rec.value, region, box.width || 800, box.height || 450, 24);
     rec.view = next;
