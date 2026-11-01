@@ -1587,6 +1587,54 @@
     this.graphRecords.forEach(function (rec) { self.graphLayoutGraphBodies(rec); });
   };
 
+  Renderer.prototype.graphValueTexture = function (node, type) {
+    var raw = node && (node.value_texture || node.valueTexture) || type && (type.value_texture || type.valueTexture);
+    if (!isObject(raw)) return null;
+    var channels = [];
+    if (isArray(raw.channels)) {
+      raw.channels.forEach(function (entry, index) {
+        if (!isObject(entry)) return;
+        var id = String(entry.id || entry.key || "c" + index);
+        channels.push({id: id, label: String(entry.label || entry.name || id), value: entry.value, color: entry.color, min: entry.min, max: entry.max});
+      });
+    } else {
+      Object.keys(raw).forEach(function (key) {
+        if (key === "encoding" || key === "width" || key === "height" || key === "mode") return;
+        var value = raw[key];
+        if (typeof value === "number" || typeof value === "string") channels.push({id: key, label: key, value: value});
+      });
+    }
+    if (!channels.length) return null;
+    return {encoding: String(raw.encoding || "luma"), channels: channels};
+  };
+
+  Renderer.prototype.graphValueTextureEl = function (node, texture) {
+    var box = el("div", {class: "pui-graph-value-texture", "data-value-texture": String(node.id || ""), "data-encoding": texture.encoding, role: "group", "aria-label": "Value texture for " + String(node.label || node.id || "node")});
+    var head = el("div", {class: "pui-graph-vt-head"});
+    head.appendChild(el("span", {text: "Value texture"}));
+    head.appendChild(el("span", {class: "pui-graph-vt-encoding", text: texture.encoding.toUpperCase()}));
+    box.appendChild(head);
+    var cells = el("div", {class: "pui-graph-vt-cells"});
+    var summary = [];
+    texture.channels.slice(0, 4).forEach(function (entry, index) {
+      var value = Number(entry.value);
+      var normalized = isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      var color = String(entry.color || "");
+      if (!color && texture.encoding === "rgba" && isArray(entry.value)) {
+        color = "rgba(" + entry.value.slice(0, 4).map(function (v) { return Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 255); }).join(",") + ")";
+      }
+      if (!color) color = "rgb(" + Math.round(normalized * 255) + "," + Math.round(normalized * 255) + "," + Math.round(normalized * 255) + ")";
+      var cell = el("span", {class: "pui-graph-vt-cell", "data-channel": entry.id, "data-value": String(isFinite(value) ? value : ""), title: entry.label + " · " + (isFinite(value) ? value : "—")});
+      cell.style.background = color;
+      cells.appendChild(cell);
+      summary.push(entry.label + " " + (isFinite(value) ? Number(value.toFixed(3)) : "—"));
+    });
+    box.appendChild(cells);
+    box.appendChild(el("span", {class: "pui-graph-vt-summary", text: summary.join(" · ")}));
+    box.title = "Packed parameter texture · " + summary.join(" · ");
+    return box;
+  };
+
   Renderer.prototype.buildGraph = function (block, navStack) {
     var self = this;
     var Graph = global.PupitreGraph;
@@ -1756,9 +1804,10 @@
       inputs.forEach(function (port, index) {
         var portType = String(port.type || "tex");
         var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, tabindex: "0", role: "button"});
-        dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
-        dot.title = "Input · " + portType;
+        var portMeta = Graph.portMeta(type, port.id, true) || port;
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, "data-port-channel": String(portMeta.channel || ""), "data-port-scale": String(portMeta.scale !== undefined ? portMeta.scale : ""), tabindex: "0", role: "button"});
+        dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (portMeta.channel ? ", channel " + portMeta.channel : ""));
+        dot.title = "Input · " + portType + (portMeta.channel ? " · " + portMeta.channel : "") + (portMeta.scale !== undefined ? " · ×" + portMeta.scale : "");
         rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
         dot.addEventListener("pointerdown", function (event) {
           if (event.stopPropagation) event.stopPropagation();
@@ -1772,9 +1821,10 @@
       outputs.forEach(function (port, index) {
         var portType = String(port.type || "tex");
         var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
-        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, tabindex: "0", role: "button"});
-        dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType);
-        dot.title = "Output · " + portType;
+        var outMeta = Graph.portMeta(type, port.id, false) || port;
+        var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "right:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "output", "data-port-type": portType, "data-port-channel": String(outMeta.channel || ""), "data-port-scale": String(outMeta.scale !== undefined ? outMeta.scale : ""), tabindex: "0", role: "button"});
+        dot.setAttribute("aria-label", "Output " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (outMeta.channel ? ", channel " + outMeta.channel : ""));
+        dot.title = "Output · " + portType + (outMeta.channel ? " · " + outMeta.channel : "") + (outMeta.scale !== undefined ? " · ×" + outMeta.scale : "");
         rec.portEls[id + ":output:" + String(port.id)] = {el: dot, type: portType, isInput: false};
         dot.addEventListener("pointerdown", function (event) {
           if (event.stopPropagation) event.stopPropagation();
@@ -1855,6 +1905,14 @@
           self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
         }
       }
+      var valueTexture = self.graphValueTexture(node, type);
+      if (valueTexture) {
+        nodeEl.classList.add("is-value-texture");
+        var textureEl = self.graphValueTextureEl(node, valueTexture);
+        var textureHost = rec.bodyEls[id] || nodeEl;
+        textureHost.appendChild(textureEl);
+        if (!rec.bodyEls[id]) rec.bodyEls[id] = textureEl;
+      }
       var gopSettings = self.graphOnParentSettings(node);
       if (gopSettings) {
         var parentPreview = self.graphParentPreview(rec, node, gopSettings);
@@ -1921,10 +1979,12 @@
       if (!a || !b) return;
       var p = Graph.cablePath(a, b);
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
+      var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
       var path = svgEl("path", {
-        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-"),
+        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : ""),
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
+        "data-cross-type": crossType,
         d: "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2
       });
       path.addEventListener("pointerdown", function (event) {
@@ -6241,8 +6301,8 @@
       var label = el("div", {class: "pui-media-track-label" + (track.muted ? " is-muted" : ""), "data-track-id": track.id});
       label.appendChild(el("span", {class: "pui-media-track-name", text: track.label}));
       if (track.kind) label.appendChild(el("span", {class: "pui-media-track-kind", text: track.kind}));
-      if (track.muted) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("muted", "Muted")}));
       if (track.locked) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("locked", "Locked")}));
+
       rec.labelsEl.appendChild(label);
       var lane = el("div", {class: "pui-media-lane", "data-track-id": track.id, role: "list", "aria-label": track.label});
       lane.addEventListener("pointerdown", function (event) { self.mediaTimelineScrubStart(rec, event); });

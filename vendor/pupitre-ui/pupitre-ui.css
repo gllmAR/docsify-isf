@@ -511,6 +511,14 @@
 .pui-graph-node.is-subgraph { border-style: double; border-width: 3px; }
 .pui-graph-open-subgraph { margin: 6px 8px 8px; border: 1px solid var(--pui-accent); border-radius: 4px; background: transparent; color: var(--pui-accent); font: inherit; font-size: calc(var(--pui-type-base) * 0.65); padding: 2px 6px; cursor: pointer; }
 .pui-graph-open-subgraph:hover { background: var(--pui-accent); color: var(--pui-bg); }
+.pui-graph-value-texture { margin: 4px 6px 6px; padding: 4px; border: 1px solid color-mix(in srgb, var(--pui-accent) 40%, var(--pui-border)); border-radius: 4px; background: color-mix(in srgb, var(--pui-accent) 4%, var(--pui-surface)); }
+.pui-graph-vt-head { display: flex; justify-content: space-between; gap: 4px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.55); text-transform: uppercase; letter-spacing: 0.04em; }
+.pui-graph-vt-encoding { color: var(--pui-accent); }
+.pui-graph-vt-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; height: 30px; margin: 3px 0; }
+.pui-graph-vt-cell { min-width: 0; border: 1px solid var(--pui-border); border-radius: 2px; }
+.pui-graph-vt-summary { display: block; overflow: hidden; color: var(--pui-text); font-size: calc(var(--pui-type-base) * 0.54); white-space: nowrap; text-overflow: ellipsis; }
+.pui-graph-cable.is-cross-type { stroke-dasharray: 5 3; stroke-width: 2; }
+.pui-graph-port-dot[data-port-channel]:not([data-port-channel=""]) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pui-accent) 35%, transparent); }
 .pui-graph-gop { margin: 5px 6px 6px; border: 1px solid color-mix(in srgb, var(--pui-accent) 45%, var(--pui-border)); border-radius: 5px; background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface)); overflow: hidden; }
 .pui-graph-gop-head { display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-bottom: 1px solid var(--pui-border); }
 .pui-graph-gop-title { flex: 1 1 auto; color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.58); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
