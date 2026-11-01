@@ -5270,6 +5270,24 @@
   Renderer.prototype.mediaTimelineValue = function (rec) {
     var value = rec.path ? (typeof this.adapter.getValueFor === "function" ? this.adapter.getValueFor(rec.path, rec.block) : this.adapter.getValue(rec.path)) : null;
     if (!isObject(value)) value = {};
+    if (value.mode === "sequence" && global.PupitreSequence) {
+      var seq = global.PupitreSequence.normalize(value, rec.options);
+      var selectedId = seq.selected;
+      return {
+        mode: "sequence", source: seq.source, fps: seq.fps, drop_frame: seq.dropFrame,
+        duration: seq.duration, playhead: seq.playhead, snap: seq.snap, zoom: Math.max(0.1, Number(value.zoom) || 1),
+        selected: selectedId, verbs: seq.verbs,
+        tracks: seq.tracks.map(function (track) {
+          return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
+            clips: track.clips.map(function (clip) {
+              return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, end: clip.start + clip.duration,
+                in: clip.in, out: clip.out, enabled: clip.enabled, disabled: !clip.enabled, order: clip.order,
+                regionId: clip.regionId, kind: clip.kind, color: clip.color, thumb: clip.thumb,
+                selected: String(clip.id) === selectedId};
+            })};
+        })
+      };
+    }
     var duration = Number(value.duration);
     if (!isFinite(duration) || duration <= 0) duration = 60;
     var clamp = function (time) { return Math.max(0, Math.min(duration, Number(time) || 0)); };
@@ -5302,9 +5320,10 @@
   };
 
   Renderer.prototype.mediaTimelineSignature = function (data) {
-    return JSON.stringify({duration: data.duration, fps: data.fps, drop_frame: data.drop_frame, tracks: data.tracks.map(function (track) {
+    return JSON.stringify({mode: data.mode, duration: data.duration, fps: data.fps, drop_frame: data.drop_frame,
+      verbs: data.verbs, tracks: data.tracks.map(function (track) {
       return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
-        clips: track.clips.map(function (clip) { return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, kind: clip.kind, color: clip.color, thumb: clip.thumb}; })};
+        clips: track.clips.map(function (clip) { return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, in: clip.in, out: clip.out, enabled: clip.enabled, order: clip.order, kind: clip.kind, color: clip.color, thumb: clip.thumb}; })};
     })});
   };
 
@@ -5336,6 +5355,9 @@
   Renderer.prototype.mediaTimelineKeyboard = function (rec, event, track, clip) {
     var key = String(event.key || "");
     if (key === "Enter" || key === " ") { event.preventDefault(); this.mediaTimelineSelect(rec, track.id, clip.id); return; }
+    if (rec.value && rec.value.mode === "sequence" && (key === "s" || key === "S")) { event.preventDefault(); this.mediaTimelineAction(rec, {op: "split", trackId: track.id, clipId: clip.id, at: rec.value.playhead}); return; }
+    if (rec.value && rec.value.mode === "sequence" && (key === "d" || key === "D")) { event.preventDefault(); this.mediaTimelineAction(rec, {op: "duplicate", trackId: track.id, clipId: clip.id}); return; }
+    if (rec.value && rec.value.mode === "sequence" && (key === "e" || key === "E")) { event.preventDefault(); this.mediaTimelineAction(rec, {op: "enable", trackId: track.id, clipId: clip.id, enabled: clip.enabled === false}); return; }
     if (key === "Delete" || key === "Backspace") { event.preventDefault(); this.mediaTimelineAction(rec, {op: "remove", trackId: track.id, clipId: clip.id}); return; }
     if (key !== "ArrowLeft" && key !== "ArrowRight") return;
     event.preventDefault();
@@ -5344,6 +5366,10 @@
     if (event.shiftKey) {
       var length = Math.max(0.01, clip.duration + direction * step);
       this.mediaTimelineAction(rec, {op: "trim", trackId: track.id, clipId: clip.id, start: clip.start, duration: length});
+    } else if (rec.value.mode === "sequence") {
+      var index = track.clips.findIndex(function (item) { return String(item.id) === String(clip.id); });
+      var target = Math.max(0, Math.min(track.clips.length - 1, index + direction));
+      if (target !== index) this.mediaTimelineAction(rec, {op: "reorder", trackId: track.id, clipId: clip.id, index: target});
     } else {
       var start = Math.max(0, Math.min(rec.value.duration - clip.duration, clip.start + direction * step));
       this.mediaTimelineAction(rec, {op: "move", trackId: track.id, clipId: clip.id, start: start});
@@ -5383,7 +5409,16 @@
       }
       if (!drag.moved) return;
       var delta = (Number(upEvent.clientX) - drag.x) / drag.width * rec.value.duration;
-      if (drag.mode === "move") {
+      if (drag.mode === "move" && rec.value.mode === "sequence") {
+        var time = (Number(upEvent.clientX) - rect.left) / Math.max(1, rect.width) * rec.value.duration;
+        var track = rec.value.tracks.find(function (item) { return String(item.id) === String(drag.trackId); });
+        var itemIndex = track ? track.clips.findIndex(function (item) { return String(item.id) === String(drag.clipId); }) : -1;
+        var target = 0;
+        (track ? track.clips : []).forEach(function (item) {
+          if (String(item.id) !== String(drag.clipId) && item.start + item.duration / 2 < time) target++;
+        });
+        if (track && target !== itemIndex) rec.self.mediaTimelineAction(rec, {op: "reorder", trackId: drag.trackId, clipId: drag.clipId, index: target});
+      } else if (drag.mode === "move") {
         var start = drag.start + delta;
         if (rec.value.snap) start = Math.round(start / rec.value.snap) * rec.value.snap;
         start = Math.max(0, Math.min(rec.value.duration - drag.duration, start));
@@ -5453,6 +5488,7 @@
     });
     rec.playheadEl = el("span", {class: "pui-media-playhead", "aria-hidden": "true"});
     rec.lanesEl.appendChild(rec.playheadEl);
+    this.mediaTimelineBuildTools(rec, data);
   };
 
   Renderer.prototype.mediaTimelineRefresh = function (rec, update) {
@@ -5471,6 +5507,53 @@
         clipEl.setAttribute("aria-selected", clip.selected ? "true" : "false");
       });
     });
+    this.mediaTimelineUpdateTools(rec, data);
+  };
+
+  Renderer.prototype.mediaTimelineSelectedClip = function (data) {
+    for (var t = 0; t < (data.tracks || []).length; t++) {
+      var track = data.tracks[t];
+      for (var c = 0; c < (track.clips || []).length; c++) {
+        if (track.clips[c].selected) return {track: track, clip: track.clips[c]};
+      }
+    }
+    return null;
+  };
+
+  Renderer.prototype.mediaTimelineTool = function (rec, id, label, op, enabled) {
+    var self = this;
+    var button = el("button", {type: "button", class: "pui-button pui-media-tool", text: label});
+    button.disabled = !enabled;
+    button.addEventListener("click", function () { self.mediaTimelineAction(rec, op()); });
+    rec.toolButtons[id] = button;
+    rec.toolsEl.appendChild(button);
+    return button;
+  };
+
+  Renderer.prototype.mediaTimelineBuildTools = function (rec, data) {
+    if (!rec.toolsEl) return;
+    rec.toolsEl.textContent = "";
+    rec.toolButtons = {};
+    if (data.mode !== "sequence" || rec.block.readonly) return;
+    var verbs = isArray(data.verbs) ? data.verbs : [];
+    var has = function (verb) { return verbs.indexOf(verb) >= 0; };
+    var selected = this.mediaTimelineSelectedClip(data);
+    var trackId = selected ? selected.track.id : ((data.tracks.find(function (track) { return track.kind !== "audio"; }) || data.tracks[0] || {}).id || "");
+    if (has("add")) this.mediaTimelineTool(rec, "add", "Add", function () { return {op: "add", trackId: trackId, at: data.playhead}; }, true);
+    if (has("split")) this.mediaTimelineTool(rec, "split", "Split", function () { return {op: "split", trackId: selected && selected.track.id, clipId: selected && selected.clip.id, at: data.playhead}; }, !!selected);
+    if (has("duplicate")) this.mediaTimelineTool(rec, "duplicate", "Duplicate", function () { return {op: "duplicate", trackId: selected && selected.track.id, clipId: selected && selected.clip.id}; }, !!selected);
+    if (has("enable")) this.mediaTimelineTool(rec, "enable", "Toggle", function () { return {op: "enable", trackId: selected && selected.track.id, clipId: selected && selected.clip.id, enabled: !(selected && selected.clip.enabled)}; }, !!selected);
+    if (has("remove")) this.mediaTimelineTool(rec, "remove", "Delete", function () { return {op: "remove", trackId: selected && selected.track.id, clipId: selected && selected.clip.id}; }, !!selected);
+    this.mediaTimelineUpdateTools(rec, data);
+  };
+
+  Renderer.prototype.mediaTimelineUpdateTools = function (rec, data) {
+    var selected = this.mediaTimelineSelectedClip(data);
+    var inside = selected && data.playhead > selected.clip.start && data.playhead < selected.clip.start + selected.clip.duration;
+    if (rec.toolButtons.split) rec.toolButtons.split.disabled = !inside;
+    if (rec.toolButtons.duplicate) rec.toolButtons.duplicate.disabled = !selected;
+    if (rec.toolButtons.enable) rec.toolButtons.enable.disabled = !selected;
+    if (rec.toolButtons.remove) rec.toolButtons.remove.disabled = !selected;
   };
 
   Renderer.prototype.buildMediaTimeline = function (block) {
@@ -5484,6 +5567,8 @@
     head.appendChild(el("h4", {text: String(block.label || text("title", "Media timeline"))}));
     var time = el("output", {class: "pui-media-timeline-time", "aria-live": "polite"});
     head.appendChild(time);
+    var tools = el("div", {class: "pui-media-tools"});
+    head.appendChild(tools);
     root.appendChild(head);
     var stage = el("div", {class: "pui-media-timeline-stage"});
     var corner = el("div", {class: "pui-media-corner", "aria-hidden": "true"});
@@ -5495,7 +5580,7 @@
     root.appendChild(stage);
     var status = el("p", {class: "pui-media-timeline-status", role: "status", "aria-live": "polite", hidden: true});
     root.appendChild(status);
-    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, time: time, ruler: ruler, labelsEl: labelsEl, lanesEl: lanesEl, status: status, playheadEl: null, clipEls: {}, signature: "", value: null, unsubscribe: null, self: self};
+    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, time: time, toolsEl: tools, toolButtons: {}, ruler: ruler, labelsEl: labelsEl, lanesEl: lanesEl, status: status, playheadEl: null, clipEls: {}, signature: "", value: null, unsubscribe: null, self: self};
     if (typeof this.adapter.subscribeMediaTimeline === "function") {
       try { rec.unsubscribe = this.adapter.subscribeMediaTimeline(path, function (data) { if (isObject(data)) self.mediaTimelineRefresh(rec, data); }); } catch (error) {}
     }
@@ -7727,11 +7812,16 @@
       var finishKnobEdit = function (commit, refocus) {
         var input = rec.knobInput;
         if (!input) return;
-        rec.knobInput = null;
         knob.classList.remove("is-editing");
         var text = String(input.value || "").trim().replace(",", ".");
         var parsed = Number(text);
-        if (commit && text !== "" && isFinite(parsed)) applyKnob(parsed, true, true);
+        if (commit && text !== "" && isFinite(parsed)) {
+          applyKnob(parsed, true, true);
+          // Keep the optimistic exact value even if the host snapshot is one
+          // frame behind the synchronous PUI apply.
+          paintKnob(parsed, false);
+        }
+        rec.knobInput = null;
         if (input.remove) input.remove();
         if (refocus && knob.focus) knob.focus();
       };

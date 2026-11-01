@@ -973,6 +973,7 @@
 /* Media/cue timeline. */
 .pui-media-timeline { display: flex; flex-direction: column; gap: 6px; padding: 7px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
 .pui-media-timeline-head { display: flex; align-items: baseline; gap: 8px; }
+.pui-media-tools { display: flex; gap: 4px; }
 .pui-media-timeline-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.86); }
 .pui-media-timeline-time { margin-inline-start: auto; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.7); font-variant-numeric: tabular-nums; }
 .pui-media-timeline-stage { display: grid; grid-template-columns: minmax(76px, 16%) minmax(0, 1fr); grid-template-rows: 22px auto; min-width: 0; overflow: hidden; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-bg); }
