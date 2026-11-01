@@ -1104,7 +1104,41 @@
       groups[region].push(section);
     });
     var toolbar = el("header", {class: "pui-workbench-toolbar"});
-    toolbar.appendChild(el("h2", {class: "pui-page-title", id: titleId, text: title}));
+    var titlebar = isObject(layout.titlebar) ? layout.titlebar : null;
+    var headingTitle = titlebar && typeof titlebar.title === "string" && titlebar.title ? titlebar.title : title;
+    var headingDescription = titlebar && typeof titlebar.description === "string" ? titlebar.description : (typeof page.description === "string" ? page.description : "");
+    var headingId = self.id("workbench-heading");
+    var heading = el("div", {class: "pui-workbench-heading", id: headingId});
+    heading.appendChild(el("h2", {class: "pui-page-title pui-workbench-title", id: titleId, text: headingTitle}));
+    if (headingDescription) {
+      var descriptionEl = el("p", {class: "pui-workbench-description", text: headingDescription});
+      descriptionEl.title = headingDescription;
+      heading.appendChild(descriptionEl);
+    }
+    toolbar.appendChild(heading);
+    wb.setAttribute("aria-labelledby", titleId + " " + headingId);
+    var titlebarButton = null;
+    if (titlebar && titlebar.collapsible !== false) {
+      var titlebarKey = "pui.workbench." + pageId + ".titlebar.collapsed";
+      var storedTitlebar = null;
+      try { storedTitlebar = window.localStorage && window.localStorage.getItem(titlebarKey); } catch (error) { storedTitlebar = null; }
+      var titlebarCollapsed = storedTitlebar === null || storedTitlebar === undefined ? !!titlebar.collapsed : storedTitlebar === "1";
+      titlebarButton = el("button", {type: "button", class: "pui-workbench-titlebar-toggle", "aria-controls": headingId});
+      var setTitlebarCollapsed = function (collapsed, persist) {
+        titlebarCollapsed = !!collapsed;
+        toolbar.classList.toggle("is-titlebar-collapsed", titlebarCollapsed);
+        titlebarButton.setAttribute("aria-expanded", titlebarCollapsed ? "false" : "true");
+        titlebarButton.setAttribute("aria-label", titlebarCollapsed ? "Expand title bar" : "Collapse title bar");
+        titlebarButton.title = titlebarCollapsed ? "Expand title bar" : "Collapse title bar";
+        titlebarButton.textContent = titlebarCollapsed ? "▸" : "▾";
+        if (persist) { try { if (window.localStorage) window.localStorage.setItem(titlebarKey, titlebarCollapsed ? "1" : "0"); } catch (error) {} }
+      };
+      titlebarButton.addEventListener("click", function () { setTitlebarCollapsed(!titlebarCollapsed, true); });
+      // Keep the control at the leading edge in both states: expanding reveals
+      // the heading after it, collapsing removes only the text.
+      toolbar.insertBefore(titlebarButton, heading);
+      setTitlebarCollapsed(titlebarCollapsed, false);
+    }
     var tools = el("div", {class: "pui-workbench-tools"});
     if (isObject(layout.header_menu)) tools.appendChild(this.buildHeaderMenu(layout.header_menu));
     toolbar.appendChild(tools);
@@ -13632,7 +13666,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.8.0",
+    version: "1.9.0",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
