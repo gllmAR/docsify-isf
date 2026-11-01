@@ -214,9 +214,17 @@
 
   function Renderer(options) {
     options = options || {};
+    var self = this;
     this.mount = options.mount;
     this.blockFactories = Object.assign({}, options.blocks || {});
     this.icons = Object.assign({}, options.icons || {});
+    this.debug = options.debug === true;
+    this.debugOverlay = null;
+    this.debugBody = null;
+    this.renderMs = null;
+    this.lastAnnounce = null;
+    this.lastError = null;
+    this._debugKeyHandler = null;
     this.adapter = {
       getValue: options.getValue || function () { return undefined; },
       setValue: options.setValue || function () { return false; },
@@ -283,7 +291,13 @@
       graphInspector: options.graphInspector || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
-      announce: options.announce || function () {},
+      announce: function (level, text) {
+        var message = {level: String(level || "info"), text: String(text === undefined ? "" : text), at: Date.now()};
+        self.lastAnnounce = message;
+        if (message.level === "error") self.lastError = message;
+        (options.announce || function () {})(message.level, message.text);
+        if (self.debug) self.debugRefresh();
+      },
       touchTarget: options.touchTarget || 32
     };
     this.uid = "pui" + (++NEXT_ID);
@@ -358,6 +372,7 @@
   }
 
   Renderer.prototype.render = function (doc) {
+    var renderStarted = Date.now();
     doc = expandTemplates(doc);
     // Structural re-renders replace every control. Remember the focused item
     // by its public hook so keyboard context survives a host refresh.
@@ -482,6 +497,9 @@
     this.bindPaletteShortcut();
     this.bindHistoryShortcut();
     this.applyRoute();
+    this.renderMs = Date.now() - renderStarted;
+    this.bindDebugShortcut();
+    if (this.debug) this.showDebug();
     if (focusSnapshot) {
       var candidates = this.mount.querySelectorAll("[" + focusSnapshot.attr + "]");
       var focusTarget = null;
@@ -11418,6 +11436,72 @@
     }
   };
 
+  Renderer.prototype.bindDebugShortcut = function () {
+    if (typeof document === "undefined" || typeof document.addEventListener !== "function") return;
+    var self = this;
+    if (this._debugKeyHandler) return;
+    this._debugKeyHandler = function (event) {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || String(event.key || "").toLowerCase() !== "d") return;
+      if (event.preventDefault) event.preventDefault();
+      self.toggleDebug();
+    };
+    document.addEventListener("keydown", this._debugKeyHandler);
+  };
+
+  Renderer.prototype.unbindDebugShortcut = function () {
+    if (!this._debugKeyHandler || typeof document === "undefined" || typeof document.removeEventListener !== "function") return;
+    document.removeEventListener("keydown", this._debugKeyHandler);
+    this._debugKeyHandler = null;
+  };
+
+  Renderer.prototype.setDebug = function (enabled) {
+    this.debug = !!enabled;
+    if (this.debug) this.showDebug(); else this.hideDebug();
+    return this.debug;
+  };
+
+  Renderer.prototype.toggleDebug = function () { return this.setDebug(!this.debug); };
+
+  Renderer.prototype.showDebug = function () {
+    if (!this.mount) return;
+    if (this.debugOverlay && this.debugOverlay.parentNode) this.debugOverlay.parentNode.removeChild(this.debugOverlay);
+    var self = this;
+    var panel = el("aside", {class: "pui-debug-overlay", role: "complementary", "aria-label": "PUI developer diagnostics"});
+    var head = el("header", {class: "pui-debug-head"});
+    head.appendChild(el("strong", {text: "PUI diagnostics"}));
+    var close = el("button", {type: "button", class: "pui-debug-close", text: "×", "aria-label": "Close PUI diagnostics"});
+    close.addEventListener("click", function () { self.setDebug(false); });
+    head.appendChild(close);
+    panel.appendChild(head);
+    var body = el("pre", {class: "pui-debug-body", role: "status", "aria-live": "polite"});
+    panel.appendChild(body);
+    this.debugOverlay = panel;
+    this.debugBody = body;
+    this.mount.appendChild(panel);
+    this.debugRefresh();
+  };
+
+  Renderer.prototype.hideDebug = function () {
+    if (this.debugOverlay && this.debugOverlay.parentNode) this.debugOverlay.parentNode.removeChild(this.debugOverlay);
+    this.debugOverlay = null;
+    this.debugBody = null;
+  };
+
+  Renderer.prototype.debugRefresh = function () {
+    if (!this.debugBody) return;
+    var d = this.diagnostics();
+    var lines = [
+      "host      " + String(d.host || "—") + "   rev " + String(d.rev === null ? "—" : d.rev),
+      "document  " + d.pages + " pages · " + d.sections + " sections · " + d.fields + " fields",
+      "actions   " + d.actions + "   collections " + d.collections + "   custom " + d.custom + "   a11y " + d.a11y,
+      "layout    " + d.density + "   render " + (d.renderMs === null ? "—" : d.renderMs + " ms"),
+      "adapter   " + d.adapterMethods.length + " methods",
+      "last      " + (d.lastAnnounce ? d.lastAnnounce.level + ": " + d.lastAnnounce.text : "—")
+    ];
+    if (d.lastError && (!d.lastAnnounce || d.lastError.at !== d.lastAnnounce.at)) lines.push("error     " + d.lastError.text);
+    this.debugBody.textContent = lines.join("\n");
+  };
+
   Renderer.prototype.destroySlots = function () {
     for (var i = 0; i < this.slotInstances.length; i++) {
       var record = this.slotInstances[i];
@@ -11429,6 +11513,8 @@
   };
 
   Renderer.prototype.destroy = function () {
+    this.unbindDebugShortcut();
+    this.hideDebug();
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
@@ -12145,6 +12231,7 @@
     this.refreshConditions();
     this.layoutToolbars();
     this.paintRanges();
+    if (this.debug) this.debugRefresh();
   };
 
   Renderer.prototype.paintRanges = function () {
@@ -12740,6 +12827,10 @@
       slots: this.slotInstances.length,
       shortcuts: this.shortcuts.length,
       a11y: this.dumpAccessibility().length,
+      renderMs: this.renderMs,
+      lastAnnounce: this.lastAnnounce,
+      lastError: this.lastError,
+      adapterMethods: Object.keys(this.adapter).filter(function (key) { return typeof this.adapter[key] === "function"; }, this),
       activePages: activePages
     };
   };

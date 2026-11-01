@@ -1205,3 +1205,10 @@
 .pui-header-menu-close { margin-inline-start: auto; border: 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 1.1); cursor: pointer; }
 .pui-header-menu-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 .pui-header-menu-body .pui-fields { --pui-columns: 1; }
+
+/* Developer diagnostics overlay (Ctrl/Cmd+Shift+D). */
+.pui-debug-overlay { position: fixed; right: 12px; bottom: 12px; z-index: 10000; width: min(420px, calc(100vw - 24px)); border: 1px solid var(--pui-accent); border-radius: 6px; background: color-mix(in srgb, var(--pui-surface) 94%, black); color: var(--pui-text); box-shadow: 0 8px 30px rgb(0 0 0 / 0.45); font-size: 12px; }
+.pui-debug-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--pui-border); color: var(--pui-accent); }
+.pui-debug-close { border: 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+.pui-debug-close:hover { color: var(--pui-text); }
+.pui-debug-body { max-height: 220px; overflow: auto; margin: 0; padding: 7px 8px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.45; white-space: pre-wrap; }
