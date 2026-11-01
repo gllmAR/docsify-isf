@@ -832,7 +832,7 @@
     var embedded = panel.embedded === true;
     this._pageEmbedded = embedded;
     var panelEl = el("section", {class: "pui-panel", role: "region"});
-    var panelRecord = {element: panelEl, tablist: null, pages: [], active: 0, pageBind: String(panel.page_bind || "")};
+    var panelRecord = {element: panelEl, pages: [], active: 0, pageBind: String(panel.page_bind || "")};
     this.panelRecords.push(panelRecord);
     var title = String(panel.title || panel.id || "Pupitre");
     var headingId = this.id("panel-title");
@@ -859,10 +859,8 @@
       for (var pb = 0; pb < pages.length; pb++) if (String(pages[pb].id || "") === String(bound || "")) panelRecord.active = pb;
     }
     var tablist = null;
-    var panels = [];
     if (pages.length > 1) {
       tablist = el("div", {class: "pui-tabs", role: "tablist"});
-      panelRecord.tablist = tablist;
       panelEl.appendChild(tablist);
     }
     for (var p = 0; p < pages.length; p++) {
@@ -886,15 +884,14 @@
         for (var s = 0; s < (page.sections || []).length; s++) pageEl.appendChild(this.buildSection(page.sections[s], p, s));
       }
       panelEl.appendChild(pageEl);
-      panels.push(pageEl);
       if (tablist) {
         var tabId = this.id("tab");
         var tab = el("button", {type: "button", role: "tab", class: "pui-tab", id: tabId, text: pageTitle});
         tab.setAttribute("aria-controls", pageEl.id);
         tab.setAttribute("aria-selected", p === panelRecord.active ? "true" : "false");
         tab.tabIndex = p === panelRecord.active ? 0 : -1;
-        tab.addEventListener("click", this.selectPage.bind(this, p, tablist, panels, panelRecord));
-        tab.addEventListener("keydown", this.tabKey.bind(this, p, tablist, panels, panelRecord));
+        tab.addEventListener("click", this.selectPage.bind(this, p, tablist, panelRecord));
+        tab.addEventListener("keydown", this.tabKey.bind(this, p, tablist, panelRecord));
         tablist.appendChild(tab);
         pageEl.setAttribute("aria-labelledby", tabId);
       }
@@ -905,12 +902,10 @@
       this.pageRecords.push(pageRecord);
       panelRecord.pages.push(pageRecord);
     }
-    this.tablist = tablist;
-    this.pagePanels = panels;
     return panelEl;
   };
 
-  Renderer.prototype.selectPage = function (index, tablist, panels, panelRecord) {
+  Renderer.prototype.selectPage = function (index, tablist, panelRecord) {
     this.activatePage(panelRecord, index);
     var tabs = tablist.querySelectorAll('[role="tab"]');
     if (tabs[index]) tabs[index].focus();
@@ -967,7 +962,7 @@
     if (this.root && this.root.parentNode) this.graphLayoutBodies();
   };
 
-  Renderer.prototype.tabKey = function (index, tablist, panels, panelRecord, event) {
+  Renderer.prototype.tabKey = function (index, tablist, panelRecord, event) {
     var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
     var next = index;
     if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
@@ -976,7 +971,7 @@
     else if (event.key === "End") next = tabs.length - 1;
     else return;
     event.preventDefault();
-    this.selectPage(next, tablist, panels, panelRecord);
+    this.selectPage(next, tablist, panelRecord);
   };
 
   Renderer.prototype.routePage = function (page) {
