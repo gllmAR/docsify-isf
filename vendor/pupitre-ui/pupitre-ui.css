@@ -1025,3 +1025,36 @@
 .pui[data-density="compact"] .pui-graph-param-line { min-height: 16px; }
 .pui[data-density="compact"] .pui-graph-param-track { height: 5px; }
 .pui[data-density="compact"] .pui-graph-node-body { font-size: calc(var(--pui-type-base) * 0.58); }
+
+/* Layout v2: the host sizes the mount; PUI owns the viewport chain. */
+.pui[data-pui-fill] { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.pui[data-pui-fill] .pui-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pui[data-pui-fill] .pui-page { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pui[data-pui-fill] .pui-workbench { flex: 1 1 auto; min-height: 0; height: auto; }
+.pui[data-pui-fill] .pui-workbench-body { flex: 1 1 auto; min-height: 0; max-height: none; }
+.pui[data-pui-fill] .pui-workbench.is-narrow .pui-workbench-body { display: flex; flex: 1 1 auto; min-height: 0; }
+.pui[data-pui-fill] .pui-workbench.is-narrow .pui-workbench-pane.is-stage { flex: 1 1 auto; min-height: 0; }
+
+/* A stage is a viewport, not a form: clip/scale its content instead of
+   making the pane scroll. */
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-workbench-pane-content { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-workbench-pane-content > .pui-section { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-fields { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-fields > * { min-height: 0; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-canvas,
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-slot,
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-graph,
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-preview { flex: 1 1 auto; min-height: 0; height: 100%; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-canvas { display: flex; flex-direction: column; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-canvas-head { flex: 0 0 auto; }
+.pui-workbench[data-stage-fit="contain"] .pui-workbench-pane.is-stage .pui-canvas-viewport { flex: 1 1 auto; height: auto; min-height: 0; }
+
+/* A statusbar bottom region is one line, not a pane title + section title. */
+.pui-workbench-pane.is-bottom.is-statusbar { flex: 0 0 auto; max-height: none; border-top: 1px solid var(--pui-border); }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-workbench-pane-title { display: none; }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-workbench-pane-content { padding: 0 8px; overflow: hidden; display: flex; align-items: center; }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-section { border: 0; background: transparent; padding: 0; }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-section h3,
+.pui-workbench-pane.is-bottom.is-statusbar .pui-section-toggle { display: none; }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-section .pui-fields { display: block; }
+.pui-workbench-pane.is-bottom.is-statusbar .pui-statusbar { min-height: var(--pui-statusbar-height, 32px); padding: 2px 0; border-top: 0; background: transparent; }

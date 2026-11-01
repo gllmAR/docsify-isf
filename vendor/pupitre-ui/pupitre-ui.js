@@ -684,6 +684,14 @@
     });
     if (embedded) this.root.setAttribute("data-embedded", "true");
     else this.root.removeAttribute("data-embedded");
+    var fill = "";
+    (doc.panels || []).forEach(function (panel) {
+      (panel && panel.pages || []).forEach(function (page) {
+        if (page && page.layout && page.layout.fill && !fill) fill = String(page.layout.fill);
+      });
+    });
+    if (fill) this.root.setAttribute("data-pui-fill", fill);
+    else this.root.removeAttribute("data-pui-fill");
     var theme = isObject(doc.theme) ? doc.theme : {};
     var htmlTheme = "";
     try { htmlTheme = document.documentElement && document.documentElement.getAttribute("data-theme") || ""; } catch (error) {}
@@ -1019,6 +1027,10 @@
     var layout = isObject(page.layout) ? page.layout : {};
     var pageId = String(page.id || "");
     var wb = el("div", {class: "pui-workbench", "data-pui-workbench": pageId, role: "region"});
+    var stageLayout = isObject(layout.stage) ? layout.stage : {};
+    var stageFit = stageLayout.fit === "scroll" ? "scroll" : "contain";
+    wb.setAttribute("data-stage-fit", stageFit);
+    var bottomMode = isObject(layout.bottom) && layout.bottom.mode === "statusbar" ? "statusbar" : "pane";
     var rec = {pageId: pageId, layout: layout, element: wb, panes: {}, buttons: {}, collapsed: {},
       widths: {left: Number(layout.left && layout.left.width) || 250, right: Number(layout.right && layout.right.width) || 300},
       narrow: false, resize: null};
@@ -1083,6 +1095,10 @@
     var bottomInfo = null;
     if (groups.bottom.length || isObject(layout.bottom)) {
       bottomInfo = pane("bottom", "footer");
+      if (bottomMode === "statusbar") {
+        bottomInfo.node.classList.add("is-statusbar");
+        bottomInfo.node.style.setProperty("--pui-statusbar-height", String(Number(layout.bottom && layout.bottom.height) || 32) + "px");
+      }
       wb.appendChild(bottomInfo.node);
     }
 
@@ -1216,8 +1232,11 @@
     if (foldable) {
       var bodyId = this.id("section-body");
       var foldKey = "pui.workbench." + String(options.pageId || "") + "." + String(options.region || "") + ".section." + String(section.id || sectionIndex) + ".folded";
-      var folded = false;
-      try { folded = !!(window.localStorage && window.localStorage.getItem(foldKey) === "1"); } catch (error) { folded = false; }
+      var folded = section.default_folded === true;
+      try {
+        var storedFold = window.localStorage && window.localStorage.getItem(foldKey);
+        if (storedFold !== null && storedFold !== undefined) folded = storedFold === "1";
+      } catch (error) { /* private mode keeps the document default */ }
       var title = el("h3", {id: id});
       var toggle = el("button", {type: "button", class: "pui-section-toggle", "aria-expanded": folded ? "false" : "true", "aria-controls": bodyId});
       toggle.appendChild(el("span", {class: "pui-section-chevron", "aria-hidden": "true", text: "▾"}));
@@ -5218,7 +5237,8 @@
         muted: track.muted === true, locked: track.locked === true, clips: clips};
     });
     return {duration: duration, playhead: clamp(value.playhead), snap: Math.max(0.01, Number(value.snap || rec.options.snap) || 0.5),
-      tracks: tracks, selected: selected, zoom: Math.max(0.1, Number(value.zoom) || 1)};
+      tracks: tracks, selected: selected, zoom: Math.max(0.1, Number(value.zoom) || 1),
+      fps: Number(value.fps || rec.options.fps) || 0, drop_frame: value.drop_frame === true || rec.options.drop_frame === true};
   };
 
   Renderer.prototype.mediaTimelineAction = function (rec, intent) {
@@ -5231,13 +5251,16 @@
   };
 
   Renderer.prototype.mediaTimelineSignature = function (data) {
-    return JSON.stringify({duration: data.duration, tracks: data.tracks.map(function (track) {
+    return JSON.stringify({duration: data.duration, fps: data.fps, drop_frame: data.drop_frame, tracks: data.tracks.map(function (track) {
       return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
         clips: track.clips.map(function (clip) { return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, kind: clip.kind, color: clip.color, thumb: clip.thumb}; })};
     })});
   };
 
-  Renderer.prototype.mediaTimelineTime = function (seconds) {
+  Renderer.prototype.mediaTimelineTime = function (seconds, data) {
+    if (data && data.fps && global.PupitreTimeline && global.PupitreTimeline.formatTimecode) {
+      return global.PupitreTimeline.formatTimecode(seconds, data.fps, {drop_frame: data.drop_frame});
+    }
     if (global.PupitreTimeline && global.PupitreTimeline.formatTime) return global.PupitreTimeline.formatTime(seconds);
     var total = Math.max(0, Number(seconds) || 0);
     var m = Math.floor(total / 60), s = Math.floor(total % 60);
@@ -5344,7 +5367,7 @@
     for (var tick = 0; tick <= data.duration + 0.001; tick += step) {
       var at = Math.min(data.duration, tick);
       var mark = el("span", {class: "pui-media-ruler-tick", style: "left:" + (at / data.duration * 100) + "%;"});
-      mark.appendChild(el("span", {class: "pui-media-ruler-label", text: this.mediaTimelineTime(at)}));
+      mark.appendChild(el("span", {class: "pui-media-ruler-label", text: this.mediaTimelineTime(at, data)}));
       rec.ruler.appendChild(mark);
     }
     data.tracks.forEach(function (track) {
@@ -5361,12 +5384,12 @@
       });
       track.clips.forEach(function (clip) {
         var clipEl = el("button", {type: "button", class: "pui-media-clip" + (clip.selected ? " is-selected" : "") + (clip.disabled ? " is-disabled" : ""),
-          role: "listitem", "data-track-id": track.id, "data-clip-id": clip.id, "aria-label": clip.label + " · " + self.mediaTimelineTime(clip.start) + " – " + self.mediaTimelineTime(clip.end),
-          title: clip.label + " · " + self.mediaTimelineTime(clip.start) + " – " + self.mediaTimelineTime(clip.end), style: "left:" + (clip.start / data.duration * 100) + "%;width:" + (clip.duration / data.duration * 100) + "%;"});
+          role: "listitem", "data-track-id": track.id, "data-clip-id": clip.id, "aria-label": clip.label + " · " + self.mediaTimelineTime(clip.start, data) + " – " + self.mediaTimelineTime(clip.end, data),
+          title: clip.label + " · " + self.mediaTimelineTime(clip.start, data) + " – " + self.mediaTimelineTime(clip.end, data), style: "left:" + (clip.start / data.duration * 100) + "%;width:" + (clip.duration / data.duration * 100) + "%;"});
         if (clip.color) clipEl.style.setProperty("--pui-media-clip-color", clip.color);
         if (clip.thumb) clipEl.style.backgroundImage = "url(\"" + clip.thumb.replace(/"/g, "%22") + "\")";
         clipEl.appendChild(el("span", {class: "pui-media-clip-label", text: clip.label}));
-        clipEl.appendChild(el("span", {class: "pui-media-clip-time", text: self.mediaTimelineTime(clip.duration)}));
+        clipEl.appendChild(el("span", {class: "pui-media-clip-time", text: self.mediaTimelineTime(clip.duration, data)}));
         var trim = el("span", {class: "pui-media-trim", "aria-hidden": "true"});
         clipEl.appendChild(trim);
         clipEl.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.mediaTimelineSelect(rec, track.id, clip.id); });
@@ -5387,7 +5410,7 @@
     var signature = this.mediaTimelineSignature(data);
     if (signature !== rec.signature) this.mediaTimelineBuild(rec, data);
     else rec.value = data;
-    rec.time.textContent = this.mediaTimelineTime(data.playhead) + " / " + this.mediaTimelineTime(data.duration);
+    rec.time.textContent = this.mediaTimelineTime(data.playhead, data) + " / " + this.mediaTimelineTime(data.duration, data);
     if (rec.playheadEl) rec.playheadEl.style.left = (data.playhead / data.duration * 100) + "%";
     data.tracks.forEach(function (track) {
       track.clips.forEach(function (clip) {
@@ -5682,7 +5705,9 @@
       canStop: value.canStop !== false,
       canSeek: value.canSeek !== false,
       canLoop: value.canLoop !== false,
-      canRate: value.canRate !== false
+      canRate: value.canRate !== false,
+      fps: Number(value.fps || (rec.options && rec.options.fps)) || 0,
+      drop_frame: value.drop_frame === true || !!(rec.options && rec.options.drop_frame)
     };
   };
 
@@ -5695,7 +5720,10 @@
     return false;
   };
 
-  Renderer.prototype.transportTime = function (seconds) {
+  Renderer.prototype.transportTime = function (seconds, data) {
+    if (data && data.fps && global.PupitreTimeline && global.PupitreTimeline.formatTimecode) {
+      return global.PupitreTimeline.formatTimecode(seconds, data.fps, {drop_frame: data.drop_frame});
+    }
     var total = Math.max(0, Math.floor(Number(seconds) || 0));
     var m = Math.floor(total / 60), s = total % 60;
     return m + ":" + (s < 10 ? "0" : "") + s;
@@ -5709,7 +5737,7 @@
     rec.stop.disabled = !data.canStop;
     rec.seek.max = String(data.duration);
     if (document.activeElement !== rec.seek) rec.seek.value = String(Math.min(data.position, data.duration));
-    rec.position.textContent = this.transportTime(data.position) + " / " + this.transportTime(data.duration);
+    rec.position.textContent = this.transportTime(data.position, data) + " / " + this.transportTime(data.duration, data);
     rec.loop.checked = data.loop;
     rec.loop.disabled = !data.canLoop;
     rec.rate.value = String(data.rate);
