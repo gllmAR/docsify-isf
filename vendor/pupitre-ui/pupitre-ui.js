@@ -4848,6 +4848,7 @@
     rec.regionEls = [];
     rec.regionPaintEls = {};
     var currentContext = Canvas.activeContext(rec.value, rec.contexts);
+    if (currentContext) rec.activeContext = currentContext.id;
     if ((!rec.selectedRegion || !rec.value.selected_region) && currentContext && currentContext.region) rec.selectedRegion = currentContext.region;
     var stageActive = rec.selectedRegion || (currentContext && currentContext.region) || "";
     var stage = Canvas.stageState(rec.value);
