@@ -1897,6 +1897,7 @@
         if (bounded) {
           var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
           track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
+          track.appendChild(el("span", {class: "pui-graph-param-ticks", "aria-hidden": "true"}));
           track.appendChild(el("span", {class: "pui-graph-param-default", "aria-hidden": "true"}));
           track.appendChild(el("span", {class: "pui-graph-param-thumb", "aria-hidden": "true"}));
           valueButton.appendChild(track);
@@ -1906,6 +1907,7 @@
         valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
         if (numeric) {
           valueButton.setAttribute("role", "slider");
+          valueButton.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight ArrowUp ArrowDown Home End PageUp PageDown");
           valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
           if (param.min !== undefined) valueButton.setAttribute("aria-valuemin", String(param.min));
           if (param.max !== undefined) valueButton.setAttribute("aria-valuemax", String(param.max));
@@ -3902,7 +3904,7 @@
     var hasDefault = bounded && param.default !== undefined && isFinite(defaultNumber) && defaultNumber >= min && defaultNumber <= max;
     var title = label + " · " + display + (bounded ? " · " + this.graphParamText(param, min) + "…" + this.graphParamText(param, max) : "")
       + (hasDefault ? " · default " + this.graphParamText(param, defaultNumber) : "")
-      + " · Drag to adjust · Alt fine · Shift coarse · double-click reset";
+      + " · Drag to adjust · Alt fine · Shift coarse · Home/End · PgUp/PgDn ×10 · double-click reset";
     element.title = title;
     if (!bounded || !isFinite(current)) return;
     var ratio = this.graphParamFill(param, value);
@@ -3980,7 +3982,7 @@
 
   Renderer.prototype.graphParamKey = function (rec, node, param, event) {
     if (rec.block.readonly) return;
-    var keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+    var keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"];
     if (keys.indexOf(event.key) < 0) return;
     if (event.preventDefault) event.preventDefault();
     if (event.stopPropagation) event.stopPropagation();
@@ -3989,11 +3991,26 @@
     if (event.altKey) step /= 10;
     if (event.shiftKey) step *= 10;
     var raw = isObject(node.params) ? node.params[param.id] : undefined;
-    var value = (raw === undefined ? Number(param.default) || 0 : Number(raw) || 0) +
-      (event.key === "ArrowRight" || event.key === "ArrowUp" ? step : -step);
+    var current = raw === undefined ? Number(param.default) || 0 : Number(raw) || 0;
+    var value = current;
+    if (event.key === "Home") value = param.min !== undefined ? Number(param.min) : current;
+    else if (event.key === "End") value = param.max !== undefined ? Number(param.max) : current;
+    else {
+      var page = event.key === "PageUp" || event.key === "PageDown";
+      var delta = page ? step * 10 : step;
+      value = current + (event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "PageUp" ? delta : -delta);
+    }
     if (param.min !== undefined) value = Math.max(Number(param.min), value);
     if (param.max !== undefined) value = Math.min(Number(param.max), value);
     if (isInt) value = Math.round(value);
+    var precision = Number(param.precision);
+    if (isFinite(precision) && precision >= 0) {
+      value = Number(value.toFixed(Math.min(8, Math.floor(precision))));
+    } else if (!isInt) {
+      var decimals = 0, q = step;
+      while (q < 1 && decimals < 6) { q *= 10; decimals += 1; }
+      value = Number(value.toFixed(decimals));
+    }
     this.graphSetNodeParam(rec, node.id, param.id, value);
   };
 
