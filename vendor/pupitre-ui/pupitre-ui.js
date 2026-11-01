@@ -1058,13 +1058,63 @@
       node.setAttribute("aria-labelledby", paneId + "-title");
       node.appendChild(el("div", {class: "pui-workbench-pane-title", id: paneId + "-title", text: paneTitle}));
       var content = el("div", {class: "pui-workbench-pane-content"});
-      groups[region].forEach(function (section, index) {
-        content.appendChild(self.buildSection(section, self._pageRecordIndex, index, {
-          foldable: region === "stage" ? section.foldable === true : section.foldable !== false,
-          pageId: pageId,
-          region: region
-        }));
-      });
+      var paneTabs = isObject(layout[region]) && isArray(layout[region].tabs) ? layout[region].tabs.filter(function (tab) { return typeof tab === "string" && tab; }) : [];
+      if (paneTabs.length) {
+        var tabBar = el("div", {class: "pui-pane-tabs", role: "tablist", "aria-label": paneTitle});
+        var tabKey = "pui.workbench." + pageId + "." + region + ".tab";
+        var storedTab = null;
+        try { storedTab = window.localStorage && window.localStorage.getItem(tabKey); } catch (error) { storedTab = null; }
+        var activeTab = paneTabs.indexOf(storedTab) >= 0 ? storedTab : paneTabs[0];
+        var tabButtons = {}, tabPanels = {};
+        paneTabs.forEach(function (tabName, tabIndex) {
+          var tabId = self.id("workbench-tab");
+          var panelId = self.id("workbench-tabpanel");
+          var tabButton = el("button", {type: "button", class: "pui-pane-tab", role: "tab", id: tabId, "aria-controls": panelId, "aria-selected": "false", tabindex: "-1", text: tabName});
+          var tabPanel = el("div", {class: "pui-pane-tabpanel", role: "tabpanel", id: panelId, "aria-labelledby": tabId, hidden: true});
+          tabButton.addEventListener("click", function () { setActiveTab(tabName); });
+          tabButton.addEventListener("keydown", function (event) {
+            var delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+            if (!delta) return;
+            event.preventDefault();
+            var next = (tabIndex + delta + paneTabs.length) % paneTabs.length;
+            setActiveTab(paneTabs[next]);
+            tabButtons[paneTabs[next]].focus();
+          });
+          tabButton.addEventListener("focus", function () { setActiveTab(tabName); });
+          tabBar.appendChild(tabButton);
+          tabButtons[tabName] = tabButton;
+          tabPanels[tabName] = tabPanel;
+        });
+        var setActiveTab = function (tabName) {
+          if (paneTabs.indexOf(tabName) < 0) tabName = paneTabs[0];
+          paneTabs.forEach(function (name) {
+            var selected = name === tabName;
+            tabButtons[name].setAttribute("aria-selected", selected ? "true" : "false");
+            tabButtons[name].tabIndex = selected ? 0 : -1;
+            tabPanels[name].hidden = !selected;
+          });
+          try { if (window.localStorage) window.localStorage.setItem(tabKey, tabName); } catch (error) { /* private mode */ }
+        };
+        groups[region].forEach(function (section, index) {
+          var tabName = paneTabs.indexOf(section.tab) >= 0 ? section.tab : paneTabs[0];
+          tabPanels[tabName].appendChild(self.buildSection(section, self._pageRecordIndex, index, {
+            foldable: region === "stage" ? section.foldable === true : section.foldable !== false,
+            pageId: pageId,
+            region: region
+          }));
+        });
+        content.appendChild(tabBar);
+        paneTabs.forEach(function (name) { content.appendChild(tabPanels[name]); });
+        setActiveTab(activeTab);
+      } else {
+        groups[region].forEach(function (section, index) {
+          content.appendChild(self.buildSection(section, self._pageRecordIndex, index, {
+            foldable: region === "stage" ? section.foldable === true : section.foldable !== false,
+            pageId: pageId,
+            region: region
+          }));
+        });
+      }
       node.appendChild(content);
       rec.panes[region] = node;
       return {node: node, id: paneId, title: paneTitle};

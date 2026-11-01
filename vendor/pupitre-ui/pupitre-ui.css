@@ -1058,3 +1058,11 @@
 .pui-workbench-pane.is-bottom.is-statusbar .pui-section-toggle { display: none; }
 .pui-workbench-pane.is-bottom.is-statusbar .pui-section .pui-fields { display: block; }
 .pui-workbench-pane.is-bottom.is-statusbar .pui-statusbar { min-height: var(--pui-statusbar-height, 32px); padding: 2px 0; border-top: 0; background: transparent; }
+
+/* Pane-local tabs: one region, one screen; sections choose a tab via
+   `section.tab` and the region lists its tabs in `layout.<region>.tabs`. */
+.pui-pane-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 0 6px; border-bottom: 1px solid var(--pui-border); margin-bottom: 6px; }
+.pui-pane-tab { appearance: none; border: 1px solid transparent; border-bottom: 0; border-radius: var(--pui-radius) var(--pui-radius) 0 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 0.72); padding: 4px 8px; min-height: var(--pui-touch); cursor: pointer; }
+.pui-pane-tab[aria-selected="true"] { color: var(--pui-text); background: var(--pui-surface-2); border-color: var(--pui-border); }
+.pui-pane-tab:focus-visible { outline: 2px solid var(--pui-accent); outline-offset: -2px; }
+.pui-pane-tabpanel { min-height: 0; }
