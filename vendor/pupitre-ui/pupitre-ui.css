@@ -511,6 +511,35 @@
 .pui-graph-node.is-subgraph { border-style: double; border-width: 3px; }
 .pui-graph-open-subgraph { margin: 6px 8px 8px; border: 1px solid var(--pui-accent); border-radius: 4px; background: transparent; color: var(--pui-accent); font: inherit; font-size: calc(var(--pui-type-base) * 0.65); padding: 2px 6px; cursor: pointer; }
 .pui-graph-open-subgraph:hover { background: var(--pui-accent); color: var(--pui-bg); }
+.pui-graph-gop { margin: 5px 6px 6px; border: 1px solid color-mix(in srgb, var(--pui-accent) 45%, var(--pui-border)); border-radius: 5px; background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface)); overflow: hidden; }
+.pui-graph-gop-head { display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-bottom: 1px solid var(--pui-border); }
+.pui-graph-gop-title { flex: 1 1 auto; color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.58); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
+.pui-graph-gop-count { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.5); white-space: nowrap; }
+.pui-graph-gop-enter { border: 1px solid var(--pui-accent); border-radius: 3px; padding: 0 5px; background: transparent; color: var(--pui-accent); font: inherit; font-size: calc(var(--pui-type-base) * 0.58); cursor: pointer; }
+.pui-graph-gop-enter:hover { background: var(--pui-accent); color: var(--pui-bg); }
+.pui-graph-gop-map { position: relative; height: 92px; background-image: linear-gradient(90deg, transparent 49%, color-mix(in srgb, var(--pui-border) 50%, transparent) 50%, transparent 51%), linear-gradient(0deg, transparent 49%, color-mix(in srgb, var(--pui-border) 50%, transparent) 50%, transparent 51%); background-size: 16px 16px; }
+.pui-graph-gop-svg { display: block; width: 100%; height: 100%; }
+.pui-graph-gop-frame { fill: color-mix(in srgb, var(--pui-accent) 7%, transparent); stroke: color-mix(in srgb, var(--pui-accent) 30%, var(--pui-border)); stroke-width: 1; }
+.pui-graph-gop-node rect { fill: var(--pui-surface-2); stroke: var(--pui-accent); stroke-width: 1; }
+.pui-graph-gop-node.is-disabled { opacity: 0.5; }
+.pui-graph-gop-node text { fill: var(--pui-text); font-size: 18px; font-family: inherit; pointer-events: none; }
+.pui-graph-gop-cable { fill: none; stroke: var(--pui-accent); stroke-width: 1; opacity: 0.65; }
+.pui-graph-gop-roi-label { position: absolute; right: 3px; bottom: 2px; padding: 0 3px; border-radius: 2px; background: color-mix(in srgb, var(--pui-surface) 85%, transparent); color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.5); font-variant-numeric: tabular-nums; }
+.pui-graph-gop-missing { margin: 6px; color: var(--pui-warning); font-size: calc(var(--pui-type-base) * 0.62); }
+.pui-graph-gop-exposed { display: flex; flex-direction: column; gap: 1px; padding: 4px 5px 5px; border-top: 1px solid var(--pui-border); }
+.pui-graph-gop-exposed-title { color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.5); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
+.pui-graph-gop-param { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 4px; min-height: 18px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.55); }
+.pui-graph-gop-param-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-graph-gop-param input[type="range"].pui-graph-gop-range { grid-column: 1 / -1; width: 100%; min-height: 14px; height: 14px; margin: 0; }
+.pui-graph-gop-range::-webkit-slider-runnable-track { height: 3px; }
+.pui-graph-gop-range::-webkit-slider-thumb { width: 9px; height: 9px; margin-top: -4px; border-width: 1px; }
+.pui-graph-gop-range::-moz-range-track { height: 3px; }
+.pui-graph-gop-range::-moz-range-progress { height: 3px; }
+.pui-graph-gop-range::-moz-range-thumb { width: 9px; height: 9px; border-width: 1px; }
+.pui-graph-gop-value { color: var(--pui-text); font-variant-numeric: tabular-nums; }
+.pui-graph-gop-select { grid-column: 1 / -1; min-height: 20px; padding: 0 2px; font-size: calc(var(--pui-type-base) * 0.58); }
+.pui-graph-gop-color { grid-column: 1 / -1; min-height: 20px; width: 100%; }
+.pui-graph.is-nested .pui-graph-node.is-subgraph { box-shadow: 0 0 0 1px color-mix(in srgb, var(--pui-accent) 22%, transparent), 0 2px 8px rgb(0 0 0 / 0.18); }
 .pui-timeline { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 10px; }
 .pui-timeline-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .pui-timeline-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.9); }

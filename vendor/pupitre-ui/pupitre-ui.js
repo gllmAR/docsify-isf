@@ -222,6 +222,7 @@
       setValue: options.setValue || function () { return false; },
       setValues: options.setValues || null,
       graphAction: options.graphAction || null,
+      graphOnParentAction: options.graphOnParentAction || null,
       timelineAction: options.timelineAction || null,
       stageAction: options.stageAction || null,
       treeAction: options.treeAction || null,
@@ -1605,7 +1606,7 @@
     var cables = isArray(graph.cables) ? graph.cables : [];
     var frames = isArray(graph.frames) ? graph.frames : [];
     var a11y = isObject(block.a11y) ? block.a11y : {};
-    var root = el("section", {class: "pui-graph", "data-pui-graph": String(block.bind || ""), role: "group"});
+    var root = el("section", {class: "pui-graph" + (nav.length > 1 ? " is-nested" : ""), "data-pui-graph": String(block.bind || ""), "data-nav-depth": String(nav.length), role: "group"});
     if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
     var head = el("div", {class: "pui-graph-head"});
     head.appendChild(el("h4", {text: label}));
@@ -1641,6 +1642,22 @@
       var duplicateButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Duplicate"});
       duplicateButton.addEventListener("click", function () { self.graphDuplicate(rec); });
       head.appendChild(duplicateButton);
+      if (nav.length > 1 && typeof this.adapter.graphOnParentAction === "function") {
+        var setRoi = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Set parent ROI"});
+        setRoi.addEventListener("click", function () { self.graphSetParentRoi(rec); });
+        head.appendChild(setRoi);
+        var clearRoi = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Clear ROI"});
+        clearRoi.addEventListener("click", function () { self.graphClearParentRoi(rec); });
+        head.appendChild(clearRoi);
+        var expose = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Expose selected"});
+        expose.addEventListener("click", function () { self.graphExposeSelected(rec); });
+        head.appendChild(expose);
+      }
+    }
+    if (nav.length > 1) {
+      var upButton = el("button", {type: "button", class: "pui-button pui-graph-add-button pui-graph-up", text: "Up"});
+      upButton.addEventListener("click", function () { self.graphNavigate(rec, nav.length - 2); });
+      head.appendChild(upButton);
     }
     var fitButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Fit"});
     fitButton.addEventListener("click", function () { self.graphFit(rec); });
@@ -1653,7 +1670,7 @@
       }));
     }
     root.appendChild(head);
-    var viewport = el("div", {class: "pui-graph-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas"});
+    var viewport = el("div", {class: "pui-graph-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas", "aria-keyshortcuts": "Enter u Alt+ArrowUp"});
     var content = el("div", {class: "pui-graph-content"});
     var svg = svgEl("svg", {class: "pui-graph-cables", "aria-hidden": "true"});
     var cableGroup = svgEl("g");
@@ -1824,17 +1841,34 @@
           var customBody = self.adapter.graphNodeBody(node, type, rec.block, self);
           if (customBody && (customBody.nodeType || typeof customBody.tagName === "string")) {
             customBody.classList.add("pui-graph-node-body");
-            nodeEl.appendChild(customBody);
-            rec.bodyEls[id] = customBody;
+            if (self.graphOnParentSettings(node)) {
+              var bodyWrap = el("div", {class: "pui-graph-node-bodies"});
+              bodyWrap.appendChild(customBody);
+              nodeEl.appendChild(bodyWrap);
+              rec.bodyEls[id] = bodyWrap;
+            } else {
+              nodeEl.appendChild(customBody);
+              rec.bodyEls[id] = customBody;
+            }
           }
         } catch (error) {
           self.adapter.announce("error", "graph node body failed: " + String(error && error.message || error));
+        }
+      }
+      var gopSettings = self.graphOnParentSettings(node);
+      if (gopSettings) {
+        var parentPreview = self.graphParentPreview(rec, node, gopSettings);
+        if (parentPreview) {
+          var bodyHost = rec.bodyEls[id] || nodeEl;
+          bodyHost.appendChild(parentPreview);
+          if (!rec.bodyEls[id]) rec.bodyEls[id] = parentPreview;
         }
       }
       var subgraphPath = typeof node.subgraph === "string" ? node.subgraph : "";
       if (subgraphPath) {
         nodeEl.classList.add("is-subgraph");
         nodeEl.setAttribute("data-subgraph", subgraphPath);
+        nodeEl.title = "Double-click to enter subgraph";
         var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "Open subgraph"});
         openSubgraph.setAttribute("aria-label", "Open subgraph " + nodeLabel);
         openSubgraph.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
@@ -1857,6 +1891,21 @@
         nodeElement.addEventListener("click", function (event) {
           self.graphSelect(rec, nodeId, !!(event.shiftKey || event.metaKey || event.ctrlKey));
           if (event.stopPropagation) event.stopPropagation();
+        });
+        nodeElement.addEventListener("dblclick", function (event) {
+          var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+          if (!node || typeof node.subgraph !== "string" || !node.subgraph) return;
+          if (event.target && event.target.closest && event.target.closest(".pui-graph-open-subgraph, .pui-graph-gop-enter")) return;
+          if (event.preventDefault) event.preventDefault();
+          self.graphOpenSubgraph(rec, node);
+        });
+        nodeElement.addEventListener("keydown", function (event) {
+          if (String(event.key || "") !== "Enter") return;
+          var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+          if (!node || typeof node.subgraph !== "string" || !node.subgraph) return;
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphOpenSubgraph(rec, node);
         });
       })(id, nodeEl);
     });
@@ -2156,6 +2205,20 @@
     });
     viewport.addEventListener("keydown", function (event) {
       var key = String(event.key || "");
+      if (key === "Enter") {
+        var selectedIds = Object.keys(rec.selected || {});
+        var selectedNode = selectedIds.length === 1 ? (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(selectedIds[0]); }) : null;
+        if (selectedNode && typeof selectedNode.subgraph === "string" && selectedNode.subgraph) {
+          event.preventDefault();
+          self.graphOpenSubgraph(rec, selectedNode);
+          return;
+        }
+      }
+      if ((key === "u" || key === "U" || (event.altKey && key === "ArrowUp")) && rec.navStack.length > 1) {
+        event.preventDefault();
+        self.graphNavigate(rec, rec.navStack.length - 2);
+        return;
+      }
       if (key === "Delete" || key === "Backspace") {
         event.preventDefault();
         self.graphDelete(rec);
@@ -2343,8 +2406,336 @@
   Renderer.prototype.graphNavigate = function (rec, index) {
     var stack = (rec.navStack || []).slice(0, Math.max(0, index + 1));
     if (!stack.length || index >= (rec.navStack || []).length - 1) return false;
-    this.rebuildGraph(rec, null, stack);
+    var leaving = rec.navStack[rec.navStack.length - 1];
+    this.rebuildGraph(rec, null, stack, {back: true, nodeId: leaving && leaving.nodeId});
     return true;
+  };
+
+  /** Parse the additive graph-on-parent contract. `graph_on_parent` may be
+   * true or an object carrying the ROI/exposed list; the older
+   * `graph_on_parent_rect` and `exposed_params` node keys remain supported. */
+  Renderer.prototype.graphOnParentSettings = function (node) {
+    if (!node || node.graph_on_parent === false) return null;
+    var raw = node.graph_on_parent;
+    var options = isObject(raw) ? raw : {};
+    if (isObject(raw) && raw.enabled === false) return null;
+    var rect = node.graph_on_parent_rect || options.rect || options.roi;
+    if (!isObject(rect) && isObject(raw) && raw.x !== undefined && raw.y !== undefined) rect = raw;
+    if (isObject(rect)) {
+      var rx = Number(rect.x), ry = Number(rect.y), rw = Number(rect.w !== undefined ? rect.w : rect.width), rh = Number(rect.h !== undefined ? rect.h : rect.height);
+      if (isFinite(rx) && isFinite(ry) && isFinite(rw) && isFinite(rh) && rw > 0 && rh > 0) {
+        rect = {x: rx, y: ry, w: rw, h: rh};
+      } else rect = null;
+    } else rect = null;
+    var exposed = node.exposed_params || options.exposed_params || options.exposed || [];
+    if (!isArray(exposed)) exposed = [];
+    exposed = exposed.map(function (entry) {
+      if (typeof entry === "string") {
+        var dot = entry.lastIndexOf(".");
+        return dot > 0 ? {node: entry.slice(0, dot), param: entry.slice(dot + 1)} : null;
+      }
+      if (!isObject(entry)) return null;
+      var nodeId = entry.node !== undefined ? entry.node : entry.nodeId;
+      var paramId = entry.param !== undefined ? entry.param : entry.paramId;
+      if (nodeId === undefined || paramId === undefined) return null;
+      return {node: String(nodeId), param: String(paramId), label: entry.label ? String(entry.label) : ""};
+    }).filter(Boolean);
+    var enabled = raw === true || isObject(raw) || !!rect || exposed.length > 0;
+    if (!enabled) return null;
+    return {rect: rect, exposed: exposed, enabled: true};
+  };
+
+  /** Bounds using the measured node geometry (host bodies and graph-on-parent
+   * previews included), unlike the pure model bounds. */
+  Renderer.prototype.graphContentBounds = function (rec) {
+    var self = this;
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      var rect = self.graphNodeRect(rec, node);
+      x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
+      x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
+    });
+    (rec.graph.frames || []).forEach(function (frame) {
+      if (!isObject(frame)) return;
+      x1 = Math.min(x1, Number(frame.x) || 0); y1 = Math.min(y1, Number(frame.y) || 0);
+      x2 = Math.max(x2, (Number(frame.x) || 0) + (Number(frame.w) || 0));
+      y2 = Math.max(y2, (Number(frame.y) || 0) + (Number(frame.h) || 0));
+    });
+    if (!isFinite(x1)) return {x1: 0, y1: 0, w: 1, h: 1, x2: 1, y2: 1};
+    return {x1: x1, y1: y1, x2: x2, y2: y2, w: Math.max(1, x2 - x1), h: Math.max(1, y2 - y1)};
+  };
+
+  Renderer.prototype.graphViewForBounds = function (rec, bounds, pad) {
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var w = Number(box.width) || 800, h = Number(box.height) || 500;
+    pad = pad === undefined ? 40 : Number(pad) || 0;
+    var bw = Math.max(1, Number(bounds.w) || 1), bh = Math.max(1, Number(bounds.h) || 1);
+    var zoom = Math.min(2, Math.max(0.1, Math.min((w - pad * 2) / bw, (h - pad * 2) / bh)));
+    return {
+      zoom: zoom,
+      panX: (w - bw * zoom) / 2 - (Number(bounds.x1) || 0) * zoom,
+      panY: (h - bh * zoom) / 2 - (Number(bounds.y1) || 0) * zoom
+    };
+  };
+
+  Renderer.prototype.graphViewForNode = function (rec, nodeId, scale) {
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+    if (!node) return null;
+    var rect = this.graphNodeRect(rec, node);
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var w = Number(box.width) || 800, h = Number(box.height) || 500;
+    var zoom = Math.max(0.2, Math.min(3, Number(scale) || 1));
+    return {zoom: zoom, panX: w / 2 - (rect.x + rect.w / 2) * zoom, panY: h / 2 - (rect.y + rect.h / 2) * zoom};
+  };
+
+  Renderer.prototype.graphAnimateView = function (rec, start, target) {
+    if (!rec || !rec.content || !target) return;
+    if (!start) start = target;
+    var finish = function () {
+      rec.content.style.transition = "";
+      rec.revealTimer = null;
+    };
+    rec.view.zoom = start.zoom;
+    rec.view.panX = start.panX;
+    rec.view.panY = start.panY;
+    rec.content.style.transition = "none";
+    rec.applyView();
+    var raf = global.requestAnimationFrame;
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 0};
+    if (typeof raf !== "function" || !box.width) {
+      rec.view.zoom = target.zoom;
+      rec.view.panX = target.panX;
+      rec.view.panY = target.panY;
+      rec.applyView();
+      finish();
+      return;
+    }
+    if (rec.revealTimer) clearTimeout(rec.revealTimer);
+    raf(function () {
+      rec.content.style.transition = "transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+      rec.view.zoom = target.zoom;
+      rec.view.panX = target.panX;
+      rec.view.panY = target.panY;
+      rec.applyView();
+      rec.revealTimer = setTimeout(finish, 280);
+    });
+  };
+
+  Renderer.prototype.graphReveal = function (rec, reveal) {
+    if (!rec || !reveal) return;
+    var target = this.graphViewForBounds(rec, this.graphContentBounds(rec));
+    if (reveal.back && reveal.nodeId) {
+      var nodeView = this.graphViewForNode(rec, reveal.nodeId, Math.max(1.2, target.zoom * 1.8));
+      this.graphAnimateView(rec, nodeView, target);
+      return;
+    }
+    if (reveal.sourceRect && reveal.sourceRect.width && reveal.sourceRect.height) {
+      var bounds = reveal.roi || this.graphContentBounds(rec);
+      var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0};
+      var zoom = Math.max(0.1, Math.min(3, Math.min(reveal.sourceRect.width / Math.max(1, bounds.w), reveal.sourceRect.height / Math.max(1, bounds.h))));
+      var start = {
+        zoom: zoom,
+        panX: reveal.sourceRect.left - box.left - bounds.x1 * zoom,
+        panY: reveal.sourceRect.top - box.top - bounds.y1 * zoom
+      };
+      this.graphAnimateView(rec, start, this.graphViewForBounds(rec, bounds));
+    }
+  };
+
+  Renderer.prototype.graphCurrentViewBounds = function (rec) {
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
+    var zoom = rec.view.zoom || 1;
+    return {x1: -rec.view.panX / zoom, y1: -rec.view.panY / zoom, w: (box.width || 800) / zoom, h: (box.height || 500) / zoom};
+  };
+
+  Renderer.prototype.graphSelectedContentBounds = function (rec) {
+    var self = this;
+    var ids = Object.keys(rec.selected || {});
+    if (!ids.length) return null;
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    ids.forEach(function (id) {
+      var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(id); });
+      if (!node) return;
+      var rect = self.graphNodeRect(rec, node);
+      x1 = Math.min(x1, rect.x); y1 = Math.min(y1, rect.y);
+      x2 = Math.max(x2, rect.x + rect.w); y2 = Math.max(y2, rect.y + rect.h);
+    });
+    if (!isFinite(x1)) return null;
+    return {x1: x1, y1: y1, w: Math.max(1, x2 - x1), h: Math.max(1, y2 - y1)};
+  };
+
+  Renderer.prototype.graphParentIntent = function (rec, intent) {
+    if (typeof this.adapter.graphOnParentAction !== "function") {
+      this.adapter.announce("warning", "The host does not expose graph-on-parent edits.");
+      return false;
+    }
+    try { return this.adapter.graphOnParentAction(intent, rec.block) !== false; }
+    catch (error) { this.adapter.announce("error", "Graph-on-parent edit failed: " + String(error && error.message || error)); return false; }
+  };
+
+  Renderer.prototype.graphSetParentRoi = function (rec) {
+    var nav = rec.navStack || [];
+    if (nav.length < 2) return false;
+    var current = nav[nav.length - 1], parent = nav[nav.length - 2];
+    var bounds = this.graphSelectedContentBounds(rec) || this.graphCurrentViewBounds(rec);
+    return this.graphParentIntent(rec, {op: "set_roi", graphPath: parent.path, nodeId: current.nodeId, roi: bounds});
+  };
+
+  Renderer.prototype.graphClearParentRoi = function (rec) {
+    var nav = rec.navStack || [];
+    if (nav.length < 2) return false;
+    return this.graphParentIntent(rec, {op: "clear_roi", graphPath: nav[nav.length - 2].path, nodeId: nav[nav.length - 1].nodeId});
+  };
+
+  Renderer.prototype.graphExposeSelected = function (rec) {
+    var nav = rec.navStack || [];
+    if (nav.length < 2) return false;
+    var exposed = [];
+    Object.keys(rec.selected || {}).forEach(function (id) {
+      var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(id); });
+      if (!node) return;
+      var type = rec.typeMap[String(node.type)];
+      (type && isArray(type.params) ? type.params : []).forEach(function (param) {
+        exposed.push({node: String(node.id), param: String(param.id), label: String(param.label || param.id)});
+      });
+    });
+    if (!exposed.length) {
+      this.adapter.announce("warning", "Select an inner node with parameters before exposing.");
+      return false;
+    }
+    return this.graphParentIntent(rec, {op: "expose", graphPath: nav[nav.length - 2].path, nodeId: nav[nav.length - 1].nodeId, exposed: exposed});
+  };
+
+  Renderer.prototype.graphExposedSet = function (rec, node, entry, value) {
+    var nested = this.adapter.getValue(node.subgraph);
+    if (!isObject(nested)) return false;
+    var copy = deepClone(nested);
+    var inner = (copy.nodes || []).find(function (item) { return String(item.id) === String(entry.node); });
+    if (!inner) return false;
+    if (!isObject(inner.params)) inner.params = {};
+    inner.params[entry.param] = value;
+    var intent = {op: "exposed.set", graphPath: rec.graphPath, nodeId: node.id, subgraphPath: node.subgraph, innerNodeId: entry.node, paramId: entry.param, value: value};
+    if (typeof this.adapter.graphOnParentAction === "function") return this.graphParentIntent(rec, intent);
+    if (typeof this.adapter.setValue === "function") return this.adapter.setValue(node.subgraph, copy, rec.block) !== false;
+    this.adapter.announce("warning", "The host does not expose graph-on-parent writes.");
+    return false;
+  };
+
+  Renderer.prototype.graphParentPreview = function (rec, node, settings) {
+    var self = this;
+    var Graph = global.PupitreGraph;
+    if (!Graph || !settings) return null;
+    var nested = this.adapter.getValue(node.subgraph);
+    var preview = el("div", {class: "pui-graph-gop", "data-graph-on-parent": String(node.subgraph || ""), role: "group", "aria-label": "Graph on parent · " + String(node.label || node.id || "subgraph")});
+    var head = el("div", {class: "pui-graph-gop-head"});
+    head.appendChild(el("span", {class: "pui-graph-gop-title", text: "Graph on parent"}));
+    var gopCount = String((nested && nested.nodes || []).length || 0) + " nodes";
+    if (settings.rect) gopCount += " · ROI " + Math.round(settings.rect.w) + "×" + Math.round(settings.rect.h);
+    head.appendChild(el("span", {class: "pui-graph-gop-count", text: gopCount}));
+    var enter = el("button", {type: "button", class: "pui-graph-gop-enter", text: "Enter"});
+    enter.setAttribute("aria-label", "Enter subgraph " + String(node.label || node.id || ""));
+    enter.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+    enter.addEventListener("click", function (event) {
+      if (event.stopPropagation) event.stopPropagation();
+      self.graphOpenSubgraph(rec, node);
+    });
+    head.appendChild(enter);
+    preview.appendChild(head);
+    if (!isObject(nested)) {
+      preview.appendChild(el("p", {class: "pui-graph-gop-missing", text: "(subgraph missing)"}));
+      return preview;
+    }
+    var bounds = settings.rect || Graph.graphBounds(nested, rec.types);
+    var map = el("div", {class: "pui-graph-gop-map"});
+    var svg = svgEl("svg", {class: "pui-graph-gop-svg", viewBox: bounds.x1 + " " + bounds.y1 + " " + Math.max(1, bounds.w) + " " + Math.max(1, bounds.h), preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Interior of " + String(node.label || node.id || "subgraph")});
+    (nested.frames || []).forEach(function (frame) {
+      if (!isObject(frame)) return;
+      svg.appendChild(svgEl("rect", {class: "pui-graph-gop-frame", x: Number(frame.x) || 0, y: Number(frame.y) || 0, width: Number(frame.w) || 0, height: Number(frame.h) || 0}));
+    });
+    var nestedTypes = rec.typeMap || {};
+    var nestedNodes = (nested.nodes || []).filter(isObject);
+    nestedNodes.forEach(function (inner) {
+      var type = nestedTypes[String(inner.type)];
+      var rect = Graph.nodeRect(inner, type, rec.metrics);
+      var group = svgEl("g", {class: "pui-graph-gop-node" + (inner.enabled === false ? " is-disabled" : ""), "data-inner-node-id": String(inner.id || "")});
+      group.appendChild(svgEl("rect", {x: rect.x, y: rect.y, width: rect.w, height: rect.h}));
+      var label = String(inner.label || (type && type.label) || inner.id || inner.type || "node");
+      var text = svgEl("text", {x: rect.x + 6, y: rect.y + 13});
+      text.textContent = label.length > 20 ? label.slice(0, 19) + "…" : label;
+      group.appendChild(text);
+      svg.appendChild(group);
+    });
+    (nested.cables || []).forEach(function (cable) {
+      if (!isObject(cable)) return;
+      var from = Graph.parseRef(cable.from), to = Graph.parseRef(cable.to);
+      if (!from || !to) return;
+      var fromNode = nestedNodes.find(function (item) { return String(item.id) === from.node; });
+      var toNode = nestedNodes.find(function (item) { return String(item.id) === to.node; });
+      if (!fromNode || !toNode) return;
+      var a = Graph.portPosition(fromNode, nestedTypes[String(fromNode.type)], from.port, false, rec.metrics);
+      var b = Graph.portPosition(toNode, nestedTypes[String(toNode.type)], to.port, true, rec.metrics);
+      if (!a || !b) return;
+      var p = Graph.cablePath(a, b);
+      svg.appendChild(svgEl("path", {class: "pui-graph-gop-cable", d: "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2}));
+    });
+    map.appendChild(svg);
+    if (settings.rect) map.appendChild(el("span", {class: "pui-graph-gop-roi-label", text: "ROI " + Math.round(settings.rect.x) + "," + Math.round(settings.rect.y) + " · " + Math.round(settings.rect.w) + "×" + Math.round(settings.rect.h)}));
+    preview.appendChild(map);
+    preview.addEventListener("click", function (event) {
+      if (event.target && event.target.closest && event.target.closest(".pui-graph-gop-exposed, .pui-graph-gop-enter")) return;
+      if (event.stopPropagation) event.stopPropagation();
+      self.graphOpenSubgraph(rec, node);
+    });
+    preview.addEventListener("dblclick", function (event) {
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      self.graphOpenSubgraph(rec, node);
+    });
+    if (settings.exposed.length) {
+      var strip = el("div", {class: "pui-graph-gop-exposed", "aria-label": "Exposed parameters"});
+      strip.appendChild(el("span", {class: "pui-graph-gop-exposed-title", text: "Exposed"}));
+      settings.exposed.forEach(function (entry) {
+        var inner = nestedNodes.find(function (item) { return String(item.id) === entry.node; });
+        var type = inner && rec.typeMap[String(inner.type)];
+        var param = type && isArray(type.params) ? type.params.find(function (item) { return String(item.id) === entry.param; }) : null;
+        if (!inner || !param) return;
+        var value = isObject(inner.params) && inner.params[entry.param] !== undefined ? inner.params[entry.param] : param.default;
+        var row = el("label", {class: "pui-graph-gop-param", "data-exposed-node": String(entry.node), "data-exposed-param": String(entry.param)});
+        row.appendChild(el("span", {class: "pui-graph-gop-param-label", text: String(entry.label || param.label || entry.param)}));
+        var commit = function (next) { self.graphExposedSet(rec, node, entry, next); };
+        var numberType = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
+        if (numberType && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min)) {
+          var slider = el("input", {type: "range", class: "pui-graph-gop-range"});
+          slider.min = String(param.min); slider.max = String(param.max); slider.step = String(param.step || 0.01);
+          slider.value = String(Number(value) || 0);
+          slider.setAttribute("aria-label", String(entry.label || param.label || entry.param));
+          var output = el("output", {class: "pui-graph-gop-value", text: String(value)});
+          slider.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+          slider.addEventListener("input", function () { output.textContent = slider.value; commit(Number(slider.value)); });
+          row.appendChild(slider); row.appendChild(output);
+        } else if (String(param.type) === "enum" && isArray(param.options)) {
+          var select = el("select", {class: "pui-graph-gop-select", "aria-label": String(entry.label || param.label || entry.param)});
+          param.options.forEach(function (option) {
+            var entryValue = isObject(option) ? option.value : option;
+            select.appendChild(el("option", {value: String(entryValue), text: String(isObject(option) ? option.label : option)}));
+          });
+          select.value = String(value);
+          select.addEventListener("change", function () { commit(select.value); });
+          row.appendChild(select);
+        } else if (String(param.type) === "color") {
+          var color = el("input", {type: "color", class: "pui-graph-gop-color", "aria-label": String(entry.label || param.label || entry.param)});
+          color.value = String(value || "#ffffff").slice(0, 7);
+          color.addEventListener("input", function () { commit(color.value); });
+          row.appendChild(color);
+        } else {
+          row.appendChild(el("output", {class: "pui-graph-gop-value", text: String(value === undefined ? "—" : value)}));
+        }
+        strip.appendChild(row);
+      });
+      preview.appendChild(strip);
+    }
+    return preview;
   };
 
   Renderer.prototype.graphOpenSubgraph = function (rec, node) {
@@ -2356,8 +2747,11 @@
     }
     var stack = (rec.navStack || []).slice();
     if (stack.some(function (entry) { return entry.path === node.subgraph; })) return false;
-    stack.push({path: node.subgraph, label: String(node.label || node.id || "Subgraph")});
-    this.rebuildGraph(rec, null, stack);
+    var nodeEl = rec.nodeEls && rec.nodeEls[String(node.id)];
+    var sourceRect = nodeEl && nodeEl.getBoundingClientRect ? nodeEl.getBoundingClientRect() : null;
+    var settings = this.graphOnParentSettings(node);
+    stack.push({path: node.subgraph, label: String(node.label || node.id || "Subgraph"), nodeId: String(node.id || "")});
+    this.rebuildGraph(rec, null, stack, {sourceRect: sourceRect, roi: settings && settings.rect, nodeId: String(node.id || "")});
     return true;
   };
 
@@ -2625,15 +3019,11 @@
   };
 
   Renderer.prototype.graphFit = function (rec) {
-    var Graph = global.PupitreGraph;
-    if (!Graph || !rec || !rec.viewport) return;
-    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 500};
-    var bounds = Graph.graphBounds(rec.graph, rec.types);
-    var pad = 40;
-    var zoom = Math.min(2, Math.max(0.1, Math.min((box.width - pad * 2) / Math.max(1, bounds.w), (box.height - pad * 2) / Math.max(1, bounds.h))));
-    rec.view.zoom = zoom;
-    rec.view.panX = (box.width - bounds.w * zoom) / 2 - bounds.x1 * zoom;
-    rec.view.panY = (box.height - bounds.h * zoom) / 2 - bounds.y1 * zoom;
+    if (!rec || !rec.viewport) return;
+    var view = this.graphViewForBounds(rec, this.graphContentBounds(rec));
+    rec.view.zoom = view.zoom;
+    rec.view.panX = view.panX;
+    rec.view.panY = view.panY;
     rec.applyView();
   };
 
@@ -3499,7 +3889,7 @@
     return true;
   };
 
-  Renderer.prototype.rebuildGraph = function (rec, focusId, navStack) {
+  Renderer.prototype.rebuildGraph = function (rec, focusId, navStack, reveal) {
     if (!rec.root || !rec.root.parentNode) return;
     var parent = rec.root.parentNode;
     var index = this.graphRecords.indexOf(rec);
@@ -3523,6 +3913,12 @@
     parent.replaceChild(newRoot, rec.root);
     if (newRec) this.graphLayoutGraphBodies(newRec);
     if (index >= 0) this.graphRecords.splice(index, 1);
+    if (newRec && reveal) {
+      this.graphReveal(newRec, reveal);
+      if (newRec.viewport && newRec.viewport.focus) {
+        try { newRec.viewport.focus({preventScroll: true}); } catch (error) { try { newRec.viewport.focus(); } catch (error2) { /* ignore */ } }
+      }
+    }
     if (focusId && newRec && newRec.nodeEls[String(focusId)] && newRec.nodeEls[String(focusId)].focus) newRec.nodeEls[String(focusId)].focus();
   };
 
