@@ -1218,3 +1218,24 @@
 .pui-error-code { align-self: flex-start; color: var(--pui-danger); font-size: calc(var(--pui-type-base) * 0.62); }
 .pui-error-hint { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
 .pui-error-recovery { color: var(--pui-text); font-size: calc(var(--pui-type-base) * 0.66); }
+
+/* GTK/LVGL high-contrast lesson: never rely on colour alone. */
+@media (forced-colors: active) {
+  .pui {
+    --pui-accent: Highlight;
+    --pui-accent-text: HighlightText;
+    --pui-bg: Canvas;
+    --pui-surface: Canvas;
+    --pui-surface-2: Canvas;
+    --pui-text: CanvasText;
+    --pui-muted: GrayText;
+    --pui-border: ButtonText;
+    --pui-danger: LinkText;
+    --pui-warning: Highlight;
+    --pui-success: Highlight;
+  }
+  .pui input, .pui select, .pui textarea, .pui button { border-color: ButtonText; }
+  .pui :focus-visible { outline-color: Highlight; }
+  .pui input[type="range"]::-webkit-slider-runnable-track { border-color: ButtonText; }
+  .pui input[type="range"]::-moz-range-track { border-color: ButtonText; }
+}

@@ -4,9 +4,9 @@
   "version": "1.8.0",
   "files": {
     "pupitre-ui.js": "80bb4fec135384782b94e11e261c9732aa89d3b058c4ed74ee49486740a9b260",
-    "pupitre-ui.css": "9563d756f61921baacaefd8373c187c48b8142fe8d4836babc3133a6eee1fada",
+    "pupitre-ui.css": "f5d3a39f01713560ec78a54642c9c9c4c8c656c31e1a3680d6f92fb420607920",
     "isf.js": "a821d46fc600367972540d8d23c59bad9545fa3bea3954a4782e2fddb887bab8"
   },
-  "commit": "b1be657",
+  "commit": "2031143",
   "dirty": true
 }
