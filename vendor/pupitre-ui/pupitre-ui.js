@@ -5998,7 +5998,7 @@
         duration: seq.duration, playhead: seq.playhead, snap: seq.snap, zoom: Math.max(0.1, Number(value.zoom) || 1),
         selected: selectedId, verbs: seq.verbs,
         tracks: seq.tracks.map(function (track) {
-          return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
+          return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, solo: track.solo, locked: track.locked,
             clips: track.clips.map(function (clip) {
               return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, end: clip.start + clip.duration,
                 in: clip.in, out: clip.out, enabled: clip.enabled, disabled: !clip.enabled, order: clip.order,
@@ -6023,7 +6023,7 @@
           disabled: clip.disabled === true};
       });
       return {id: id, label: String(track.label || track.name || id || "Track"), kind: String(track.kind || "track"),
-        muted: track.muted === true, locked: track.locked === true, clips: clips};
+        muted: track.muted === true, solo: track.solo === true, locked: track.locked === true, clips: clips};
     });
     return {duration: duration, playhead: clamp(value.playhead), snap: Math.max(0.01, Number(value.snap || rec.options.snap) || 0.5),
       tracks: tracks, selected: selected, zoom: Math.max(0.1, Number(value.zoom) || 1),
@@ -6042,7 +6042,7 @@
   Renderer.prototype.mediaTimelineSignature = function (data) {
     return JSON.stringify({mode: data.mode, duration: data.duration, fps: data.fps, drop_frame: data.drop_frame,
       verbs: data.verbs, tracks: data.tracks.map(function (track) {
-      return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, locked: track.locked,
+      return {id: track.id, label: track.label, kind: track.kind, muted: track.muted, solo: track.solo, locked: track.locked,
         clips: track.clips.map(function (clip) { return {id: clip.id, label: clip.label, start: clip.start, duration: clip.duration, in: clip.in, out: clip.out, enabled: clip.enabled, order: clip.order, kind: clip.kind, color: clip.color, thumb: clip.thumb}; })};
     })});
   };
@@ -6302,7 +6302,18 @@
       label.appendChild(el("span", {class: "pui-media-track-name", text: track.label}));
       if (track.kind) label.appendChild(el("span", {class: "pui-media-track-kind", text: track.kind}));
       if (track.locked) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("locked", "Locked")}));
-
+      var trackTools = el("span", {class: "pui-media-track-tools"});
+      [["mute", "M", track.muted], ["solo", "S", track.solo]].forEach(function (entry) {
+        var button = el("button", {type: "button", class: "pui-button pui-media-track-toggle", text: entry[1], "aria-pressed": entry[2] ? "true" : "false", "aria-label": (entry[0] === "mute" ? "Mute" : "Solo") + " track " + track.label});
+        button.disabled = !!rec.block.readonly;
+        button.addEventListener("click", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          self.mediaTimelineAction(rec, {op: "track." + entry[0], trackId: track.id, value: !entry[2]});
+          self.mediaTimelineRefresh(rec);
+        });
+        trackTools.appendChild(button);
+      });
+      label.appendChild(trackTools);
       rec.labelsEl.appendChild(label);
       var lane = el("div", {class: "pui-media-lane", "data-track-id": track.id, role: "list", "aria-label": track.label});
       lane.addEventListener("pointerdown", function (event) { self.mediaTimelineScrubStart(rec, event); });
@@ -6383,6 +6394,9 @@
     if (has("duplicate")) this.mediaTimelineTool(rec, "duplicate", "Duplicate", function () { return {op: "duplicate", trackId: selected && selected.track.id, clipId: selected && selected.clip.id}; }, !!selected);
     if (has("enable")) this.mediaTimelineTool(rec, "enable", "Toggle", function () { return {op: "enable", trackId: selected && selected.track.id, clipId: selected && selected.clip.id, enabled: !(selected && selected.clip.enabled)}; }, !!selected);
     if (has("remove")) this.mediaTimelineTool(rec, "remove", "Delete", function () { return {op: "remove", trackId: selected && selected.track.id, clipId: selected && selected.clip.id}; }, !!selected);
+    var activeTrack = selected ? selected.track.id : ((data.tracks[0] || {}).id || "");
+    if (has("track.add")) this.mediaTimelineTool(rec, "track-add", "Track +", function () { return {op: "track.add", trackId: activeTrack}; }, true);
+    if (has("track.remove")) this.mediaTimelineTool(rec, "track-remove", "Track −", function () { return {op: "track.remove", trackId: activeTrack}; }, data.tracks.length > 1);
     this.mediaTimelineUpdateTools(rec, data);
   };
 
@@ -6393,6 +6407,8 @@
     if (rec.toolButtons.duplicate) rec.toolButtons.duplicate.disabled = !selected;
     if (rec.toolButtons.enable) rec.toolButtons.enable.disabled = !selected;
     if (rec.toolButtons.remove) rec.toolButtons.remove.disabled = !selected;
+    var activeTrack = selected ? selected.track.id : ((data.tracks[0] || {}).id || "");
+    if (rec.toolButtons['track-remove']) rec.toolButtons['track-remove'].disabled = data.tracks.length < 2 || !activeTrack;
   };
 
   Renderer.prototype.buildMediaTimeline = function (block) {
