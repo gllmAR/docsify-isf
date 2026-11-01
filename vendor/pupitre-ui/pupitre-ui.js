@@ -156,6 +156,19 @@
     return Number(number.toFixed(precision));
   }
 
+  /** Paint the filled part of a native range without replacing native
+   * dragging, keyboard and AT semantics. Horizontal and vertical sliders use
+   * exactly the same track/thumb/fill language. */
+  function paintRangeFill(input) {
+    if (!input || String(input.type || "").toLowerCase() !== "range") return;
+    var min = Number(input.min), max = Number(input.max), value = Number(input.value);
+    if (!isFinite(min)) min = 0;
+    if (!isFinite(max) || max <= min) max = min + 1;
+    if (!isFinite(value)) value = min;
+    var ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    input.style.setProperty("--pui-range-fill", (ratio * 100).toFixed(2) + "%");
+  }
+
   function componentCount(field) {
     var type = String(field.type || "");
     if (type === "ii" || type === "ff") return 2;
@@ -458,6 +471,10 @@
     var panels = doc.panels || [];
     for (var i = 0; i < panels.length; i++) this.root.appendChild(this.buildPanel(panels[i]));
     this.mount.appendChild(this.root);
+    this.root.addEventListener("input", function (event) {
+      var target = event.target;
+      if (target && String(target.type || "").toLowerCase() === "range") paintRangeFill(target);
+    });
     this.graphLayoutBodies();
     this.apply();
     this.bindShortcuts();
@@ -1031,8 +1048,24 @@
     var stageFit = stageLayout.fit === "scroll" ? "scroll" : "contain";
     wb.setAttribute("data-stage-fit", stageFit);
     var bottomMode = isObject(layout.bottom) && layout.bottom.mode === "statusbar" ? "statusbar" : "pane";
+    var widthSpec = function (region, fallback) {
+      var raw = layout[region] && layout[region].width;
+      if (isObject(raw)) {
+        return {
+          initial: Number.isFinite(Number(raw.initial)) ? Number(raw.initial) : fallback,
+          min: Number.isFinite(Number(raw.min)) ? Number(raw.min) : 140,
+          max: Number.isFinite(Number(raw.max)) ? Number(raw.max) : 620
+        };
+      }
+      var initial = Number(raw);
+      return {initial: Number.isFinite(initial) ? initial : fallback, min: 140, max: 620};
+    };
+    var leftSpec = widthSpec("left", 250);
+    var rightSpec = widthSpec("right", 300);
+    var stageMin = Number(stageLayout.min_width) || 360;
     var rec = {pageId: pageId, layout: layout, element: wb, panes: {}, buttons: {}, collapsed: {},
-      widths: {left: Number(layout.left && layout.left.width) || 250, right: Number(layout.right && layout.right.width) || 300},
+      widths: {left: leftSpec.initial, right: rightSpec.initial},
+      widthLimits: {left: leftSpec, right: rightSpec}, stageMin: stageMin,
       narrow: false, resize: null};
     this.workbenches.push(rec);
     var groups = {toolbar: [], left: [], stage: [], right: [], bottom: []};
@@ -1075,11 +1108,17 @@
           tabButton.addEventListener("click", function () { setActiveTab(tabName); });
           tabButton.addEventListener("keydown", function (event) {
             var delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-            if (!delta) return;
-            event.preventDefault();
-            var next = (tabIndex + delta + paneTabs.length) % paneTabs.length;
-            setActiveTab(paneTabs[next]);
-            tabButtons[paneTabs[next]].focus();
+            if (delta) {
+              event.preventDefault();
+              var next = (tabIndex + delta + paneTabs.length) % paneTabs.length;
+              setActiveTab(paneTabs[next]);
+              tabButtons[paneTabs[next]].focus();
+            } else if (event.key === "Home" || event.key === "End") {
+              event.preventDefault();
+              var edge = event.key === "Home" ? 0 : paneTabs.length - 1;
+              setActiveTab(paneTabs[edge]);
+              tabButtons[paneTabs[edge]].focus();
+            }
           });
           tabButton.addEventListener("focus", function () { setActiveTab(tabName); });
           tabBar.appendChild(tabButton);
@@ -1181,7 +1220,8 @@
     };
     ["left", "right"].forEach(function (region) {
       var storedWidth = stored(region, "width", rec.widths[region]);
-      if (isFinite(storedWidth) && storedWidth >= 140 && storedWidth <= 620) rec.widths[region] = storedWidth;
+      var limits = rec.widthLimits[region];
+      if (isFinite(storedWidth)) rec.widths[region] = Math.max(limits.min, Math.min(limits.max, storedWidth));
     });
     ["left", "right", "bottom"].forEach(function (region) {
       var collapsed = stored(region, "collapsed", false);
@@ -1198,12 +1238,27 @@
     };
     if (leftResize) leftResize.addEventListener("pointerdown", resizeStart("left"));
     if (rightResize) rightResize.addEventListener("pointerdown", resizeStart("right"));
+    var resetWidth = function (region) {
+      rec.widths[region] = rec.widthLimits[region].initial;
+      save(region, "width", rec.widths[region]);
+      self.workbenchApplyWidths(rec);
+      if (rec.updateNarrow) rec.updateNarrow();
+    };
+    if (leftResize) leftResize.addEventListener("dblclick", function () { resetWidth("left"); });
+    if (rightResize) rightResize.addEventListener("dblclick", function () { resetWidth("right"); });
     wb.addEventListener("pointermove", function (event) {
       if (!rec.resize) return;
       var dx = (event.clientX || 0) - rec.resize.x;
       var sign = rec.resize.region === "left" ? 1 : -1;
-      rec.widths[rec.resize.region] = Math.max(140, Math.min(620, rec.resize.width + sign * dx));
+      var region = rec.resize.region;
+      var limits = rec.widthLimits[region];
+      var other = region === "left" ? "right" : "left";
+      var otherWidth = rec.collapsed[other] ? 0 : rec.widths[other];
+      var bodyWidth = wb.clientWidth || 0;
+      var maxByStage = bodyWidth > 0 ? bodyWidth - otherWidth - rec.stageMin - 12 : limits.max;
+      rec.widths[region] = Math.max(limits.min, Math.min(limits.max, maxByStage, rec.resize.width + sign * dx));
       self.workbenchApplyWidths(rec);
+      if (rec.updateNarrow) rec.updateNarrow();
     });
     wb.addEventListener("pointerup", function () {
       if (!rec.resize) return;
@@ -1221,11 +1276,13 @@
     var updateNarrow = function () {
       var viewportWidth = typeof window !== "undefined" ? (window.innerWidth || 1200) : 1200;
       var bodyWidth = wb.clientWidth || viewportWidth;
-      var availableStage = bodyWidth - rec.widths.left - rec.widths.right;
+      var effectiveLeft = rec.collapsed.left ? 0 : rec.widths.left;
+      var effectiveRight = rec.collapsed.right ? 0 : rec.widths.right;
+      var availableStage = bodyWidth - effectiveLeft - effectiveRight;
       // an empty stage is not a layout: 900 px was not enough for a 360 px
       // editor pane plus a 380 px inspector, and exactly 900 px escaped the
       // old breakpoint. Use the actual remaining width, not only the viewport.
-      var narrow = viewportWidth <= 900 || availableStage < 360;
+      var narrow = viewportWidth <= 900 || availableStage < rec.stageMin;
       if (narrow === rec.narrow) return;
       var enteringNarrow = narrow && !rec.narrow;
       rec.narrow = narrow;
@@ -1250,6 +1307,40 @@
     if (!rec || !rec.element) return;
     rec.element.style.setProperty("--pui-workbench-left", rec.widths.left + "px");
     rec.element.style.setProperty("--pui-workbench-right", rec.widths.right + "px");
+  };
+
+  /** Structured layout diagnostics for tests and dev overlays. Hidden pages
+   * are omitted; stage overflow is the invariant hosts care about most. */
+  Renderer.prototype.layoutReport = function () {
+    var self = this;
+    var out = [];
+    (this.workbenches || []).forEach(function (rec) {
+      if (!rec.element || rec.element.hidden) return;
+      var panes = {};
+      Object.keys(rec.panes || {}).forEach(function (region) {
+        var pane = rec.panes[region];
+        if (!pane || pane.hidden) return;
+        var content = pane.querySelector(".pui-workbench-pane-content") || pane;
+        panes[region] = {
+          clientWidth: pane.clientWidth || 0,
+          clientHeight: pane.clientHeight || 0,
+          scrollHeight: content.scrollHeight || 0,
+          collapsed: !!rec.collapsed[region]
+        };
+      });
+      var stage = panes.stage || {};
+      out.push({
+        pageId: rec.pageId,
+        narrow: !!rec.narrow,
+        widths: {left: rec.widths.left, right: rec.widths.right},
+        limits: rec.widthLimits,
+        stageMin: rec.stageMin,
+        stage,
+        panes: panes,
+        stageOverflow: !!stage.scrollHeight && stage.scrollHeight > stage.clientHeight + 1
+      });
+    });
+    return {workbenches: out, overflow: out.some(function (entry) { return entry.stageOverflow; })};
   };
 
   Renderer.prototype.workbenchToggle = function (rec, region) {
@@ -3472,7 +3563,9 @@
   };
 
   Renderer.prototype.buildSlider = function (block) {
-    var field = Object.assign({}, block, {kind: "field", widget: block.widget || "range"});
+    var options = isObject(block.slider_options) ? block.slider_options : {};
+    var field = Object.assign({}, block, options, {kind: "field", widget: block.widget || "range"});
+    if (!field.orientation && options.orientation) field.orientation = options.orientation;
     var node = this.buildField(field);
     if (node && node.classList) node.classList.add("pui-big-slider");
     return node;
@@ -5337,8 +5430,7 @@
     return m + ":" + (s < 10 ? "0" : "") + s;
   };
 
-  Renderer.prototype.mediaTimelineSeek = function (rec, event) {
-    var target = event.currentTarget || event.target;
+  Renderer.prototype.mediaTimelineSeekAt = function (rec, event, target) {
     if (!target || !target.getBoundingClientRect) return;
     var rect = target.getBoundingClientRect();
     if (!rect.width) return;
@@ -5346,6 +5438,35 @@
     var time = x / rect.width * rec.value.duration;
     if (global.PupitreTimeline && global.PupitreTimeline.snapTime) time = global.PupitreTimeline.snapTime(time, rec.value.snap, rec.value.duration);
     this.mediaTimelineAction(rec, {op: "seek", time: time});
+  };
+
+  Renderer.prototype.mediaTimelineSeek = function (rec, event) {
+    this.mediaTimelineSeekAt(rec, event, event.currentTarget || event.target);
+  };
+
+  Renderer.prototype.mediaTimelineScrubStart = function (rec, event) {
+    if (!rec || !rec.value || (event.button !== undefined && event.button !== 0)) return;
+    if (event.target && event.target.closest && event.target.closest(".pui-media-clip")) return;
+    var target = event.currentTarget;
+    if (!target || !target.getBoundingClientRect) return;
+    if (event.preventDefault) event.preventDefault();
+    rec.scrub = {target: target};
+    this.mediaTimelineSeekAt(rec, event, target);
+    var self = this;
+    var move = function (moveEvent) { if (rec.scrub) self.mediaTimelineSeekAt(rec, moveEvent, rec.scrub.target); };
+    var end = function () {
+      rec.scrub = null;
+      if (typeof document !== "undefined" && document.removeEventListener) {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", end);
+        document.removeEventListener("pointercancel", end);
+      }
+    };
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", end);
+      document.addEventListener("pointercancel", end);
+    }
   };
 
   Renderer.prototype.mediaTimelineSelect = function (rec, trackId, clipId) {
@@ -5464,10 +5585,7 @@
       if (track.locked) label.appendChild(el("span", {class: "pui-media-track-state", text: rec.text("locked", "Locked")}));
       rec.labelsEl.appendChild(label);
       var lane = el("div", {class: "pui-media-lane", "data-track-id": track.id, role: "list", "aria-label": track.label});
-      lane.addEventListener("click", function (event) {
-        if (event.target && event.target.closest && event.target.closest(".pui-media-clip")) return;
-        self.mediaTimelineSeek(rec, event);
-      });
+      lane.addEventListener("pointerdown", function (event) { self.mediaTimelineScrubStart(rec, event); });
       track.clips.forEach(function (clip) {
         var clipEl = el("button", {type: "button", class: "pui-media-clip" + (clip.selected ? " is-selected" : "") + (clip.disabled ? " is-disabled" : ""),
           role: "listitem", "data-track-id": track.id, "data-clip-id": clip.id, "aria-label": clip.label + " · " + self.mediaTimelineTime(clip.start, data) + " – " + self.mediaTimelineTime(clip.end, data),
@@ -5573,7 +5691,7 @@
     var stage = el("div", {class: "pui-media-timeline-stage"});
     var corner = el("div", {class: "pui-media-corner", "aria-hidden": "true"});
     var ruler = el("div", {class: "pui-media-ruler", "aria-hidden": "true"});
-    ruler.addEventListener("click", function (event) { self.mediaTimelineSeek(rec, event); });
+    ruler.addEventListener("pointerdown", function (event) { self.mediaTimelineScrubStart(rec, event); });
     var labelsEl = el("div", {class: "pui-media-track-labels"});
     var lanesEl = el("div", {class: "pui-media-lanes"});
     stage.appendChild(corner); stage.appendChild(ruler); stage.appendChild(labelsEl); stage.appendChild(lanesEl);
@@ -7188,6 +7306,29 @@
     return global.PupitreTimeline ? global.PupitreTimeline.formatTime(seconds) : String(seconds);
   };
 
+  Renderer.prototype.timelineScale = function (track, value) {
+    var Timeline = global.PupitreTimeline;
+    if (!Timeline || !isObject(track)) return null;
+    var keys = Timeline.keysForTrack(value, track.id).filter(function (key) {
+      return isObject(key) && isFinite(Number(key.value));
+    });
+    var min = track.min !== undefined && isFinite(Number(track.min)) ? Number(track.min) : Infinity;
+    var max = track.max !== undefined && isFinite(Number(track.max)) ? Number(track.max) : -Infinity;
+    if (!isFinite(min) || !isFinite(max) || max <= min) {
+      min = keys.length ? Math.min.apply(null, keys.map(function (key) { return Number(key.value); })) : 0;
+      max = keys.length ? Math.max.apply(null, keys.map(function (key) { return Number(key.value); })) : 1;
+    }
+    if (!isFinite(min) || !isFinite(max) || max <= min) { min -= 1; max += 1; }
+    return {min: min, max: max, span: max - min};
+  };
+
+  Renderer.prototype.timelineValuePercent = function (scale, value) {
+    if (!scale) return 50;
+    var ratio = (Number(value) - scale.min) / scale.span;
+    if (!isFinite(ratio)) ratio = 0;
+    return (100 - Math.max(0, Math.min(1, ratio)) * 100).toFixed(3);
+  };
+
   Renderer.prototype.timelineCurvePath = function (track, value, duration) {
     var Timeline = global.PupitreTimeline;
     if (!Timeline) return "";
@@ -7195,16 +7336,10 @@
       return isObject(key) && isFinite(Number(key.time)) && isFinite(Number(key.value));
     });
     if (!keys.length) return "";
-    var min = track.min !== undefined && isFinite(Number(track.min)) ? Number(track.min) : Infinity;
-    var max = track.max !== undefined && isFinite(Number(track.max)) ? Number(track.max) : -Infinity;
-    if (!isFinite(min) || !isFinite(max) || max <= min) {
-      min = Math.min.apply(null, keys.map(function (key) { return Number(key.value); }));
-      max = Math.max.apply(null, keys.map(function (key) { return Number(key.value); }));
-    }
-    if (!isFinite(min) || !isFinite(max) || max <= min) { min -= 1; max += 1; }
-    var span = max - min;
+    var scale = this.timelineScale(track, value);
+    var min = scale.min, max = scale.max, span = scale.span;
     var x = function (time) { return Timeline.timeToPercent(time, duration); };
-    var y = function (value) { return 100 - Math.max(0, Math.min(1, (Number(value) - min) / span)) * 100; };
+    var y = function (value) { return Number(this.timelineValuePercent(scale, value)); }.bind(this);
     var points = [[0, y(keys[0].value)]];
     keys.forEach(function (key, index) {
       points.push([x(key.time), y(key.value)]);
@@ -7283,9 +7418,15 @@
     rec.playheadInput = playheadInput;
     rec.playheadOutput = playheadOutput;
     this.timelineRender(rec);
-    root.addEventListener("pointermove", function (event) { self.timelineDragMove(rec, event); });
-    root.addEventListener("pointerup", function (event) { self.timelineDragEnd(rec, event); });
-    root.addEventListener("pointercancel", function () { self.timelineDragEnd(rec); });
+    root.addEventListener("pointermove", function (event) {
+      if (rec.drag) self.timelineDragMove(rec, event);
+      else if (rec.scrub) self.timelineScrub(rec, event);
+    });
+    root.addEventListener("pointerup", function (event) {
+      rec.scrub = null;
+      self.timelineDragEnd(rec, event);
+    });
+    root.addEventListener("pointercancel", function () { rec.scrub = null; self.timelineDragEnd(rec); });
     root.addEventListener("keydown", function (event) { self.timelineKeydown(rec, event); });
     return root;
   };
@@ -7327,7 +7468,19 @@
         if (event.target && event.target.closest && event.target.closest(".pui-timeline-key")) return;
         rec.selectedTrackId = trackId;
         var box = lane.getBoundingClientRect ? lane.getBoundingClientRect() : {left: 0, width: 1};
+        rec.scrub = {lane: lane};
         self.timelineSetPlayhead(rec, Timeline.xToTime((event.clientX || 0) - box.left, box.width || 1, duration));
+        if (lane.setPointerCapture && event.pointerId !== undefined) {
+          try { lane.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+        }
+      });
+      lane.addEventListener("dblclick", function (event) {
+        if (rec.block.readonly || (event.target && event.target.closest && event.target.closest(".pui-timeline-key"))) return;
+        var box = lane.getBoundingClientRect ? lane.getBoundingClientRect() : {left: 0, width: 1, height: 1};
+        var time = Timeline.xToTime((event.clientX || 0) - box.left, box.width || 1, duration);
+        var scale = self.timelineScale(track, value);
+        var valueAt = scale ? scale.max - Math.max(0, Math.min(1, ((event.clientY || 0) - box.top) / Math.max(1, box.height))) * scale.span : 0;
+        self.timelineAddKeyAt(rec, trackId, time, Number(valueAt.toFixed(4)));
       });
       var curvePath = self.timelineCurvePath(track, value, duration);
       if (curvePath) {
@@ -7337,14 +7490,24 @@
       }
       Timeline.keysForTrack(value, trackId).forEach(function (key) {
         if (!isObject(key)) return;
-        var button = el("button", {type: "button", class: "pui-timeline-key is-" + String(key.curve || "linear") + (rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? " is-selected" : ""), style: "left:" + Timeline.timeToPercent(key.time, duration) + "%;", "data-key-id": String(key.id || "")});
+        var trackScale = self.timelineScale(track, value);
+        var keyTop = Math.max(6, Math.min(94, Number(self.timelineValuePercent(trackScale, key.value))));
+        var keyStyle = "left:" + Timeline.timeToPercent(key.time, duration) + "%;top:" + keyTop.toFixed(3) + "%;";
+        if (track.color) keyStyle += "--pui-timeline-key-color:" + String(track.color) + ";";
+        var button = el("button", {type: "button", class: "pui-timeline-key is-" + String(key.curve || "linear") + (rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? " is-selected" : ""), style: keyStyle, "data-key-id": String(key.id || ""), "data-key-value": String(key.value)});
         button.setAttribute("aria-label", Timeline.keyLabel(key));
+        button.title = Timeline.keyLabel(key);
         button.setAttribute("aria-pressed", rec.selectedKey && String(rec.selectedKey.id) === String(key.id) ? "true" : "false");
         button.addEventListener("pointerdown", function (event) {
           if (event.stopPropagation) event.stopPropagation();
           if (rec.block.readonly) { self.timelineSelectKey(rec, key); return; }
           self.timelineSelectKey(rec, key, true);
-          rec.drag = {key: key, startTime: Number(key.time) || 0, x: event.clientX || 0, lane: lane, moved: false};
+          var box = lane.getBoundingClientRect ? lane.getBoundingClientRect() : {width: 1, height: 1};
+          rec.drag = {key: key, startTime: Number(key.time) || 0, startValue: Number(key.value) || 0, x: event.clientX || 0, y: event.clientY || 0,
+            lane: lane, box: box, scale: self.timelineScale(track, value), moved: false};
+          if (button.setPointerCapture && event.pointerId !== undefined) {
+            try { button.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+          }
         });
         button.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.timelineSelectKey(rec, key); });
         rec.keyEls[String(key.id || "")] = button;
@@ -7401,6 +7564,17 @@
       self.timelineRender(rec);
     });
     inspector.appendChild(timeInput);
+    var removeKey = el("button", {type: "button", class: "pui-button pui-timeline-remove-key", text: "Delete key"});
+    removeKey.disabled = !!rec.block.readonly;
+    removeKey.addEventListener("click", function () {
+      if (rec.block.readonly) return;
+      var id = rec.selectedKey && rec.selectedKey.id;
+      rec.value.keys = (rec.value.keys || []).filter(function (key) { return String(key.id) !== String(id); });
+      rec.selectedKey = null;
+      self.writeTimeline(rec, {op: "key.delete", id: id});
+      self.timelineRender(rec);
+    });
+    inspector.appendChild(removeKey);
     rec.root.appendChild(inspector);
   };
 
@@ -7432,35 +7606,63 @@
     if (!rec.block.readonly) this.writeTimeline(rec, {op: "playhead.set", time: next});
   };
 
-  Renderer.prototype.timelineAddKey = function (rec) {
-    if (rec.block.readonly) return null;
+  Renderer.prototype.timelineAddKeyAt = function (rec, trackId, time, value) {
+    if (!rec || rec.block.readonly) return null;
     var Timeline = global.PupitreTimeline;
-    var track = rec.selectedTrackId || (rec.value.tracks && rec.value.tracks[0] && rec.value.tracks[0].id);
+    var track = trackId !== undefined && trackId !== null ? trackId : (rec.selectedTrackId || (rec.value.tracks && rec.value.tracks[0] && rec.value.tracks[0].id));
     if (track === undefined || track === null) return null;
     var trackDef = Timeline.findTrack(rec.value, track);
+    var duration = Number(rec.value.duration) > 0 ? Number(rec.value.duration) : 1;
     var index = 1;
     while ((rec.value.keys || []).some(function (key) { return String(key.id) === "k" + index; })) index++;
-    var key = {id: "k" + index, track: String(track), time: Number(rec.value.playhead) || 0, value: trackDef && trackDef.default !== undefined ? trackDef.default : 0, curve: "linear"};
+    var key = {
+      id: "k" + index, track: String(track),
+      time: Timeline.snapTime(Number(time) || 0, rec.options.snap, duration),
+      value: value === undefined || value === null ? (trackDef && trackDef.default !== undefined ? trackDef.default : 0) : Number(value),
+      curve: "linear"
+    };
     rec.value.keys = (rec.value.keys || []).concat([key]);
     rec.selectedKey = key;
-    this.writeTimeline(rec, {op: "key.add", id: key.id});
+    this.writeTimeline(rec, {op: "key.add", id: key.id, time: key.time, value: key.value});
     this.timelineRender(rec);
     return key.id;
+  };
+
+  Renderer.prototype.timelineAddKey = function (rec) {
+    return this.timelineAddKeyAt(rec, rec.selectedTrackId, Number(rec.value.playhead) || 0);
+  };
+
+  Renderer.prototype.timelineScrub = function (rec, event) {
+    if (!rec || !rec.scrub || !rec.scrub.lane) return;
+    var Timeline = global.PupitreTimeline;
+    var box = rec.scrub.lane.getBoundingClientRect ? rec.scrub.lane.getBoundingClientRect() : {left: 0, width: 1};
+    var duration = Number(rec.value.duration) > 0 ? Number(rec.value.duration) : 1;
+    var time = Timeline.xToTime((event.clientX || 0) - box.left, box.width || 1, duration);
+    this.timelineSetPlayhead(rec, Timeline.snapTime(time, rec.options.snap, duration));
   };
 
   Renderer.prototype.timelineDragMove = function (rec, event) {
     if (!rec || !rec.drag || rec.block.readonly) return;
     var dx = (event.clientX || 0) - rec.drag.x;
-    if (!rec.drag.moved && Math.abs(dx) < 2) return;
+    var dy = (event.clientY || 0) - rec.drag.y;
+    if (!rec.drag.moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
     rec.drag.moved = true;
-    var box = rec.drag.lane.getBoundingClientRect ? rec.drag.lane.getBoundingClientRect() : {width: 1};
+    var box = rec.drag.box || (rec.drag.lane.getBoundingClientRect ? rec.drag.lane.getBoundingClientRect() : {width: 1, height: 1});
     var duration = Number(rec.value.duration) > 0 ? Number(rec.value.duration) : 1;
     var delta = dx / Math.max(1, box.width || 1) * duration;
     rec.drag.key.time = global.PupitreTimeline.snapTime(rec.drag.startTime + delta, rec.options.snap, duration);
+    if (rec.drag.scale && box.height) {
+      rec.drag.key.value = Number((rec.drag.startValue - dy / Math.max(1, box.height) * rec.drag.scale.span).toFixed(4));
+      rec.drag.key.value = Math.max(rec.drag.scale.min, Math.min(rec.drag.scale.max, rec.drag.key.value));
+    }
     var keyEl = rec.keyEls && rec.keyEls[String(rec.drag.key.id)];
     if (keyEl) {
       keyEl.style.left = global.PupitreTimeline.timeToPercent(rec.drag.key.time, duration) + "%";
+      var dragTop = Math.max(6, Math.min(94, Number(this.timelineValuePercent(rec.drag.scale, rec.drag.key.value))));
+      keyEl.style.top = dragTop.toFixed(3) + "%";
+      keyEl.setAttribute("data-key-value", String(rec.drag.key.value));
       keyEl.setAttribute("aria-label", global.PupitreTimeline.keyLabel(rec.drag.key));
+      keyEl.title = global.PupitreTimeline.keyLabel(rec.drag.key);
     }
   };
 
@@ -7469,7 +7671,7 @@
     var drag = rec.drag;
     rec.drag = null;
     if (drag.moved) {
-      this.writeTimeline(rec, {op: "key.move", id: drag.key.id, time: drag.key.time});
+      this.writeTimeline(rec, {op: "key.move", id: drag.key.id, time: drag.key.time, value: drag.key.value});
       this.timelineRender(rec);
     }
   };
@@ -7554,7 +7756,38 @@
     } else if (widget === "readout" || widget === "none") {
       this.buildReadoutInto(root, field, rec);
     } else {
-      if (widget !== "button" && widget !== "impulse") {
+      var knobNumber = null;
+      if (widget === "knob") {
+        root.classList.add("is-knob");
+        var knobCaption = el("div", {class: "pui-knob-caption"});
+        var knobCap = caption(field, id);
+        knobCaption.appendChild(knobCap);
+        var knobNumberRow = el("div", {class: "pui-knob-number-row"});
+        knobNumber = el("input", {
+          type: "text", class: "pui-knob-number", inputmode: "decimal",
+          "aria-label": this.labelText(field) + " value",
+        });
+        var initialKnobValue = this.value(rec);
+        knobNumber.value = isMixedValue(initialKnobValue) ? "" : valueText(initialKnobValue, field);
+        knobNumber.placeholder = isMixedValue(initialKnobValue) ? "—" : "";
+        knobNumberRow.appendChild(knobNumber);
+        var knobReset = this.resetButton(field, path);
+        if (knobReset) {
+          rec.resetEl = knobReset;
+          knobReset.style.visibility = "hidden";
+          knobReset.setAttribute("aria-hidden", "true");
+          knobNumberRow.appendChild(knobReset);
+        }
+        knobCaption.appendChild(knobNumberRow);
+        root.appendChild(knobCaption);
+        rec.label = knobCap;
+        rec.labelTextEl = knobCap;
+        if (field.help) {
+          var knobHelp = this.helpEl(field, id);
+          root.appendChild(knobHelp);
+          rec.helpEl = knobHelp;
+        }
+      } else if (widget !== "button" && widget !== "impulse") {
         var cap = caption(field, id);
         root.appendChild(cap);
         rec.label = cap;
@@ -7567,7 +7800,14 @@
       }
       var control = this.controlFor(field, widget, id, rec);
       if (!control) return el("p", {class: "pui-missing", text: "(no widget for " + widget + ")"});
-      if (widget !== "button" && widget !== "impulse") {
+      if (widget === "knob") {
+        var knobRow = el("div", {class: "pui-control-row"});
+        knobRow.appendChild(control);
+        root.appendChild(knobRow);
+        rec.knobNumber = knobNumber;
+        rec.inputs.push(knobNumber);
+        this.bindKnobNumber(rec, knobNumber);
+      } else if (widget !== "button" && widget !== "impulse") {
         var row = el("div", {class: "pui-control-row"});
         row.appendChild(control);
         var reset = this.resetButton(field, path);
@@ -7591,6 +7831,51 @@
     if (field.visible_when || field.enabled_when) rec.conditional = true;
     this.updateModified(rec);
     return root;
+  };
+
+  // The knob's numeric value lives under the parameter caption, not inside the
+  // dial. This keeps both the label and value readable while a finger covers
+  // the rotary, and makes exact typing a first-class input.
+  Renderer.prototype.bindKnobNumber = function (rec, input) {
+    var self = this;
+    var committed = false;
+    var commit = function () {
+      if (committed) return;
+      committed = true;
+      var text = String(input.value || "").trim().replace(",", ".");
+      var parsed = Number(text);
+      rec.knobEditing = false;
+      if (text !== "" && isFinite(parsed)) {
+        rec.knobApply(parsed, true, true);
+        input.value = rec.knobText(parsed);
+      } else {
+        input.value = rec.knobText(self.value(rec));
+      }
+      committed = false;
+    };
+    input.addEventListener("focus", function () {
+      rec.knobEditing = true;
+      if (input.select) input.select();
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        commit();
+        if (input.select) input.select();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        rec.knobEditing = false;
+        input.value = rec.knobText(self.value(rec));
+        if (input.blur) input.blur();
+        if (rec.control && rec.control.focus) rec.control.focus();
+      } else {
+        event.stopPropagation();
+      }
+    });
+    input.addEventListener("change", commit);
+    input.addEventListener("blur", commit);
   };
 
   Renderer.prototype.scrubHandle = function (rec, field, read, write, label) {
@@ -7670,7 +7955,9 @@
     var self = this;
     var path = rec.path;
     if (widget === "range") {
-      var row = el("div", {class: "pui-range"});
+      var vertical = String(field.orientation || "").toLowerCase() === "vertical";
+      if (vertical) rec.root.classList.add("is-vertical");
+      var row = el("div", {class: "pui-range" + (vertical ? " is-vertical" : "")});
       var range = el("input", {type: "range", id: id, "data-pui-bind": path});
       var current = this.value(rec);
       var mixed = isMixedValue(current);
@@ -7678,6 +7965,10 @@
       range.max = String(field.max !== undefined ? field.max : 1);
       range.step = String(field.step !== undefined ? field.step : 0.01);
       range.value = mixed ? range.min : String(this.numberValue(rec));
+      range.setAttribute("aria-orientation", vertical ? "vertical" : "horizontal");
+      range.title = "Drag or wheel: Shift ×10, Alt ×0.1. Double-click the scrub handle to reset.";
+      var paintRange = function () { paintRangeFill(range); };
+      paintRange();
       var number = el("input", {type: "number", class: "pui-number-input", "aria-label": this.labelText(field) + " — precise value"});
       number.min = range.min; number.max = range.max; number.step = range.step;
       number.value = mixed ? "" : formatNumeric(this.numberValue(rec), field);
@@ -7694,6 +7985,7 @@
         rec.rangeValue = next;
         range.value = String(next);
         number.value = formatNumeric(next, field);
+        paintRange();
         rec.root.classList.remove("is-mixed");
         number.placeholder = "";
         var throttle = Number(field.throttle);
@@ -7727,7 +8019,7 @@
       };
       range.addEventListener("wheel", function (event) { nudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
       number.addEventListener("wheel", function (event) { nudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
-      range.addEventListener("input", function () { emit(Number(range.value), false); });
+      range.addEventListener("input", function () { paintRange(); emit(Number(range.value), false); });
       number.addEventListener("change", function () { emit(Number(number.value), true); });
       range.addEventListener("pointerdown", function () { rec.dragging = true; });
       range.addEventListener("pointerup", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
@@ -7735,7 +8027,7 @@
       var rangeScrub = this.scrubHandle(rec, field, function () { return Number(range.value); }, function (value, final) { emit(value, final); }, this.labelText(field));
       row.appendChild(range); row.appendChild(number); row.appendChild(rangeScrub);
       rec.inputs = [range, number, rangeScrub];
-      rec.range = range; rec.number = number;
+      rec.range = range; rec.number = number; rec.rangePaint = paintRange;
       rec.control = range;
       return row;
     }
@@ -7779,6 +8071,10 @@
         readout.textContent = mixed ? "—" : knobText(Number(value));
         knob.setAttribute("aria-valuenow", String(mixed ? min : Number(value)));
         knob.setAttribute("aria-valuetext", mixed ? "mixed" : knobText(Number(value)) + (field.unit ? " " + field.unit : ""));
+        if (rec.knobNumber && (typeof document === "undefined" || document.activeElement !== rec.knobNumber)) {
+          rec.knobNumber.value = mixed ? "" : knobText(Number(value));
+          rec.knobNumber.placeholder = mixed ? "—" : "";
+        }
         rec.root.classList.toggle("is-mixed", !!mixed);
       };
       var applyKnob = function (value, final, exact) {
@@ -7827,6 +8123,14 @@
       };
       var beginKnobEdit = function (seed, selectAll) {
         if (!knob || rec.knobInput) return;
+        if (rec.knobNumber) {
+          rec.knobEditing = true;
+          rec.knobNumber.value = seed === null || seed === undefined ? knobText(readKnob()) : String(seed);
+          if (rec.knobNumber.focus) rec.knobNumber.focus();
+          if (rec.knobNumber.select && selectAll) rec.knobNumber.select();
+          else if (rec.knobNumber.setSelectionRange) rec.knobNumber.setSelectionRange(rec.knobNumber.value.length, rec.knobNumber.value.length);
+          return;
+        }
         var input = el("input", {
           type: "text", class: "pui-knob-input", inputmode: "decimal",
           "aria-label": self.labelText(field) + " — type a value",
@@ -7985,6 +8289,8 @@
         }
       });
       rec.knobPaint = paintKnob;
+      rec.knobApply = applyKnob;
+      rec.knobText = knobText;
       paintKnob(this.value(rec), isMixedValue(this.value(rec)));
       rec.control = knob;
       rec.inputs = [knob];
@@ -8901,6 +9207,10 @@
     trigger.addEventListener("click", function () { if (popup.hidden) openMenu(); else closeMenu(); });
     close.addEventListener("click", closeMenu);
     popup.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); closeMenu(); } });
+    popup.addEventListener("click", function (event) {
+      var target = event.target && event.target.closest ? event.target.closest(".pui-actions button, .pui-actions a") : null;
+      if (target) setTimeout(closeMenu, 0);
+    });
     root.appendChild(trigger);
     root.appendChild(popup);
     return root;
@@ -11095,6 +11405,13 @@
     }
     this.refreshConditions();
     this.layoutToolbars();
+    this.paintRanges();
+  };
+
+  Renderer.prototype.paintRanges = function () {
+    if (!this.root || !this.root.querySelectorAll) return;
+    var ranges = this.root.querySelectorAll('input[type="range"]');
+    for (var i = 0; i < ranges.length; i++) paintRangeFill(ranges[i]);
   };
 
   Renderer.prototype.fieldStatus = function (rec) {
@@ -11171,11 +11488,12 @@
       rec.number.placeholder = "";
       rec.range.value = String(Number(value));
       rec.number.value = formatNumeric(value, rec.block);
+      if (rec.rangePaint) rec.rangePaint();
       rec.control.setAttribute("aria-valuetext", valueText(value, rec.block));
       return;
     }
     if (rec.widget === "knob") {
-      if (rec.dragging || active === rec.control) return;
+      if (rec.dragging || active === rec.control || active === rec.knobNumber || rec.knobInput) return;
       if (isMixedValue(value)) { if (rec.knobPaint) rec.knobPaint(rec.block.min !== undefined ? Number(rec.block.min) : 0, true); return; }
       if (rec.knobPaint) rec.knobPaint(Number(value), false);
       return;
