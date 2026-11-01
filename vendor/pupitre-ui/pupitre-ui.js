@@ -986,9 +986,12 @@
     if (typeof window === "undefined" || !window.location) return {};
     var raw = String(window.location.hash || "").replace(/^#/, "");
     var params = {};
+    var decode = function (text) {
+      try { return decodeURIComponent(text); } catch (error) { return text; }
+    };
     raw.split("&").forEach(function (part) {
       var pair = part.split("=");
-      if (pair[0]) params[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || "");
+      if (pair[0]) params[decode(pair[0])] = decode(pair[1] || "");
     });
     return params;
   };
@@ -11731,10 +11734,24 @@
     this.performAction(item, button, {});
   };
 
-  Renderer.prototype.defaultAction = function (item) {
-    if (isObject(item.set) && Number(item.morph) > 0) {
+  /** Apply an action's `set` map. Returns true/false or a host Promise. */
+  Renderer.prototype.actionSet = function (item) {
+    if (!isObject(item.set)) return true;
+    if (Number(item.morph) > 0) {
       return morph(this.adapter, item.set, Number(item.morph), String(item.easing || "linear")).then(function () { return true; });
     }
+    if (typeof this.adapter.setValues === "function") return this.adapter.setValues(item.set);
+    var ok = true;
+    var paths = Object.keys(item.set);
+    for (var i = 0; i < paths.length; i++) {
+      if (!this.setPath(paths[i], item.set[paths[i]], null)) ok = false;
+    }
+    return ok;
+  };
+
+  /** Dispatch the action's command after `set`. Returns undefined for a
+   * set-only action, otherwise the host bool/Promise. */
+  Renderer.prototype.actionCommand = function (item) {
     if (item.collection_bind) {
       if (item.id === "add" && typeof this.adapter.addCollectionItem === "function") {
         return this.adapter.addCollectionItem(item.collection_bind, item);
@@ -11753,22 +11770,34 @@
         return this.adapter.callAction(String(item.call), Object.assign({}, isObject(item.args) ? item.args : {}, extra));
       }
     }
-    var ok = true;
-    if (isObject(item.set)) {
-      if (typeof this.adapter.setValues === "function") return this.adapter.setValues(item.set);
-      var paths = Object.keys(item.set);
-      for (var i = 0; i < paths.length; i++) {
-        if (!this.setPath(paths[i], item.set[paths[i]], null)) ok = false;
-      }
-      return ok;
-    }
     if (item.call) return this.adapter.callAction(String(item.call), isObject(item.args) ? item.args : {});
     if (item.custom) {
       if (this.adapter.callCustom) return this.adapter.callCustom(String(item.custom), isObject(item.args) ? item.args : {});
       return this.adapter.callAction(String(item.custom), isObject(item.args) ? item.args : {});
     }
     if (item.bind) return this.adapter.setValue(String(item.bind), null, null);
-    return false;
+    return undefined;
+  };
+
+  /** Fallback action semantics: values first, then the command. A rejected
+   * set (false or rejected Promise) suppresses the command. Async set maps
+   * sequence the command after the host confirms the writes. */
+  Renderer.prototype.defaultAction = function (item) {
+    var self = this;
+    var command = function () {
+      var result = self.actionCommand(item);
+      return result === undefined ? true : result;
+    };
+    var set = this.actionSet(item);
+    if (set && typeof set.then === "function") {
+      return set.then(function (result) { return result === false ? false : command(); });
+    }
+    if (set === false) return false;
+    if (!isObject(item.set)) {
+      var direct = this.actionCommand(item);
+      return direct === undefined ? false : direct;
+    }
+    return command();
   };
 
   Renderer.prototype.actionStatus = function (record, textValue, error) {
