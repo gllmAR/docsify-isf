@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.32.3
+ * docsify-isf v1.33.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.32.3";
+    var VERSION = "1.33.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5392,6 +5392,57 @@
             ".isf-block{--isf-bg:#fff;--isf-drawer-bg:#fbfbfc;--isf-surface:#f6f7f9;--isf-surface-2:#eceef2;--isf-border:#e2e4e9;--isf-text:#1c1e22;--isf-muted:#6b7280;--isf-accent:var(--theme-color,#d374d6);--isf-accent-contrast:#fff;--isf-danger:#e5484d;--isf-code-bg:#16181d;--isf-code-text:#c8ccd4;--isf-code-com:#6b7280;--isf-code-kw:#c678dd;--isf-code-type:#e5c07b;--isf-code-fn:#61afef;--isf-code-isf:#56b6c2;--isf-code-num:#d19a66;--isf-code-str:#98c379;--isf-code-var:#e06c75;position:relative;margin:1.1rem 0;border:1px solid var(--isf-border);border-radius:12px;background:var(--isf-bg);overflow:hidden;box-shadow:0 10px 30px rgba(15,18,25,.09);contain:content}",
             "@media (prefers-color-scheme:dark){.isf-block{--isf-bg:#1e1f22;--isf-drawer-bg:#1b1c21;--isf-surface:#24262b;--isf-surface-2:#2b2d33;--isf-border:#34373e;--isf-text:#f0f1f3;--isf-muted:#9aa0a6;--isf-danger:#ff6369;--isf-code-bg:#131418}}",
             ".isf-block *{box-sizing:border-box}",
+            // True PUI workbench shell: Material left, render centre, inspector
+            // right, playback/status bottom. The host only sizes the mount;
+            // PUI owns the height chain and narrow-pane overlays.
+            ".isf-block.isf-workbench-mode{height:clamp(500px,74vh,780px);display:flex;flex-direction:column}",
+            ".isf-block.isf-workbench-mode.isf-bare,.isf-block.isf-workbench-mode.isf-fullscreen,.isf-block.isf-workbench-mode:fullscreen{height:100vh!important;height:100dvh!important}",
+            ".isf-workbench{position:relative;flex:1 1 auto;min-height:0;height:100%;display:flex;flex-direction:column;background:var(--isf-bg)}",
+            ".isf-workbench-ready > .isf-fallback{display:none}",
+            ".isf-fallback{display:flex;flex-direction:column;height:100%;min-height:0}",
+            ".isf-fallback .isf-body{flex:1 1 auto;min-height:0}",
+            ".isf-fallback .isf-stage{height:100%!important;min-height:0!important;aspect-ratio:auto!important}",
+            ".isf-workbench > .pui{height:100%;min-height:0;flex:1 1 auto}",
+            ".isf-workbench .pui-workbench{height:100%;min-height:0;display:flex;flex-direction:column}",
+            ".isf-workbench .pui-workbench-body{flex:1 1 auto;min-height:0;max-height:none}",
+            ".isf-workbench .pui-workbench-pane.is-left,.isf-workbench .pui-workbench-pane.is-right{background:var(--isf-bg)!important}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-content,.isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{background:var(--isf-bg)}",
+            ".isf-workbench .pui-workbench-pane.is-bottom{max-height:132px;background:var(--isf-surface)!important}",
+            ".isf-workbench .pui-workbench-pane.is-bottom .pui-workbench-pane-title{display:none}",
+            ".isf-workbench .pui-workbench-pane.is-stage{min-height:0!important}",
+            ".isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-content{padding:0;overflow:hidden;display:flex;flex-direction:column}",
+            ".isf-workbench .pui-workbench-pane.is-stage .pui-section{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0}",
+            ".isf-workbench .pui-workbench-pane.is-stage .pui-fields{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}",
+            ".isf-workbench .pui-workbench-pane.is-stage .pui-slot{flex:1 1 auto;min-height:0;height:100%}",
+            ".isf-workbench-stage{height:100%!important;min-height:0!important;aspect-ratio:auto!important;flex:1 1 auto!important;display:flex;flex-direction:column;background:#0b0c10;overflow:hidden;border-radius:0}",
+            ".isf-workbench-stage .isf-canvas{width:100%;height:100%;min-height:0;flex:1 1 auto;aspect-ratio:auto;object-fit:contain}",
+            ".isf-workbench-stage .isf-overlay{inset:0}",
+            ".isf-workbench .isf-view-panel{display:flex;flex-direction:column;gap:.55rem;padding:.1rem 0}",
+            ".isf-workbench .isf-view .isf-view-heading{display:none}",
+            ".isf-workbench .isf-view .isf-time-row{display:none}",
+            ".isf-workbench .isf-view .isf-view-row{gap:.5rem}",
+            ".isf-workbench .isf-view-row .isf-view-label{min-width:5.6rem}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-content{display:flex;flex-direction:column;overflow:hidden;padding:0}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-section{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-fields{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot{flex:1 1 auto;min-height:0;height:100%}",
+            ".isf-workbench .isf-editor-wrap{height:100%;min-height:0;display:flex;flex-direction:column}",
+            ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto}",
+            ".isf-workbench .isf-panel-intro{display:none!important}",
+            ".isf-workbench .pui-workbench-description{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:72ch}",
+            ".isf-workbench .pui-workbench-titlebar-toggle{min-width:28px;min-height:28px;font-size:12px}",
+            ".isf-workbench .isf-params{padding:0;background:transparent}",
+            ".isf-workbench .isf-editor-head{min-height:32px}",
+            ".isf-block:fullscreen.isf-workbench-mode,.isf-block.isf-fullscreen.isf-workbench-mode{height:100vh;height:100dvh;display:flex;flex-direction:column}",
+            ".isf-block:fullscreen .isf-workbench,.isf-block.isf-fullscreen .isf-workbench{height:100vh;height:100dvh;flex:1 1 auto;min-height:0}",
+            ".isf-block:fullscreen .isf-workbench .pui-workbench-body,.isf-block.isf-fullscreen .isf-workbench .pui-workbench-body{flex:1 1 auto;min-height:0}",
+            ".isf-block:fullscreen .isf-workbench-stage,.isf-block.isf-fullscreen .isf-workbench-stage{height:100%!important;min-height:0}",
+            ".isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-toolbar,.isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-left,.isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-right,.isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-bottom{display:none!important}",
+            ".isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-body{border:0;border-radius:0;min-height:0}",
+            ".isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-stage{flex:1 1 auto;min-height:0}",
+            ".isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-title{display:none}",
+            ".isf-bare:not(.isf-revealed) .isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-content{padding:0}",
+            "@media (max-width:600px){.isf-block.isf-workbench-mode{height:min(82vh,780px)}.isf-workbench-mode .isf-stage{height:100%!important;aspect-ratio:auto!important}.isf-workbench .pui-workbench-pane.is-left,.isf-workbench .pui-workbench-pane.is-right{width:min(88vw,360px)}.isf-workbench .pui-workbench-pane.is-bottom{max-height:140px}.isf-workbench .isf-view-row .isf-view-label{min-width:4.8rem}}",
             ".isf-header{position:absolute;top:0;left:0;right:0;z-index:9;display:flex;align-items:center;gap:.35rem;padding:.12rem max(.35rem,env(safe-area-inset-left)) .12rem max(.35rem,env(safe-area-inset-right));border-bottom:0;background:linear-gradient(180deg,color-mix(in srgb,var(--isf-bg) 78%,transparent),color-mix(in srgb,var(--isf-bg) 18%,transparent));-webkit-backdrop-filter:blur(14px) saturate(130%);backdrop-filter:blur(14px) saturate(130%);box-shadow:none;pointer-events:none;transition:background .15s ease,opacity .25s ease}",
             ".isf-header.isf-header-idle{opacity:.32}",
             "@media (prefers-reduced-motion:reduce){.isf-header{transition:none}}",
@@ -6313,13 +6364,9 @@
             }
         });
         viewer.pui = { ui: ui, adapter: adapter, mount: mount, host: viewer.puiHost };
-        var document = adapter.document();
-        document.panels[0].pages[0].sections.push({
-            id: "view",
-            title: "View",
-            blocks: [{kind: "isf.view", id: "view", label: "View"}]
-        });
-        ui.render(document);
+        // The View controls live in the workbench inspector pane, not in the
+        // parameters document: PUI owns the tabs, the host keeps the widgets.
+        ui.render(adapter.document());
         return markPUIParams(container, viewer);
     }
 
@@ -7836,10 +7883,9 @@
 
         var inspectorPUIHost = h("div", "isf-pui isf-inspector-pui isf-hidden", { id: uid + "-inspector-pui" });
         var editorPUIHost = h("div", "isf-pui isf-editor-pui isf-hidden", { id: uid + "-editor-pui" });
-        // Two contextual PUI drawers: Parameters on the right, the source
-        // editor on the left. They are anchored to this viewer's stage.
-        stage.appendChild(inspectorPUIHost);
-        stage.appendChild(editorPUIHost);
+        var viewPanel = h("div", "isf-view-panel");
+        var workbenchHost = h("div", "isf-workbench isf-pui isf-hidden", { id: uid + "-workbench" });
+        block.classList.add("isf-workbench-mode");
 
         var editor = null;
         if (config.editor) {
@@ -7916,15 +7962,22 @@
             block.removeEventListener("keydown", showHeaderChrome);
         });
         showHeaderChrome();
-        body.appendChild(stage);
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         var statusText = h("span", "isf-status-text");
         status.appendChild(statusText);
         var statusPUIHost = h("div", "isf-pui isf-pui-statusbar");
         status.appendChild(statusPUIHost);
-        block.appendChild(header);
-        block.appendChild(body);
-        block.appendChild(status);
+        // Keep the plain stage/header/status visible until PUI has mounted,
+        // and as the error surface when the shader header cannot be parsed.
+        // The workbench slot moves the same stage node when it is ready.
+        var fallback = h("div", "isf-fallback");
+        var fallbackBody = h("div", "isf-body");
+        fallbackBody.appendChild(stage);
+        fallback.appendChild(header);
+        fallback.appendChild(fallbackBody);
+        fallback.appendChild(status);
+        block.appendChild(fallback);
+        block.appendChild(workbenchHost);
         block.appendChild(fullscreenHint);
 
         viewer.dom = {
@@ -7957,6 +8010,8 @@
             headerPUIHost: headerPUIHost,
             inspectorPUIHost: inspectorPUIHost,
             editorPUIHost: editorPUIHost,
+            viewPanel: viewPanel,
+            workbenchHost: workbenchHost,
             fullscreenHint: fullscreenHint
         };
         viewer.editor = editor;
@@ -8083,6 +8138,7 @@
             } else {
                 statusText.textContent = viewer.statusText;
             }
+            if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         };
         viewer.warn = function (message) {
             debugLog(config, message);
@@ -8101,133 +8157,107 @@
             overlay.style.display = show ? "flex" : "none";
         };
         function setInspectorPanel() {
-            paramsPanel.classList.remove("isf-hidden");
-            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
+            if (paramsPanel) paramsPanel.classList.remove("isf-hidden");
+            if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         }
         function setEditorPanel() {
             if (viewer.editor) viewer.editor.el.classList.toggle("isf-hidden", !!viewer.inspectorImport);
             importPanel.classList.toggle("isf-hidden", !viewer.inspectorImport);
-            if (viewer.applyPUIEditor) viewer.applyPUIEditor();
+            // The Source pane has two custom slots. Keep the import slot out
+            // of the flex allocation unless it is the visible surface.
+            var importSlot = viewer.dom.workbenchHost && viewer.dom.workbenchHost.querySelector('[data-pui-slot="isf.import"]');
+            if (importSlot) importSlot.style.display = viewer.inspectorImport ? "" : "none";
+            if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         }
         function updateDrawerButtons() {
-            if (viewer.applyPUIHeader) viewer.applyPUIHeader();
-            if (viewer.applyPUIInspector) viewer.applyPUIInspector();
-            if (viewer.applyPUIEditor) viewer.applyPUIEditor();
+            if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         }
+        // Fullscreen uses the same workbench controls; the hint is retained as
+        // an inert node so embedders that dispatch the old events keep working.
         var hintTimer = null;
-        function clearHintTimer() {
-            if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
-        }
-        viewer.hideFullscreenHint = function () {
-            clearHintTimer();
-            fullscreenHint.classList.add("isf-hidden");
-            fullscreenHint.setAttribute("aria-pressed", "false");
-        };
-        viewer.showFullscreenHint = function () {
-            if (!isFullscreenActive() || config.bare) return;
-            if (viewer.isInspectorOpen()) { viewer.hideFullscreenHint(); return; }
-            fullscreenHint.classList.remove("isf-hidden");
-            fullscreenHint.setAttribute("aria-pressed", "true");
-            clearHintTimer();
-            hintTimer = setTimeout(function () { viewer.hideFullscreenHint(); }, 2200);
-        };
-        viewer.armFullscreenHint = function () {
-            if (!isFullscreenActive() || config.bare) return;
-            viewer.showFullscreenHint();
-        };
+        function clearHintTimer() { if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; } }
+        viewer.hideFullscreenHint = function () { clearHintTimer(); fullscreenHint.classList.add("isf-hidden"); };
+        viewer.showFullscreenHint = function () { };
+        viewer.armFullscreenHint = function () { };
         function focusInspector() {
             requestAnimationFrame(function () {
-                if (!viewer.inspectorOpen) return;
-                var host = viewer.dom.inspectorPUIHost;
-                var target = host && host.querySelector('.isf-params [data-pui-bind], .isf-params button, .isf-params input');
+                if (!viewer.isInspectorOpen()) return;
+                var target = paramsPanel.querySelector('[data-pui-bind], button, input');
                 if (target && target.focus) target.focus();
             });
         }
         function focusEditor() {
             requestAnimationFrame(function () {
-                if (!viewer.editorOpen) return;
+                if (!viewer.isEditorOpen()) return;
                 if (viewer.inspectorImport) { try { importArea.focus(); } catch (error) { /* ignore */ } return; }
                 if (viewer.editor) viewer.editor.focus();
             });
         }
-        function focusEditorTrigger() {
+        function focusPaneToggle(region) {
             setTimeout(function () {
-                if (isFullscreenActive() && viewer.dom.canvas) {
-                    try { viewer.dom.canvas.focus(); } catch (error) { /* ignore */ }
-                    return;
-                }
-                var trigger = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="editor"]');
-                if (trigger && trigger.focus) trigger.focus();
+                var toggle = viewer.workbenchToggleButton(region);
+                if (toggle && toggle.focus) toggle.focus();
+                else if (viewer.dom.canvas && isFullscreenActive()) viewer.dom.canvas.focus();
             }, 40);
         }
-        function focusInspectorTrigger() {
-            setTimeout(function () {
-                if (isFullscreenActive() && viewer.dom.canvas) {
-                    try { viewer.dom.canvas.focus(); } catch (error) { /* ignore */ }
-                    return;
-                }
-                var trigger = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="controls"]');
-                if (trigger && trigger.focus) trigger.focus();
-            }, 40);
-        }
+        function focusEditorTrigger() { focusPaneToggle("left"); }
+        function focusInspectorTrigger() { focusPaneToggle("right"); }
+
         viewer.setInspectorOpen = function (open) {
             open = !!open;
-            if (open && isNarrowLayout() && viewer.editorOpen) viewer.setEditorOpen(false);
-            if (open && window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
-                var previous = window.__isfActiveInspector;
-                window.__isfActiveInspector = null;
-                try { previous.setInspectorOpen(false); } catch (error) { /* ignore */ }
-            }
-            if (open) window.__isfActiveInspector = viewer;
-            else if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
-            if (viewer.inspectorOpen === open) {
-                setInspectorPanel();
-                updateDrawerButtons();
-                if (open) focusInspector();
-                return;
-            }
-            viewer.inspectorOpen = open;
-            block.classList.toggle("isf-drawer-open", open || viewer.editorOpen);
-            setInspectorPanel();
-            updateDrawerButtons();
             if (open) {
-                if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
+                if (window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
+                    var previous = window.__isfActiveInspector;
+                    window.__isfActiveInspector = null;
+                    try { previous.setInspectorOpen(false); } catch (error) { /* ignore */ }
+                }
+                window.__isfActiveInspector = viewer;
+                viewer.inspectorOpen = true;
+                viewer.inspectorTab = "params";
+                viewer.inspectorImport = false;
+                viewer.setWorkbenchPaneOpen("right", true);
+                viewer.selectWorkbenchTab("right", "Parameters");
+                setInspectorPanel();
+                viewer.applyPUIWorkbench();
                 focusInspector();
             } else {
-                if (viewer.showFullscreenHint) viewer.showFullscreenHint();
-                if (!viewer.editorOpen) focusInspectorTrigger();
+                if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
+                viewer.inspectorOpen = false;
+                viewer.setWorkbenchPaneOpen("right", false);
+                viewer.applyPUIWorkbench();
+                if (!isFullscreenActive()) focusInspectorTrigger();
             }
         };
         viewer.setEditorOpen = function (open) {
             open = !!open;
-            if (open && isNarrowLayout() && viewer.inspectorOpen) viewer.setInspectorOpen(false);
-            if (viewer.editorOpen === open) {
-                setEditorPanel();
-                updateDrawerButtons();
-                if (open) focusEditor();
-                return;
-            }
-            viewer.editorOpen = open;
-            block.classList.toggle("isf-drawer-open", open || viewer.inspectorOpen);
-            setEditorPanel();
-            updateDrawerButtons();
             if (open) {
-                if (viewer.hideFullscreenHint) viewer.hideFullscreenHint();
+                if (window.__isfActiveSourceEditor && window.__isfActiveSourceEditor !== viewer) {
+                    var previousSource = window.__isfActiveSourceEditor;
+                    window.__isfActiveSourceEditor = null;
+                    try { previousSource.setEditorOpen(false); } catch (error) { /* ignore */ }
+                }
+                window.__isfActiveSourceEditor = viewer;
+                viewer.editorOpen = true;
+                viewer.inspectorImport = false;
+                setEditorPanel();
+                viewer.setWorkbenchPaneOpen("left", true);
+                viewer.applyPUIWorkbench();
                 focusEditor();
             } else {
-                if (viewer.showFullscreenHint) viewer.showFullscreenHint();
-                if (!viewer.inspectorOpen) focusEditorTrigger();
+                if (window.__isfActiveSourceEditor === viewer) window.__isfActiveSourceEditor = null;
+                viewer.editorOpen = false;
+                viewer.inspectorImport = false;
+                setEditorPanel();
+                viewer.setWorkbenchPaneOpen("left", false);
+                viewer.applyPUIWorkbench();
+                if (!isFullscreenActive()) focusEditorTrigger();
             }
         };
         function openInspector(tab) {
             if (tab === "source" || tab === "editor") { viewer.setEditorOpen(true); return; }
-            viewer.inspectorTab = "params";
-            viewer.inspectorImport = false;
             viewer.setInspectorOpen(true);
         }
-        function closeInspector() {
-            viewer.setInspectorOpen(false);
-        }
+        function closeInspector() { viewer.setInspectorOpen(false); }
         function showEditorPanel() {
             if (!viewer.editor) { openInspector("params"); return; }
             viewer.inspectorImport = false;
@@ -8357,13 +8387,22 @@
         // keep their pressed/expanded state in sync wherever a drawer changes.
         viewer.setInspectorTab = function (tab) {
             if (tab === "source" || tab === "editor") { viewer.setEditorOpen(true); return; }
-            viewer.inspectorTab = "params";
+            if (tab === "view" || tab === "log") {
+                viewer.setInspectorOpen(true);
+                viewer.selectWorkbenchTab("right", tab === "view" ? "View" : "Log");
+                viewer.inspectorTab = tab;
+                return;
+            }
             viewer.setInspectorOpen(true);
         };
-        viewer.isInspectorOpen = function () { return !!viewer.inspectorOpen; };
-        viewer.isEditorOpen = function () { return !!viewer.editorOpen; };
+        viewer.isInspectorOpen = function () {
+            return viewer.puiWorkbench ? viewer.isWorkbenchPaneOpen("right") : !!viewer.inspectorOpen;
+        };
+        viewer.isEditorOpen = function () {
+            return viewer.puiWorkbench ? viewer.isWorkbenchPaneOpen("left") : !!viewer.editorOpen;
+        };
         viewer.setDrawer = function (drawer, open) { viewer.setInspectorOpen(!!open); };
-        viewer.isDrawerOpen = function () { return !!viewer.inspectorOpen; };
+        viewer.isDrawerOpen = function () { return viewer.isInspectorOpen(); };
         viewer.setPanel = function (panel, open) {
             if (panel === viewer.dom.paramsPanel) {
                 if (open) viewer.setInspectorOpen(true); else closeInspector();
@@ -8375,13 +8414,13 @@
         };
         viewer.toggleParams = function () {
             viewer.drawerTouched = true;
-            if (viewer.inspectorOpen) closeInspector();
+            if (viewer.isInspectorOpen()) closeInspector();
             else viewer.setInspectorOpen(true);
         };
         viewer.toggleEditor = function () {
             if (!viewer.dom.editorPanel) return;
             viewer.drawerTouched = true;
-            if (viewer.editorOpen) viewer.setEditorOpen(false);
+            if (viewer.isEditorOpen()) viewer.setEditorOpen(false);
             else viewer.setEditorOpen(true);
         };
         viewer.togglePlay = function () {
@@ -8420,8 +8459,8 @@
             if (viewer.runtime) viewer.runtime.resize(true);
             if (active) {
                 viewer.setState("");
-                if (viewer.inspectorOpen) closeInspector();
-                if (viewer.editorOpen) viewer.setEditorOpen(false);
+                if (viewer.isInspectorOpen()) closeInspector();
+                if (viewer.isEditorOpen()) viewer.setEditorOpen(false);
                 if (viewer.showFullscreenHint) viewer.showFullscreenHint();
             } else if (viewer.hideFullscreenHint) {
                 viewer.hideFullscreenHint();
@@ -9125,6 +9164,298 @@
             viewer.applyPUIHeader();
         };
 
+        /* ------------------------------------------------ PUI workbench */
+
+        // One complete workbench per viewer, modelled on the ISF editor in the
+        // projection-mapping project: Material on the left (Inputs + source),
+        // the live render in the centre, diagnostics/settings on the right,
+        // and playback + status along the bottom. PUI owns the layout, panes,
+        // tabs and toolbar; the host owns the renderer, editor and parameters.
+        viewer.buildWorkbenchDocument = function () {
+            var title = String(viewer.title || "ISF viewer");
+            var meta = viewer.parse && viewer.parse.metadata ? viewer.parse.metadata : {};
+            var description = String(meta.DESCRIPTION || "").trim();
+            var credit = String(meta.CREDIT || "").trim();
+            if (description && credit && description.indexOf(credit) === -1) description += " · " + credit;
+            return {
+                format: "pupitre-ui", version: 1, host: "docsify-isf",
+                panels: [{id: "isf-workbench", title: title, embedded: true, pages: [{
+                    id: "workbench", title: title, description: description,
+                    layout: {
+                        mode: "workbench", fill: "parent",
+                        // The title bar carries the shader name and its ISF
+                        // description. Collapsing it hides only the heading;
+                        // Menu, Source, Parameters and Playback stay reachable.
+                        titlebar: {collapsible: true},
+                        header_menu: {
+                            label: "Menu", title: title + " actions", icon: "☰",
+                            blocks: [{kind: "actions", id: "isf-actions", items: [
+                                {id: "reset", label: "Reset parameters", call: "isf.reset"},
+                                {id: "randomize", label: "Randomize parameters", call: "isf.randomize"},
+                                {id: "export", label: "Export PNG", call: "isf.export"},
+                                {id: "share", label: "Copy OBS link", call: "isf.share"},
+                                {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", call: "isf.fullscreen"},
+                                {id: "help", label: "Keyboard shortcuts", call: "isf.help"},
+                                {id: "source", label: "Open source file", call: "isf.source"}
+                            ]}]
+                        },
+                        // Source is the left pane; Parameters the right pane.
+                        // Their pane toggles are the show/hide buttons in the
+                        // title toolbar. View and Log are tabs of Parameters.
+                        left: {title: "Source", width: {initial: 300, min: 260, max: 520}, collapsible: true},
+                        stage: {title: "Preview", fit: "contain", min_width: 280},
+                        right: {title: "Parameters", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"]},
+                        bottom: {title: "Playback", height: 96, collapsible: false}
+                    },
+                    sections: [
+                        {
+                            id: "source", title: "Source", region: "left",
+                            blocks: [
+                                {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
+                                {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}}
+                            ]
+                        },
+                        {
+                            id: "parameters", tab: "Parameters", title: "Parameters", region: "right",
+                            blocks: [{kind: "custom", slot: "isf.params", a11y: {name: "Parameters", role: "region"}}]
+                        },
+                        {
+                            id: "preview", title: "Preview", region: "stage",
+                            blocks: [{kind: "custom", slot: "isf.stage", a11y: {name: "ISF shader preview", role: "img"}}]
+                        },
+                        {
+                            id: "view", tab: "View", title: "View", region: "right",
+                            blocks: [{kind: "custom", slot: "isf.view", a11y: {name: "View settings", role: "region"}}]
+                        },
+                        {
+                            id: "log", tab: "Log", title: "Log", region: "right",
+                            blocks: [
+                                {kind: "readout", id: "log-status", bind: "/isf/ui/status", label: "Status", type: "s"},
+                                {kind: "readout", id: "log-badge", bind: "/isf/ui/badge", label: "Render", type: "s"},
+                                {kind: "readout", id: "log-inputs", bind: "/isf/ui/inputs", label: "Inputs", type: "s"},
+                                {kind: "readout", id: "log-passes", bind: "/isf/ui/passes", label: "Passes", type: "s"},
+                                {kind: "actions", id: "log-actions", items: [
+                                    {id: "log-reset", label: "Reset parameters", call: "isf.reset"},
+                                    {id: "log-randomize", label: "Randomize parameters", call: "isf.randomize"},
+                                    {id: "log-source", label: "Open source file", call: "isf.source"}
+                                ]}
+                            ]
+                        },
+                        {
+                            id: "playback", title: "Playback", region: "bottom",
+                            blocks: [
+                                {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"},
+                                    transport_options: {rates: [1], labels: {
+                                        title: "Playback", play: "Play", pause: "Pause", stop: "Stop",
+                                        seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
+                                    }}},
+                                {kind: "statusbar", label: "ISF status", items: [
+                                    {bind: "/isf/ui/status", label: "Status", tone_bind: "/isf/statusTone"},
+                                    {bind: "/isf/ui/badge", label: "Render"}
+                                ]}
+                            ]
+                        }
+                    ]
+                }]}]
+            };
+        };
+
+        viewer.applyPUIWorkbench = function () {
+            if (!viewer.puiWorkbench) return;
+            try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
+        };
+
+        viewer.mountWorkbench = function () {
+            if (viewer.puiWorkbench || viewer.disposed || !puiAvailable()) return;
+            var host = viewer.dom.workbenchHost;
+            if (!host) return;
+            var adapter = {
+                getValue: function (path) {
+                    if (path === "/isf/ui/status") return viewer.statusText || "";
+                    if (path === "/isf/statusTone") {
+                        var kind = String(viewer.statusKind || "");
+                        if (/error/i.test(kind)) return "error";
+                        if (/warn/i.test(kind)) return "warning";
+                        if (/ok|success/i.test(kind)) return "success";
+                        return "info";
+                    }
+                    if (path === "/isf/ui/badge") return viewer.badgeText || "";
+                    if (path === "/isf/ui/inputs") return viewer.built ? String(viewer.built.inputs.length) : "";
+                    if (path === "/isf/ui/passes") return viewer.built && viewer.built.passes ? String(viewer.built.passes.length) : "";
+                    if (path === "/isf/ui/fullscreen") return isFullscreenActive();
+                    if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
+                    if (path === "/isf/ui/inspectorOpen") return !!viewer.isInspectorOpen();
+                    if (path === "/isf/ui/editorOpen") return !!viewer.isEditorOpen();
+                    if (path === "/isf/transport") return viewer.transportValue();
+                    return undefined;
+                },
+                setValue: function () { return false; },
+                callAction: function (name) {
+                    if (name === "isf.reset") { viewer.resetAll(); return true; }
+                    if (name === "isf.randomize") { viewer.randomizeParameters(); return true; }
+                    if (name === "isf.export") { viewer.exportPng(); return true; }
+                    if (name === "isf.share") { viewer.copyLink(); return true; }
+                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
+                    if (name === "isf.help") { viewer.showShortcuts(); return true; }
+                    if (name === "isf.source") { if (viewer.url) window.open(viewer.url, "_blank", "noopener"); return true; }
+                    if (name === "isf.inspector") { if (viewer.isInspectorOpen()) closeInspector(); else openInspector("params"); return true; }
+                    if (name === "isf.inspectorClose") { closeInspector(); return true; }
+                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
+                    if (name === "isf.params") { openInspector("params"); return true; }
+                    return false;
+                },
+                getPathMeta: function () { return {}; },
+                transportAction: function (intent) { return viewer.transportAction(intent); },
+                announce: function (level, message) {
+                    if (level === "error") viewer.warn(message);
+                    else viewer.setState(message, level === "success" ? "ok" : "");
+                }
+            };
+            var ui = PupitreUI.create({
+                mount: host,
+                density: "compact",
+                getValue: adapter.getValue,
+                setValue: adapter.setValue,
+                callAction: adapter.callAction,
+                getPathMeta: adapter.getPathMeta,
+                transportAction: adapter.transportAction,
+                announce: adapter.announce,
+                translate: function (key, fallback) { return fallback; }
+            });
+            ui.registerSlot("isf.stage", {mount: function (container) {
+                container.appendChild(stage);
+                stage.classList.add("isf-workbench-stage");
+            }});
+            ui.registerSlot("isf.params", {mount: function (container) { container.appendChild(paramsPanel); }});
+            if (editor) ui.registerSlot("isf.editor", {mount: function (container) { container.appendChild(editor.el); }});
+            ui.registerSlot("isf.import", {mount: function (container) { container.appendChild(importPanel); }});
+            ui.registerSlot("isf.view", {mount: function (container) { container.appendChild(viewPanel); }});
+            // PUI measures the workbench while rendering. Keep the mount
+            // visible (but empty) so narrow mode is decided from the real
+            // content width instead of the fallback viewport width.
+            host.classList.remove("isf-hidden");
+            try {
+                ui.render(viewer.buildWorkbenchDocument());
+            } catch (error) {
+                host.classList.add("isf-hidden");
+                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
+                viewer.warn("PUI workbench unavailable: " + (error && error.message ? error.message : error));
+                return;
+            }
+            viewer.puiWorkbench = {ui: ui, host: host};
+            block.classList.add("isf-workbench-ready");
+            if (fallback && fallback.parentNode) fallback.parentNode.removeChild(fallback);
+            // Panes are contextual: start closed (PUI remembers the last
+            // open state for its page id) and let the in-view auto-open pick
+            // Parameters. Source is one click away in the title bar.
+            viewer.setWorkbenchPaneOpen("left", false);
+            viewer.setWorkbenchPaneOpen("right", false);
+            viewer.bindWorkbenchState();
+            // Recompute narrow mode now that the workbench has been laid out;
+            // PUI's first measurement happens while the mount is still empty.
+            try { window.dispatchEvent(new Event("resize")); } catch (error) { /* ignore */ }
+            // The historical header/transport/status adapters become aliases
+            // so every existing state update keeps the single workbench live.
+            viewer.applyPUIHeader = viewer.applyPUIWorkbench;
+            viewer.applyPUITransport = viewer.applyPUIWorkbench;
+            viewer.applyPUIInspector = viewer.applyPUIWorkbench;
+            viewer.applyPUIEditor = viewer.applyPUIWorkbench;
+            viewer.applyPUIWorkbench();
+            // The workbench starts with both side panes open on wide hosts and
+            // collapses them in narrow mode. Restore the last source tab and
+            // then let the auto-open pass decide whether Material is visible.
+            if (editor) editor.el.classList.remove("isf-hidden");
+            setEditorPanel();
+            if (viewer.inspectorOpen) openInspector(viewer.inspectorTab || "params");
+        };
+
+        viewer.workbenchPane = function (region) {
+            var host = viewer.dom.workbenchHost;
+            return host ? host.querySelector('.pui-workbench-pane.is-' + region) : null;
+        };
+        viewer.workbenchToggleButton = function (region) {
+            var pane = viewer.workbenchPane(region);
+            var host = viewer.dom.workbenchHost;
+            if (!pane || !host) return null;
+            return host.querySelector('.pui-workbench-toggle[aria-controls="' + pane.id + '"]');
+        };
+        viewer.isWorkbenchPaneOpen = function (region) {
+            var pane = viewer.workbenchPane(region);
+            return !!pane && !pane.classList.contains("is-collapsed");
+        };
+        viewer.setWorkbenchPaneOpen = function (region, open) {
+            var pane = viewer.workbenchPane(region);
+            var toggle = viewer.workbenchToggleButton(region);
+            if (!pane || !toggle) return false;
+            var current = !pane.classList.contains("is-collapsed");
+            if (!!open !== current) toggle.click();
+            viewer.applyPUIWorkbench();
+            return true;
+        };
+        viewer.selectWorkbenchTab = function (region, label) {
+            var pane = viewer.workbenchPane(region);
+            if (!pane) return false;
+            var tabs = pane.querySelectorAll(".pui-pane-tab");
+            for (var i = 0; i < tabs.length; i++) {
+                if (tabs[i].textContent === label) { tabs[i].click(); viewer.applyPUIWorkbench(); return true; }
+            }
+            return false;
+        };
+        viewer.selectedWorkbenchTab = function (region) {
+            var pane = viewer.workbenchPane(region);
+            if (!pane) return "";
+            var selected = pane.querySelector('.pui-pane-tab[aria-selected="true"]');
+            return selected ? selected.textContent : "";
+        };
+
+        viewer.bindWorkbenchState = function () {
+            var left = viewer.workbenchPane("left");
+            var right = viewer.workbenchPane("right");
+            if (!left || !right) return;
+            var sync = function (openedRegion) {
+                var leftOpen = viewer.isWorkbenchPaneOpen("left");
+                var rightOpen = viewer.isWorkbenchPaneOpen("right");
+                viewer.editorOpen = leftOpen;
+                viewer.inspectorOpen = rightOpen;
+                if (!rightOpen && window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
+                if (!leftOpen && window.__isfActiveSourceEditor === viewer) window.__isfActiveSourceEditor = null;
+                if (rightOpen && openedRegion === "right") {
+                    if (window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
+                        var previous = window.__isfActiveInspector;
+                        window.__isfActiveInspector = null;
+                        try { previous.setInspectorOpen(false); } catch (error) { /* ignore */ }
+                    }
+                    window.__isfActiveInspector = viewer;
+                    var selected = viewer.selectedWorkbenchTab("right");
+                    viewer.inspectorTab = /^Log$/i.test(selected) ? "log" : /^View$/i.test(selected) ? "view" : "params";
+                }
+                if (leftOpen && openedRegion === "left") {
+                    if (window.__isfActiveSourceEditor && window.__isfActiveSourceEditor !== viewer) {
+                        var previousSource = window.__isfActiveSourceEditor;
+                        window.__isfActiveSourceEditor = null;
+                        try { previousSource.setEditorOpen(false); } catch (error) { /* ignore */ }
+                    }
+                    window.__isfActiveSourceEditor = viewer;
+                }
+            };
+            ["left", "right"].forEach(function (region) {
+                var toggle = viewer.workbenchToggleButton(region);
+                if (!toggle) return;
+                toggle.addEventListener("click", function () {
+                    // PUI's own click handler has already toggled the pane;
+                    // defer so isWorkbenchPaneOpen reads the final state.
+                    setTimeout(function () {
+                        if (!viewer.disposed) sync(region);
+                    }, 0);
+                });
+            });
+            Array.from(right.querySelectorAll(".pui-pane-tab")).forEach(function (tab) {
+                tab.addEventListener("click", function () {
+                    viewer.inspectorTab = String(tab.textContent || "").toLowerCase();
+                });
+            });
+        };
+
         viewer.updateParamsIntro = function () {
             var meta = viewer.parse && viewer.parse.metadata ? viewer.parse.metadata : {};
             var desc = String(meta.DESCRIPTION || "").trim();
@@ -9145,6 +9476,31 @@
             if (metaRow.childNodes.length) paramsIntro.appendChild(metaRow);
         };
 
+        viewer.autoOpenInspector = function () {
+            if (viewer.autoOpenScheduled || viewer.disposed || viewer.drawerTouched || viewer.autoOpenDone) return;
+            if (!config.controls || !viewer.visible || !viewer.puiWorkbench) return;
+            var inputs = viewer.built ? viewer.built.inputs : [];
+            var open;
+            if (config.params === "open") open = true;
+            else if (config.params === "closed") open = false;
+            else open = inputs.length > 0;
+            if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
+            if (!open) return;
+            if (window.__isfActiveInspector && window.__isfActiveInspector !== viewer) return;
+            viewer.autoOpenScheduled = true;
+            // PUI measures and enters narrow mode while the workbench is being
+            // laid out. Opening the pane after that pass keeps Material open
+            // instead of being collapsed by the resize observer.
+            setTimeout(function () {
+                viewer.autoOpenScheduled = false;
+                if (viewer.disposed || viewer.drawerTouched || viewer.autoOpenDone) return;
+                if (!viewer.visible || !viewer.puiWorkbench) return;
+                if (window.__isfActiveInspector && window.__isfActiveInspector !== viewer) return;
+                viewer.autoOpenDone = true;
+                openInspector("params");
+            }, 500);
+        };
+
         viewer.rebuildParams = function () {
             viewer.updateParamsIntro();
             var inputs = viewer.built ? viewer.built.inputs : [];
@@ -9154,31 +9510,14 @@
             var controlsHost = h("div", "isf-params-controls");
             paramsList.appendChild(controlsHost);
             buildControls(controlsHost, inputs, viewer);
-            if (puiAvailable()) {
-                viewer.mountPUIStatusbar();
-                viewer.mountPUITransport();
-                viewer.mountPUIHeader();
+            // The View tab owns pass/scale/resolution/randomize/export. The
+            // host builds the widgets; PUI owns the workbench tab.
+            if (viewer.dom.viewPanel) {
+                viewer.dom.viewPanel.innerHTML = "";
+                viewer.dom.viewPanel.appendChild(viewer.buildViewControls(inputs));
             }
-            // PUI renders the view row as an `isf.view` host block inside the
-            // panel; while the assets load (or if they fail) it stays a sibling
-            // so pass/quality/time remain usable.
-            if (!viewer.pui) paramsList.insertBefore(viewer.buildViewControls(inputs), controlsHost);
-            if (viewer.puiHeader) viewer.refreshPUIHeader();
-            var open;
-            if (!config.controls) open = false;
-            else if (config.params === "open") open = true;
-            else if (config.params === "closed") open = false;
-            else open = inputs.length > 0 && inputs.length <= config.paramsOpenLimit;
-            if (viewer.urlFlags && viewer.urlFlags.controls) open = true;
-            if (!viewer.drawerTouched) {
-                // Auto-open only the viewer currently in view, never every
-                // viewer on the page. A second auto-open must not steal the
-                // inspector from an already open, contextual viewer.
-                var canAutoOpen = open && viewer.visible &&
-                    (!window.__isfActiveInspector || window.__isfActiveInspector === viewer);
-                if (canAutoOpen) viewer.setDrawer(null, true);
-                else if (!open) viewer.setDrawer(null, false);
-            }
+            if (puiAvailable()) viewer.mountWorkbench();
+            viewer.autoOpenInspector();
         };
 
         /* ----------------------------------------------------- loading */
@@ -9490,6 +9829,7 @@
                     if (viewer.visible) {
                         BUDGET.touch(viewer);
                         if (config.lazy === "visible") viewer.resume();
+                        if (viewer.autoOpenInspector) viewer.autoOpenInspector();
                     }
                 }
             }, { rootMargin: "240px" });

@@ -166,11 +166,12 @@ Load**. Move the pointer over the preview to move the ripple (click for the
 <script src="https://gllmar.github.io/docsify-isf/docsify-isf.js"></script>
 ```
 
-Keep `docsify-isf.js` next to its `vendor/pupitre-ui/` folder: the parameter
-inspector/transport loads the shared toolkit on demand from that sibling directory. Both
-are in the npm package and the Pages build. If you host the script elsewhere,
-point `isf.puiBase` at the folder; if the assets cannot load, the inspector shows
-a diagnostic with a Retry button and the shader still renders.
+Keep `docsify-isf.js` next to its `vendor/pupitre-ui/` folder: the workbench
+loads the shared toolkit on demand from that sibling directory. Both are in the
+npm package and the Pages build. If you host the script elsewhere, point
+`isf.puiBase` at the folder; if the assets cannot load, the plain host fallback
+keeps the shader, header and status usable while the workbench reports the
+missing toolkit.
 
 Then write ordinary Markdown:
 
@@ -213,7 +214,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `maxFps` | `0` | Cap the render loop to this many frames per second (`0` = unlimited). |
 | `includePaths` | `[]` | Extra directories searched for `#include "file.glsl"` after the shader's own folder. |
 | `controls` | `true` | Build parameter controls. |
-| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the inspector shows a diagnostic and Retry. |
+| `puiBase` | `null` | URL prefix of the on-demand PUI assets (`pupitre-ui.js`, `isf.js`, `pupitre-ui.css`). Defaults to `vendor/pupitre-ui/` next to `docsify-isf.js`; set it when the plugin is copied without the vendor folder (CDN, unusual layouts). If the assets fail to load, the host fallback remains usable and the workbench reports the missing toolkit. |
 | `params` | `"auto"` | `"auto"`, `"open"`, `"closed"`. |
 | `paramsOpenLimit` | `6` | `auto` opens when the input count is ≤ this. |
 | `autoplay` | `true` | Start playing on load. |
@@ -228,51 +229,53 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorLive` | `true` | Recompile while typing (debounced). |
 | `editorDebounce` | `600` | Live recompile debounce in ms. |
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
-| `persistLayout` | `true` | Remember editor height, folded toolbar, inspector width, Scale and Resolution across viewers and pages. |
+| `persistLayout` | `true` | Remember editor height, folded toolbar, workbench pane widths, Scale and Resolution across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
 | `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters + Resolution/Scale). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
 | `imports` | `true` | Load `IMPORTED` textures. |
-| `showStats` | `true` | Show `fps · resolution · passes`. |
-| `showSource` | `true` | Source link (title and inspector More menu). |
+| `showStats` | `true` | Show `fps · resolution · passes` in the statusbar. |
+| `showSource` | `true` | Source action in the Header menu. |
 | `debug` | `false` | Console diagnostics. |
 
 Every viewer also exposes `DocsifyISF` on `window` for scripting
 (`parseISF`, `buildShader`, `highlightGLSL`, `createParamsDocument`, …).
-`PupitreUI`/`PupitreISF` become available once the first inspector or
-transport mounts; `await DocsifyISF.loadPUI()` loads the toolkit explicitly.
-The viewer is a **studio shell** with two contextual PUI drawers anchored
-inside the shader stage. Parameters is the right PUI `drawer`; Source is a
-translucent left PUI `drawer` for the host GLSL editor and import surface.
-The PUI `toolbar` is a **floating overlay over the stage**, not a document row:
-Source stays at the left edge, Parameters at the right, with the source-link
-title/ISF chip and FPS/size readout between. It is ~40 px tall and fades to 32%
-after ~2.6 s of inactivity and returns on pointer/keyboard/focus, so idle
-viewers spend no vertical space on chrome. Drawer heads are merged into compact toolbars
-instead of stealing a second title row.
+`PupitreUI`/`PupitreISF` become available once the first workbench mounts;
+`await DocsifyISF.loadPUI()` loads the toolkit explicitly.
+The viewer is a **PUI workbench**: the source editor is the left pane, the
+live render is the stage, parameters are the right pane, and playback/status
+sit along the bottom. PUI owns the layout, pane toggles/resizers, narrow-mode
+overlays, tabs, title bar, transport and statusbar. The host owns the WebGL
+renderer, the source editor/import surface, the View controls and the ISF
+values.
 
-The Parameters drawer toolbar carries the shader name and a **More** menu
-(fullscreen, reset, share, help, open source), followed by the PUI parameters
-document generated from the normalised `INPUTS` and a native PUI **transport**
-(play/pause/stop and shader-time seek). The Source drawer uses the host
-editor’s own compact title bar and a transparent, blurred panel so the shader
-stays visible while editing. On desktop both drawers can coexist; on narrow
-screens they are mutually exclusive. Only one Parameters drawer is open at a
-time across viewers, so panels never stack on the page. The bottom status line
-is a PUI statusbar with a tone; feedback uses a dismissible PUI toast stack.
+The workbench title bar labels the shader with its **title** and ISF
+**description**, and adds a PUI 1.9.0 **collapsible title bar**. Collapsing
+hides only the heading: the Menu, **Source**, **Parameters** and **Playback**
+buttons stay available, so the host can reclaim vertical space without losing
+controls. The Menu carries fullscreen, reset, randomize, export, share, help
+and “Open source file”.
 
-The host header remains only as the pre-load/failure fallback; the code editor
-and stage remain host surfaces. Both header toggles expose `aria-pressed`; the
-drawers own focus/Escape/close; the transport is driven through PUI bindings.
-`params:"auto"` only auto-opens the inspector for the viewer in view.
+**Source** is the left pane and **Parameters** the right pane; their title-bar
+buttons show/hide each section. The right pane has **Parameters / View / Log**
+tabs: parameters are primary, View owns pass/scale/resolution/randomize/export,
+and Log carries status, render/input/pass readouts and quick actions. The
+bottom **Playback** row carries the native PUI transport and a PUI statusbar.
+The source editor keeps the host editor/import chrome in the left pane.
 
-The split surfaces use PUI **1.8.0** drawer options: `contained`, `headless`,
-`trigger:false`, CSS-length `width` and `translucent`. The floating
-toolbar/auto-fade is host presentation around the PUI toolbar. The renderer/adapter are
-vendored from the latest clean `1.8.0` line snapshot (commit `ee487ee`).
-The same options are available to other PUI consumers (see
-`spec/OPERATOR.md`).
+On a wide workbench both side panes can be open at once, with the shader
+between them; narrow screens turn them into mutually exclusive overlays. Only
+one Parameters pane is open across viewers at a time, so panels never stack;
+`params:"auto"` opens Parameters for the in-view viewer only and never steals
+another open one.
+
+The renderer/adapter are vendored from the clean PUI **1.9.0** snapshot (commit
+`aa4e366`). The workbench titlebar contract (`description`, collapsible
+heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
+positioning or title-bar CSS is required. Before PUI mounts — and when a shader
+header cannot be parsed — the host keeps a plain stage/header/status fallback
+so loading/errors remain visible.
 
 ## OBS / fullscreen link
 
@@ -286,9 +289,10 @@ https://site/page/?isf-shader=<shader-url>&isf-fullscreen=1
 `isf-shader` names the shader, `isf-values` carries its current parameters,
 `isf-res` carries the Resolution preset and `isf-quality` the Scale multiplier
 (self-contained: no local storage or page links are needed).
-`isf-fullscreen=1` mounts one bare viewer — no header, inspector, transport or status — that
-fills the viewport and always plays. That is the capture an OBS **Browser**
-source wants: paste the URL, set the source size, done.
+`isf-fullscreen=1` mounts one bare workbench — only the render stage is
+visible, with the titlebar, panes and playback hidden — that fills the
+viewport and always plays. That is the capture an OBS **Browser** source
+wants: paste the URL, set the source size, done.
 
 The flags are hand-editable: `isf-res=sd|hd|fhd|native` and
 `isf-quality=auto|2|1|0.5|0.25` override the stored/cookie-free defaults for
@@ -300,34 +304,33 @@ before sharing when you want a high-resolution capture.
 
 The bare viewer keeps the whole editing experience one gesture away: hover
 the bottom-right corner and click the eye button (or press **H**) to reveal
-the toolbar, parameters and editor; **Escape** (or the same button/key) hides
-everything back to the clean capture. OBS's *Interact* window forwards both
-the mouse and the keyboard. The revealed toolbar's reset button returns the
-parameters to the shader defaults; the Resolution menu's **Default** returns
-the cap to the site default. The bare viewer never writes local storage.
+the workbench titlebar, Source/Parameters panes and playback; **Escape** (or
+the same button/key) hides everything back to the clean capture. OBS's
+*Interact* window forwards both the mouse and the keyboard. The revealed
+titlebar's Menu reset action returns parameters to the shader defaults; the
+Resolution menu's **Default** returns the cap to the site default. The bare
+viewer never writes local storage.
 
 The in-page fullscreen button (or double-clicking the canvas) makes the whole
-viewer block fill the display. The header and status line are hidden and both
-drawers start closed, so the shader gets the whole viewport. A subtle
-inspector pill sits at the top-left (32 px, low opacity); it fades after about
-2.2 s and reappears on activity. Click it (or press **H**) to open the
-Parameters drawer; **Ctrl/Cmd+B** opens the Source drawer; **Escape** closes
-the active drawer and brings the hint back. **Exit fullscreen**, Reset, Share
-and Open source live in the Parameters More menu, and play/seek remain in its
-transport. The same Resolution/Scale cap applies. If the PUI assets cannot
-load, the normal header falls back.
+viewer block fill the display while keeping the workbench titlebar and
+controls. Panes start closed so the shader gets the whole viewport; use the
+Source/Parameters buttons, **Ctrl/Cmd+B** for Source, **H** for Parameters, or
+**Escape** to close the active pane. Menu → **Exit fullscreen** leaves it. The
+same Resolution/Scale cap applies. If the PUI assets cannot load, the host
+fallback stage/header/status remains usable.
 
 ## Editor
 
-The Source surface fills its own translucent left PUI drawer, with the host
-editor’s compact title bar. Dragging its splitter pins a manual height
-(double-click resets it), and folding the editor toolbar grows the pane by the
-freed rows. The More actions and transport stay in the Parameters drawer. On
-phones the Source drawer takes the full viewport, the caret readout is hidden
-and the editor status is visually hidden but still announced, so compile
-feedback survives while the code pane keeps most of the height.
+The Source surface fills the left workbench pane. The host editor keeps its
+compact title bar, splitter and fold control; folding the toolbar grows the
+code by the freed rows. View actions and transport stay in the Parameters pane
+and Playback row. On phones Source replaces Parameters as a narrow overlay,
+the caret readout is hidden and the editor status is visually hidden but still
+announced, so compile feedback survives while the code pane keeps the height.
 
-Open **Source** from the left header toggle (or press Ctrl/Cmd+B):
+Open **Source** with the title-bar button (or press Ctrl/Cmd+B):
+
+Open **Source** from the title-bar button (or press Ctrl/Cmd+B):
 
 - **GLSL syntax highlighting** for keywords, types, built-ins, ISF functions
   and the ISF uniforms, with an **active-line highlight**, a **line-number
@@ -352,11 +355,12 @@ Open **Source** from the left header toggle (or press Ctrl/Cmd+B):
 - **Revert** returns to the file on disk; **Copy** puts the source on the
   clipboard.
 - **Drag the handle above the editor** to resize it (double-click to reset,
-  or focus it and use ↑/↓/Home/End). The **inspector** is one floating card on
-  the right with Parameters/Source tabs; it overlays the preview and never
-  resizes the canvas. Drag its inner edge to resize it (or focus the rail and
-  use ←/→/Home/End; double-click resets). Sizes persist when `persistLayout`
-  is on.
+  or focus it and use ↑/↓/Home/End). **Source** is the left workbench pane;
+  **Parameters** is the right pane with Parameters/View/Log tabs. The title-bar
+  buttons show/hide each pane; on wide screens both coexist with the render
+  between them, and narrow screens use one overlay at a time. Pane widths are
+  persisted by PUI. The shader View controls and transport are no longer
+  duplicated inside the parameter list.
 
 ## Import (Shadertoy / GLSL Sandbox)
 
@@ -384,21 +388,23 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   values are clamped to `MIN`/`MAX`, `long` values snap to `VALUES`, and
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
-- `width`, `height` and `aspectRatio` size the preview. **Parameters** is a
-  right PUI drawer and **Source** is a translucent left PUI drawer, both
-  anchored inside the shader stage. Desktop can show both, with the shader
-  visible between them; narrow screens keep only one drawer open. Each header
-  toggle sits at the edge of the drawer it opens. The Parameters drawer’s More
-  menu carries view actions; its native PUI transport owns play/seek. Neither
-  changes the render size.
-- The header is responsive: the Source toggle stays on the left, the
-  Parameters toggle on the right, and the title/stats fill the middle (stats
-  hidden on phones). Controls stay at least 32–36 px tall on touch devices;
-  the drawers, transport and form fields respect safe areas and coarse-pointer
-  sizing.
-- The preview is keyboard focusable: **Enter/Space** or a double-click toggles
-  fullscreen. Buttons and inputs use `:focus-visible`, carry `aria-pressed` /
-  `aria-expanded`, and the status regions are `aria-live`.
+- The workbench titlebar shows the shader **title** and ISF **description**.
+  Its collapse control (PUI 1.9.0) hides the heading but keeps the function
+  buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
+  reset, randomize, export, share, help and source.
+- **Source** (left) and **Parameters** (right) are independently shown/hidden
+  from the titlebar. Parameters also carries **View** and **Log** tabs. On
+  wide screens both panes coexist with the render between them; on narrow
+  screens they become mutually exclusive overlays and the stage keeps the full
+  width. Only one Parameters pane is open across viewers.
+- Playback is a native PUI transport at the bottom, followed by a PUI
+  statusbar with status and render readouts. Feedback uses a dismissible PUI
+  toast stack.
+- Controls stay at least 32–36 px tall on touch devices; panes, transport and
+  form fields respect safe areas and coarse-pointer sizing. The preview is
+  keyboard focusable: **Enter/Space** or a double-click toggles fullscreen.
+  Buttons and inputs use `:focus-visible`, carry `aria-expanded` or
+  `aria-pressed` as appropriate, and status regions are `aria-live`.
 - `prefers-reduced-motion: reduce` starts viewers paused and removes the
   loading animation; coarse-pointer devices get larger touch targets.
 
@@ -425,7 +431,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
 - One `requestAnimationFrame` loop per live viewer; offscreen viewers skip
   work and hidden tabs pause automatically.
 - Rendering scale is `devicePixelRatio` capped at `maxPixelRatio` (`auto`), or
-  a fixed multiplier; the fps/size/pass stats live in the top bar, never over
+  a fixed multiplier; the fps/size/pass stats live in the Playback statusbar, never over
   the shader.
 - Browsers only allow a limited number of live WebGL contexts. When more than
   `maxContexts` viewers want a context, the least-recently-visible one is
