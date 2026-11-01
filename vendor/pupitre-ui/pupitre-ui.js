@@ -1507,11 +1507,15 @@
     return el("p", {class: "pui-missing", text: "(unknown PUI block '" + kind + "')"});
   };
 
-  Renderer.prototype.graphValue = function (block) {
+  Renderer.prototype.graphValueAt = function (block, path) {
     var value = typeof this.adapter.getValueFor === "function"
-      ? this.adapter.getValueFor(String(block.bind || ""), block)
-      : this.adapter.getValue(String(block.bind || ""));
+      ? this.adapter.getValueFor(String(path), block)
+      : this.adapter.getValue(String(path));
     return isObject(value) ? value : null;
+  };
+
+  Renderer.prototype.graphValue = function (block) {
+    return this.graphValueAt(block, block.bind || "");
   };
 
   Renderer.prototype.graphTypes = function (block) {
@@ -1523,6 +1527,135 @@
       if (isArray(types)) return types;
     }
     return [];
+  };
+
+  Renderer.prototype.graphNodeState = function (node) {
+    if (!isObject(node)) return "";
+    return JSON.stringify([
+      Number(node.x) || 0, Number(node.y) || 0,
+      node.width === undefined ? null : Number(node.width) || 0,
+      String(node.label || ""), node.enabled !== false,
+      isObject(node.params) ? node.params : null
+    ]);
+  };
+
+  Renderer.prototype.graphFrameState = function (frame) {
+    if (!isObject(frame)) return "";
+    return JSON.stringify([Number(frame.x) || 0, Number(frame.y) || 0, Number(frame.w) || 0, Number(frame.h) || 0, String(frame.title || "")]);
+  };
+
+  /** Structural key: changes require a rebuild; state changes are patched. */
+  Renderer.prototype.graphStructureKey = function (graph, types) {
+    var nodes = [], cables = [], frames = [];
+    (graph.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      nodes.push([String(node.id || ""), String(node.type || ""), node.arity,
+        node.subgraph, node.graph_on_parent, node.graph_on_parent_rect, node.exposed_params,
+        node.hidden_inputs, node.hidden_outputs, node.hidden_params, node.value_texture]);
+    });
+    (graph.cables || []).forEach(function (cable) {
+      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to]);
+    });
+    (graph.frames || []).forEach(function (frame) {
+      if (isObject(frame)) frames.push([String(frame.id || ""), frame.members]);
+    });
+    return JSON.stringify({types: types || [], interface: graph.interface, nodes: nodes, cables: cables, frames: frames});
+  };
+
+  Renderer.prototype.graphCaptureState = function (rec) {
+    if (!rec || !rec.graph) return;
+    rec.graphStructureKey = this.graphStructureKey(rec.graph, rec.types);
+    rec.nodeStates = {};
+    (rec.graph.nodes || []).forEach(function (node) {
+      if (isObject(node)) rec.nodeStates[String(node.id || "")] = this.graphNodeState(node);
+    }, this);
+    rec.frameStates = {};
+    (rec.graph.frames || []).forEach(function (frame) {
+      if (isObject(frame)) rec.frameStates[String(frame.id || "")] = this.graphFrameState(frame);
+    }, this);
+    rec.appliedGraphRev = rec.graph.rev;
+    rec.presetsSignature = JSON.stringify(rec.graph.presets || []);
+    rec.bookmarksSignature = JSON.stringify(rec.graph.view && rec.graph.view.bookmarks || []);
+  };
+
+  Renderer.prototype.graphNodeVisible = function (rec, node) {
+    if (!rec || !node) return false;
+    var bounds = this.graphViewportBounds(rec, 240);
+    var rect = this.graphNodeRect(rec, node);
+    return rect.x + rect.w >= bounds.x1 && rect.x <= bounds.x2 && rect.y + rect.h >= bounds.y1 && rect.y <= bounds.y2;
+  };
+
+  Renderer.prototype.graphUpdateCount = function (rec) {
+    if (!rec || !rec.countEl) return;
+    var nodes = isArray(rec.graph.nodes) ? rec.graph.nodes.length : 0;
+    var cables = isArray(rec.graph.cables) ? rec.graph.cables.length : 0;
+    rec.countEl.textContent = nodes + " nodes · " + cables + " links";
+  };
+
+  Renderer.prototype.graphPaintSelection = function (rec) {
+    if (!rec) return;
+    Object.keys(rec.nodeEls || {}).forEach(function (id) {
+      if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.toggle("is-selected", !!rec.selected[id]);
+    });
+  };
+
+  /** Reconcile one graph record with the host value. Value/geometry changes
+   * patch the keyed DOM; structural changes rebuild and preserve view and
+   * selection. Camera state is local and is never reset by a host revision. */
+  Renderer.prototype.graphApply = function (rec) {
+    if (!rec || !rec.root || !rec.root.parentNode) return false;
+    if (rec.dragging || rec.frameDrag || rec.frameResize || rec.paramDrag || rec.wiring) return false;
+    var next = rec.graphPath === rec.rootPath ? this.graphValue(rec.block) : this.graphValueAt(rec.block, rec.graphPath);
+    if (!isObject(next)) return false;
+    var types = this.graphTypes(rec.block);
+    var structure = this.graphStructureKey(next, types);
+    if (structure !== rec.graphStructureKey) {
+      this.rebuildGraph(rec);
+      return true;
+    }
+    var oldNodes = rec.nodeStates || {}, oldFrames = rec.frameStates || {};
+    var dirtyNodes = {}, dirtyFrames = {}, changed = false;
+    var nodeStates = {};
+    (next.nodes || []).forEach(function (node) {
+      if (!isObject(node)) return;
+      var id = String(node.id || "");
+      var state = this.graphNodeState(node);
+      nodeStates[id] = state;
+      if (oldNodes[id] !== state) { dirtyNodes[id] = true; changed = true; }
+    }, this);
+    var frameStates = {};
+    (next.frames || []).forEach(function (frame) {
+      if (!isObject(frame)) return;
+      var id = String(frame.id || "");
+      var state = this.graphFrameState(frame);
+      frameStates[id] = state;
+      if (oldFrames[id] !== state) { dirtyFrames[id] = true; changed = true; }
+    }, this);
+    var oldPresets = rec.presetsSignature || "[]";
+    var oldBookmarks = rec.bookmarksSignature || "[]";
+    var nextPresets = JSON.stringify(next.presets || []);
+    var nextBookmarks = JSON.stringify(next.view && next.view.bookmarks || []);
+    if (!changed && next === rec.graph && next.rev === rec.appliedGraphRev && oldPresets === nextPresets && oldBookmarks === nextBookmarks) return false;
+    rec.graph = next;
+    rec.types = types;
+    rec.typeMap = {};
+    types.forEach(function (type) { if (isObject(type) && type.id !== undefined) rec.typeMap[String(type.id)] = type; });
+    rec.graphStructureKey = structure;
+    rec.nodeStates = nodeStates;
+    rec.frameStates = frameStates;
+    rec.appliedGraphRev = next.rev;
+    rec.presetsSignature = nextPresets;
+    rec.bookmarksSignature = nextBookmarks;
+    rec.nodeById = {};
+    (next.nodes || []).forEach(function (node) { if (isObject(node)) rec.nodeById[String(node.id || "")] = node; });
+    if (changed) this.updateGraphDom(rec, {nodes: dirtyNodes, frames: dirtyFrames});
+    this.graphRefreshIssues(rec);
+    this.graphUpdateCount(rec);
+    if (oldPresets !== nextPresets) this.graphRenderPresets(rec);
+    if (oldBookmarks !== nextBookmarks) this.graphRenderBookmarks(rec);
+    var mountedInspector = rec.selectedFrame ? dirtyFrames[String(rec.selectedFrame.id || "")] : Object.keys(rec.selected || {}).some(function (id) { return dirtyNodes[id]; });
+    if (mountedInspector && rec.inspector) this.renderGraphInspector(rec);
+    return true;
   };
 
   /** Read-only G-2 graph renderer: DOM nodes + SVG cables + frames + outline.
@@ -1623,15 +1756,13 @@
    * bodies and previews are created only when they can be seen. */
   Renderer.prototype.graphMaterializeVisible = function (rec) {
     if (!rec || !rec.graph || !rec.nodeEls) return 0;
-    var bounds = this.graphViewportBounds(rec, 240);
     var self = this;
     var changed = 0;
     (rec.graph.nodes || []).forEach(function (node) {
       if (!isObject(node)) return;
       var id = String(node.id || "");
       if (!id || rec.materializedNodes[id]) return;
-      var rect = self.graphNodeRect(rec, node);
-      var visible = rec.selected[id] || (rect.x + rect.w >= bounds.x1 && rect.x <= bounds.x2 && rect.y + rect.h >= bounds.y1 && rect.y <= bounds.y2);
+      var visible = rec.selected[id] || self.graphNodeVisible(rec, node);
       if (visible && self.graphMaterializeNode(rec, node, rec.nodeEls[id])) changed += 1;
     });
     if (changed) this.graphLayoutGraphBodies(rec);
@@ -1762,14 +1893,17 @@
         line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
         var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
         var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
-        var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id)});
+        var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id), "data-param-type": String(param.type || "float")});
         if (bounded) {
           var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
           track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
+          track.appendChild(el("span", {class: "pui-graph-param-default", "aria-hidden": "true"}));
+          track.appendChild(el("span", {class: "pui-graph-param-thumb", "aria-hidden": "true"}));
           valueButton.appendChild(track);
         }
-        valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: String(shown)}));
-        valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+        var displayValue = self.graphParamText(param, shown);
+        valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: displayValue}));
+        valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
         if (numeric) {
           valueButton.setAttribute("role", "slider");
           valueButton.setAttribute("aria-valuenow", String(Number(shown) || 0));
@@ -1922,7 +2056,8 @@
     var fitButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Fit"});
     fitButton.addEventListener("click", function () { self.graphFit(rec); });
     head.appendChild(fitButton);
-    head.appendChild(el("span", {class: "pui-graph-count", text: nodes.length + " nodes · " + cables.length + " links"}));
+    var countEl = el("span", {class: "pui-graph-count", text: nodes.length + " nodes · " + cables.length + " links"});
+    head.appendChild(countEl);
     if (issues.length) {
       head.appendChild(el("span", {
         class: "pui-graph-issues" + (issues.some(function (i) { return i.level === "error"; }) ? " is-error" : ""),
@@ -1943,7 +2078,7 @@
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      materializedNodes: {},
+      materializedNodes: {}, countEl: countEl,
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -2469,6 +2604,7 @@
     this.graphRenderBookmarks(rec);
     this.graphRenderPresets(rec);
     if (block.selection_bind) this.selectionRecords.push({owner: rec, refresh: function () { self.graphSelectionRefresh(rec); }});
+    this.graphCaptureState(rec);
     this.renderGraphInspector(rec);
     return root;
   };
@@ -3712,11 +3848,87 @@
     return Math.max(0, Math.min(1, (current - min) / (max - min)));
   };
 
+  /** The value text a numeric widget shows. Precision wins over the step's
+   *  decimal count; an optional unit is part of the readout, never the value. */
+  Renderer.prototype.graphParamText = function (param, value) {
+    var type = String(param && param.type || "float");
+    if (["float", "int", "f", "i"].indexOf(type) < 0) return value === undefined || value === null ? "—" : String(value);
+    var number = Number(value);
+    if (!isFinite(number)) return value === undefined || value === null ? "—" : String(value);
+    var text;
+    var precision = Number(param && param.precision);
+    if (isFinite(precision) && precision >= 0) {
+      text = number.toFixed(Math.min(8, Math.floor(precision)));
+    } else {
+      var step = Number(param && param.step);
+      if (isFinite(step) && step > 0) {
+        var decimals = 0, scaled = step;
+        while (scaled < 1 && decimals < 6) { scaled *= 10; decimals += 1; }
+        text = number.toFixed(decimals);
+      } else if (type === "int" || type === "i") {
+        text = String(Math.round(number));
+      } else {
+        text = String(Math.round(number * 1000) / 1000);
+      }
+    }
+    var unit = param && param.unit !== undefined && param.unit !== null ? String(param.unit) : "";
+    if (unit) text += (unit === "%" ? "" : " ") + unit;
+    return text;
+  };
+
+  /** Paint the numeric value: a filled range track, a bipolar centre when the
+   *  range crosses zero, a reset/default notch and a thumb at the value. The
+   *  button keeps role=slider; the aria text now carries precision, unit and
+   *  range instead of only the raw number. */
   Renderer.prototype.graphParamPaint = function (element, param, value) {
-    if (!element || !element.querySelector) return;
+    if (!element || !element.querySelector || !element.setAttribute) return;
+    var display = this.graphParamText(param, value);
+    var numberEl = element.querySelector(".pui-graph-param-number");
+    if (numberEl) numberEl.textContent = display;
+    element.setAttribute("data-value", String(value));
+    element.setAttribute("data-display-value", display);
+    var numeric = element.classList && element.classList.contains("is-numeric");
+    var min = Number(param && param.min);
+    var max = Number(param && param.max);
+    var current = Number(value);
+    var bounded = numeric && isFinite(min) && isFinite(max) && max > min;
+    var label = String(param && (param.label || param.id) || "parameter");
+    if (!numeric) return;
+    var rangeText = bounded ? " (" + this.graphParamText(param, min) + " to " + this.graphParamText(param, max) + ")" : "";
+    element.setAttribute("aria-label", label + " value " + display + rangeText);
+    if (bounded) element.setAttribute("aria-valuetext", display + rangeText);
+    else if (element.removeAttribute) element.removeAttribute("aria-valuetext");
+    var defaultNumber = Number(param && param.default);
+    var hasDefault = bounded && param.default !== undefined && isFinite(defaultNumber) && defaultNumber >= min && defaultNumber <= max;
+    var title = label + " · " + display + (bounded ? " · " + this.graphParamText(param, min) + "…" + this.graphParamText(param, max) : "")
+      + (hasDefault ? " · default " + this.graphParamText(param, defaultNumber) : "")
+      + " · Drag to adjust · Alt fine · Shift coarse · double-click reset";
+    element.title = title;
+    if (!bounded || !isFinite(current)) return;
+    var ratio = this.graphParamFill(param, value);
+    var bipolar = min < 0 && max > 0;
+    var zero = bipolar ? (0 - min) / (max - min) : 0;
+    var start = bipolar ? Math.min(ratio, zero) : 0;
+    var width = bipolar ? Math.abs(ratio - zero) : ratio;
+    if (element.classList) {
+      element.classList.toggle("is-bipolar", bipolar);
+      element.classList.toggle("is-negative", current < 0);
+      element.classList.toggle("is-at-default", hasDefault && Math.abs(current - defaultNumber) < 1e-9);
+    }
+    var track = element.querySelector(".pui-graph-param-track");
     var fill = element.querySelector(".pui-graph-param-fill");
-    if (!fill || !fill.style) return;
-    fill.style.setProperty("width", (this.graphParamFill(param, value) * 100).toFixed(2) + "%");
+    if (fill && fill.style) {
+      fill.style.setProperty("left", (start * 100).toFixed(2) + "%");
+      fill.style.setProperty("width", (width * 100).toFixed(2) + "%");
+    }
+    var thumb = element.querySelector(".pui-graph-param-thumb");
+    if (thumb && thumb.style) thumb.style.setProperty("left", (ratio * 100).toFixed(2) + "%");
+    var marker = element.querySelector(".pui-graph-param-default");
+    if (marker && marker.style) {
+      if (hasDefault) marker.style.setProperty("left", (((defaultNumber - min) / (max - min)) * 100).toFixed(2) + "%");
+      if (marker.classList) marker.classList.toggle("is-hidden", !hasDefault);
+    }
+    if (track && track.style) track.style.setProperty("--pui-graph-zero", (zero * 100).toFixed(2) + "%");
   };
 
   Renderer.prototype.graphParamScrub = function (rec, node, param, event) {
@@ -3727,6 +3939,7 @@
     var raw = isObject(node.params) ? node.params[param.id] : undefined;
     rec.paramDrag = {start: deepClone(rec.graph), nodeId: String(node.id), param: param, x: event.clientX || 0,
       value: raw === undefined ? Number(param.default) || 0 : Number(raw) || 0, el: button};
+    if (button && button.classList) button.classList.add("is-scrubbing");
     if (button && button.setPointerCapture) button.setPointerCapture(event.pointerId || 1);
   };
 
@@ -3757,6 +3970,7 @@
     if (!rec || !rec.paramDrag) return;
     var drag = rec.paramDrag;
     rec.paramDrag = null;
+    if (drag.el && drag.el.classList) drag.el.classList.remove("is-scrubbing");
     var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === drag.nodeId; });
     var value = node && isObject(node.params) ? node.params[drag.param.id] : drag.value;
     this.graphPushUndo(rec, drag.start);
@@ -3981,7 +4195,8 @@
       if (!updateAll && !(dirtyNodes && dirtyNodes[id])) return;
       var el = rec.nodeEls[id];
       if (!el) return;
-      if (!updateAll && dirtyNodes && dirtyNodes[id] && rec.materializedNodes && !rec.materializedNodes[id] && self.graphMaterializeNode(rec, node, el)) materialized = true;
+      if (!updateAll && dirtyNodes && dirtyNodes[id] && rec.materializedNodes && !rec.materializedNodes[id]
+        && (rec.selected[id] || self.graphNodeVisible(rec, node)) && self.graphMaterializeNode(rec, node, el)) materialized = true;
       var rect = self.graphNodeRect(rec, node);
       if (el.setAttribute) el.setAttribute("style", "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;");
       if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
@@ -3994,11 +4209,12 @@
           var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
           if (paramInfo.elements[index]) {
             var paramEl = paramInfo.elements[index];
+            var displayValue = self.graphParamText(param, shown);
             var numberEl = paramEl.querySelector ? paramEl.querySelector(".pui-graph-param-number") : null;
-            if (numberEl) numberEl.textContent = String(shown);
-            else paramEl.textContent = String(shown);
-            paramEl.setAttribute("aria-valuenow", String(Number(shown) || 0));
-            paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+            if (numberEl) numberEl.textContent = displayValue;
+            else paramEl.textContent = displayValue;
+            if (paramEl.classList && paramEl.classList.contains("is-numeric")) paramEl.setAttribute("aria-valuenow", String(Number(shown) || 0));
+            paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
             self.graphParamPaint(paramEl, param, shown);
           }
         });
@@ -4010,6 +4226,8 @@
       if (!updateAll && !(dirtyFrames && dirtyFrames[id])) return;
       var frameEl = rec.frameEls[id];
       if (frameEl && frameEl.setAttribute) frameEl.setAttribute("style", "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;");
+      var frameTitle = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-title") : null;
+      if (frameTitle) frameTitle.textContent = String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "");
     });
     var cableRefs = rec.cableRefs || [];
     if (!updateAll && dirtyNodes) {
@@ -4152,6 +4370,13 @@
         newRec.selectedFrame = rec.selectedFrame;
         newRec.recentTypes = rec.recentTypes;
         newRec.favoriteTypes = rec.favoriteTypes;
+        if (rec.view && newRec.view) {
+          newRec.view.zoom = rec.view.zoom;
+          newRec.view.panX = rec.view.panX;
+          newRec.view.panY = rec.view.panY;
+          newRec.applyView();
+        }
+        this.graphPaintSelection(newRec);
       }
     }
     parent.replaceChild(newRoot, rec.root);
@@ -12395,6 +12620,7 @@
     for (var c = 0; c < this.commandLogRecords.length; c++) {
       if (this.commandLogRecords[c].refresh) this.commandLogRecords[c].refresh();
     }
+    for (var gr = 0; gr < this.graphRecords.length; gr++) this.graphApply(this.graphRecords[gr]);
     for (var s = 0; s < this.selectionRecords.length; s++) {
       if (this.selectionRecords[s].refresh) this.selectionRecords[s].refresh();
     }

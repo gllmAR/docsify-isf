@@ -955,13 +955,24 @@
 .pui-graph-params { max-height: 62px; overflow: auto; padding-bottom: 6px; }
 .pui-graph-param-line { display: flex; align-items: center; gap: 2px; min-height: 18px; }
 .pui-graph-param-key { color: var(--pui-muted); }
-.pui-graph-param-value { border: 0; background: transparent; color: var(--pui-text); font: inherit; font-variant-numeric: tabular-nums; padding: 0 3px; border-radius: 3px; cursor: ew-resize; text-align: end; min-width: 3.5em; }
+.pui-graph-param-value { position: relative; border: 0; background: transparent; color: var(--pui-text); font: inherit; font-variant-numeric: tabular-nums; padding: 0 3px; border-radius: 3px; cursor: ew-resize; text-align: end; min-width: 3.5em; }
 .pui-graph-param-value:hover, .pui-graph-param-value:focus-visible { background: color-mix(in srgb, var(--pui-accent) 16%, transparent); color: var(--pui-accent); outline: none; }
-.pui-graph-param-value.is-numeric { display: inline-flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 4.8em; padding: 1px 3px; }
+.pui-graph-param-value.is-numeric { display: inline-flex; flex: 1 1 auto; flex-direction: column; align-items: stretch; gap: 2px; min-width: 4.8em; padding: 1px 3px; }
 .pui-graph-param-value.is-numeric:hover, .pui-graph-param-value.is-numeric:focus-visible { background: transparent; color: var(--pui-text); }
-.pui-graph-param-track { position: relative; display: block; height: 6px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--pui-border) 55%, transparent); }
-.pui-graph-param-fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; border-radius: 2px; background: var(--pui-accent); }
-.pui-graph-param-number { display: block; font-size: calc(var(--pui-type-base) * 0.6); line-height: 1.1; text-align: end; font-variant-numeric: tabular-nums; }
+.pui-graph-param-track { --pui-graph-zero: 50%; position: relative; display: block; height: 7px; border-radius: 3px; background: color-mix(in srgb, var(--pui-border) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pui-border) 70%, transparent); }
+.pui-graph-param-fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; border-radius: 3px; background: var(--pui-accent); transition: left 70ms linear, width 70ms linear, background-color 120ms ease; }
+.pui-graph-param-value.is-bipolar .pui-graph-param-fill { background: color-mix(in srgb, var(--pui-accent) 82%, var(--pui-text)); }
+.pui-graph-param-value.is-negative .pui-graph-param-fill { background: var(--pui-warning); }
+.pui-graph-param-value.is-bipolar .pui-graph-param-track::after { content: ""; position: absolute; z-index: 2; top: -2px; bottom: -2px; left: var(--pui-graph-zero); width: 1px; background: color-mix(in srgb, var(--pui-text) 48%, transparent); pointer-events: none; }
+.pui-graph-param-default { position: absolute; z-index: 2; top: -2px; bottom: -2px; left: 0; width: 1px; background: color-mix(in srgb, var(--pui-text) 60%, transparent); pointer-events: none; }
+.pui-graph-param-default.is-hidden { display: none; }
+.pui-graph-param-thumb { position: absolute; z-index: 3; top: 50%; left: 0; width: 9px; height: 9px; box-sizing: border-box; transform: translate(-50%, -50%); border: 1px solid var(--pui-surface); border-radius: 50%; background: var(--pui-text); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pui-border) 80%, transparent); pointer-events: none; transition: left 70ms linear, background-color 120ms ease, transform 120ms ease; }
+.pui-graph-param-value:hover .pui-graph-param-thumb, .pui-graph-param-value:focus-visible .pui-graph-param-thumb { background: var(--pui-accent); transform: translate(-50%, -50%) scale(1.15); }
+.pui-graph-param-value.is-at-default .pui-graph-param-thumb { background: var(--pui-muted); }
+.pui-graph-param-value.is-scrubbing { cursor: grabbing; }
+.pui-graph-param-value.is-scrubbing .pui-graph-param-track { box-shadow: inset 0 0 0 1px var(--pui-accent), 0 0 0 2px color-mix(in srgb, var(--pui-accent) 18%, transparent); }
+.pui-graph-param-value.is-scrubbing .pui-graph-param-thumb { background: var(--pui-accent); transform: translate(-50%, -50%) scale(1.2); }
+.pui-graph-param-number { display: block; font-size: calc(var(--pui-type-base) * 0.64); line-height: 1.05; text-align: end; font-variant-numeric: tabular-nums; }
 .pui-graph-node-body { display: block; margin-top: 4px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); line-height: 1.2; }
 .pui-graph-visibility { margin-top: 4px; font-size: calc(var(--pui-type-base) * 0.68); }
 .pui-graph-visibility summary { color: var(--pui-muted); cursor: pointer; }
@@ -1140,6 +1151,7 @@
 .pui[data-density="compact"] .pui-graph-params { max-height: 54px; padding: 0 6px 4px; }
 .pui[data-density="compact"] .pui-graph-param-line { min-height: 16px; }
 .pui[data-density="compact"] .pui-graph-param-track { height: 5px; }
+.pui[data-density="compact"] .pui-graph-param-thumb { width: 8px; height: 8px; }
 .pui[data-density="compact"] .pui-graph-node-body { font-size: calc(var(--pui-type-base) * 0.58); }
 
 /* Layout v2: the host sizes the mount; PUI owns the viewport chain. */
