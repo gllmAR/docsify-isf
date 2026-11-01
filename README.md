@@ -247,9 +247,9 @@ inside the shader stage. Parameters is the right PUI `drawer`; Source is a
 translucent left PUI `drawer` for the host GLSL editor and import surface.
 The PUI `toolbar` is a **floating overlay over the stage**, not a document row:
 Source stays at the left edge, Parameters at the right, with the source-link
-title/ISF chip and FPS/size readout between. It fades to 32% after ~2.6 s of
-inactivity and returns on pointer/keyboard/focus, so idle viewers spend no
-vertical space on chrome. Drawer heads are merged into compact toolbars
+title/ISF chip and FPS/size readout between. It is ~40 px tall and fades to 32%
+after ~2.6 s of inactivity and returns on pointer/keyboard/focus, so idle
+viewers spend no vertical space on chrome. Drawer heads are merged into compact toolbars
 instead of stealing a second title row.
 
 The Parameters drawer toolbar carries the shader name and a **More** menu
@@ -270,8 +270,9 @@ drawers own focus/Escape/close; the transport is driven through PUI bindings.
 The split surfaces use PUI **1.8.0** drawer options: `contained`, `headless`,
 `trigger:false`, CSS-length `width` and `translucent`. The floating
 toolbar/auto-fade is host presentation around the PUI toolbar. The renderer/adapter are
-vendored from the tagged `v1.8.0` snapshot. The same options are available to
-other PUI consumers (see `spec/OPERATOR.md`).
+vendored from the latest clean `1.8.0` line snapshot (commit `d1b2c9c`).
+The same options are available to other PUI consumers (see
+`spec/OPERATOR.md`).
 
 ## OBS / fullscreen link
 

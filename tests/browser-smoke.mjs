@@ -386,6 +386,7 @@ try {
         const shown = !header.classList.contains("isf-header-idle");
         await sleep(2750);
         const idle = header.classList.contains("isf-header-idle");
+        await sleep(350);
         const idleOpacity = parseFloat(getComputedStyle(header).opacity);
         block.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1 }));
         await sleep(100);
@@ -994,11 +995,15 @@ try {
     // Modern phone: the toolbar stays usable, drawers fill the stage and
     // swapping one for the other keeps the render reachable.
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await page.evaluate(() => {
+        const b = document.querySelector(".isf-block");
+        if (b) b.scrollIntoView({ block: "center" });
+    });
     await page.waitForFunction(() => {
         const b = document.querySelector(".isf-block");
         return !!b && !!b.querySelector(".isf-pui-header .pui-toolbar");
-    }, { timeout: 10000 }).catch(() => {});
+    }, { timeout: 25000 }).catch(() => {});
     await page.evaluate(() => {
         const b = document.querySelector(".isf-block");
         if (!b) return;
@@ -1247,7 +1252,7 @@ try {
     }
 
     // ── resolution: SD by default, fullscreen is distraction-free with a hint ──
-    const resolution = await page.evaluate(async () => {
+    const resolutionPrep = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
             const title = b.querySelector('.isf-header [data-pui-item="title"]');
@@ -1256,6 +1261,40 @@ try {
         if (!block) return { missing: true };
         block.scrollIntoView({ block: "center" });
         await sleep(600);
+        const canvas = block.querySelector(".isf-canvas");
+        const rect = (el) => {
+            const r = el.getBoundingClientRect();
+            return { width: Math.round(r.width), height: Math.round(r.height) };
+        };
+        const buffer = [canvas.width, canvas.height];
+        const initial = {
+            buffer: buffer,
+            stage: rect(block.querySelector(".isf-stage")),
+            storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
+        };
+        const css = rect(canvas);
+        const box = canvas.getBoundingClientRect();
+        return {
+            initial: initial,
+            initialAspect: css.width > 0 && css.height > 0 && Math.abs(buffer[0] / buffer[1] - css.width / css.height) < 0.03,
+            point: { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+        };
+    });
+    if (resolutionPrep.missing) {
+        problems.push("plasma viewer not found for the resolution/fullscreen test");
+    } else {
+        // Use a trusted double-click on the canvas: requestFullscreen requires
+        // transient user activation, unlike the synthetic menu clicks.
+        await page.mouse.click(resolutionPrep.point.x, resolutionPrep.point.y, { clickCount: 2 });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    const resolution = await page.evaluate(async (prep) => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => {
+            const title = b.querySelector('.isf-header [data-pui-item="title"]');
+            return title && /Plasma/i.test(title.textContent);
+        });
+        if (!block) return { missing: true };
         const canvas = () => block.querySelector(".isf-canvas");
         const buffer = () => [canvas().width, canvas().height];
         const rect = (el) => {
@@ -1266,14 +1305,8 @@ try {
             const css = rect(canvas());
             return css.width > 0 && css.height > 0 && Math.abs(b[0] / b[1] - css.width / css.height) < 0.03;
         };
-        const initial = {
-            buffer: buffer(),
-            stage: rect(block.querySelector(".isf-stage")),
-            storedCap: JSON.parse(localStorage.getItem("docsify-isf:layout") || "{}").resolutionCap || null
-        };
-        const initialAspect = aspectOk(initial.buffer);
-        window.isfFooterAction(block, "fullscreen");
-        await sleep(700);
+        const initial = prep.initial;
+        const initialAspect = prep.initialAspect;
         const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
         const viewport = { width: innerWidth, height: innerHeight };
         const fullscreen = {
@@ -1338,7 +1371,7 @@ try {
         await sleep(350);
         const hOpened = !drawer.hidden;
         window.isfFooterAction(block, "fullscreen");
-        await sleep(700);
+        await sleep(1500);
         const afterExit = {
             fullscreen: !!(document.fullscreenElement || document.webkitFullscreenElement),
             headerDisplay: getComputedStyle(header).display,
@@ -1371,7 +1404,7 @@ try {
             hOpened: hOpened,
             afterExit: afterExit
         };
-    });
+    }, resolutionPrep);
     if (resolution.missing) {
         problems.push("plasma viewer not found for the resolution/fullscreen test");
     } else {

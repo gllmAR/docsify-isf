@@ -7670,9 +7670,20 @@
       knob.appendChild(readout);
       knob.setAttribute("aria-valuemin", String(min));
       knob.setAttribute("aria-valuemax", String(max));
+      knob.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown ArrowLeft ArrowRight Home End Enter");
+      knob.title = "Drag or wheel: Shift ×10, Alt ×0.1, Ctrl ×0.01. Enter or type a value; long-press to type; double-click resets.";
       rec.knobArc = arc;
       rec.knobValue = readout;
       rec.knob = knob;
+
+      var knobText = function (value) {
+        if (field.precision !== undefined) {
+          var fixedPrecision = Number(field.precision);
+          if (isFinite(fixedPrecision) && fixedPrecision >= 0) return Number(value).toFixed(fixedPrecision);
+        }
+        var text = String(Number(Number(value).toFixed(6)));
+        return text === "-0" ? "0" : text;
+      };
       var readKnob = function () {
         var value = self.value(rec);
         return value === undefined || value === null || isMixedValue(value) ? NaN : Number(value);
@@ -7680,69 +7691,207 @@
       var paintKnob = function (value, mixed) {
         var ratio = mixed ? 0 : Math.max(0, Math.min(1, (Number(value) - min) / (max - min)));
         arc.style.setProperty("stroke-dasharray", (ratio * 75).toFixed(2) + " 100");
-        readout.textContent = mixed ? "—" : formatNumeric(Number(value), field);
+        readout.textContent = mixed ? "—" : knobText(Number(value));
         knob.setAttribute("aria-valuenow", String(mixed ? min : Number(value)));
-        knob.setAttribute("aria-valuetext", mixed ? "mixed" : valueText(Number(value), field));
+        knob.setAttribute("aria-valuetext", mixed ? "mixed" : knobText(Number(value)) + (field.unit ? " " + field.unit : ""));
         rec.root.classList.toggle("is-mixed", !!mixed);
       };
-      var applyKnob = function (value, final) {
+      var applyKnob = function (value, final, exact) {
         var next = Number(value);
         if (!isFinite(next)) return;
-        if (step > 0) next = min + Math.round((next - min) / step) * step;
+        var fixedPrecision = field.precision !== undefined ? Number(field.precision) : null;
+        if (fixedPrecision !== null && isFinite(fixedPrecision) && fixedPrecision >= 0) {
+          next = Number(next.toFixed(fixedPrecision));
+        } else {
+          next = Number(next.toFixed(6));
+        }
         next = Math.max(min, Math.min(max, next));
-        var precision = numericPrecision(field);
-        if (precision !== null) next = Number(next.toFixed(precision));
         paintKnob(next, false);
         self.writeRecord(rec, next);
         if (final) rec.dragging = false;
       };
+      var modifierScale = function (event) {
+        if (event && event.shiftKey) return 10;
+        if (event && event.altKey) return 0.1;
+        if (event && event.ctrlKey) return 0.01;
+        return 1;
+      };
       var knobNudge = function (direction, event) {
-        if (event.preventDefault) event.preventDefault();
-        var amount = step * (event.shiftKey ? 10 : (event.altKey ? 0.1 : 1));
+        if (event && event.preventDefault) event.preventDefault();
+        if (rec.knobInput) return;
+        var amount = step * modifierScale(event);
         var current = readKnob();
         applyKnob(isNaN(current) ? min : current + direction * amount, true);
       };
-      knob.addEventListener("wheel", function (event) { knobNudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
+
+      var finishKnobEdit = function (commit, refocus) {
+        var input = rec.knobInput;
+        if (!input) return;
+        rec.knobInput = null;
+        knob.classList.remove("is-editing");
+        var text = String(input.value || "").trim().replace(",", ".");
+        var parsed = Number(text);
+        if (commit && text !== "" && isFinite(parsed)) applyKnob(parsed, true, true);
+        if (input.remove) input.remove();
+        if (refocus && knob.focus) knob.focus();
+      };
+      var beginKnobEdit = function (seed, selectAll) {
+        if (!knob || rec.knobInput) return;
+        var input = el("input", {
+          type: "text", class: "pui-knob-input", inputmode: "decimal",
+          "aria-label": self.labelText(field) + " — type a value",
+        });
+        input.value = seed === null || seed === undefined ? knobText(readKnob()) : String(seed);
+        rec.knobInput = input;
+        knob.classList.add("is-editing");
+        knob.appendChild(input);
+        input.addEventListener("pointerdown", function (event) { event.stopPropagation(); });
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            finishKnobEdit(true, true);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            finishKnobEdit(false, true);
+          } else {
+            event.stopPropagation();
+          }
+        });
+        input.addEventListener("blur", function () { finishKnobEdit(true, false); });
+        if (input.focus) input.focus();
+        if (input.select && selectAll) input.select();
+        else if (input.setSelectionRange) input.setSelectionRange(input.value.length, input.value.length);
+      };
+
+      knob.addEventListener("wheel", function (event) {
+        if (rec.knobInput) return;
+        knobNudge(event.deltaY < 0 ? 1 : -1, event);
+      }, {passive: false});
       knob.addEventListener("keydown", function (event) {
+        if (event.target !== knob || rec.knobInput) return;
         var key = String(event.key || "");
-        if (["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft", "Home", "End"].indexOf(key) < 0) return;
-        if (key === "Home") { event.preventDefault(); applyKnob(min, true); return; }
-        if (key === "End") { event.preventDefault(); applyKnob(max, true); return; }
-        knobNudge(key === "ArrowUp" || key === "ArrowRight" ? 1 : -1, event);
+        if (key === "Enter") {
+          event.preventDefault();
+          beginKnobEdit(null, true);
+          return;
+        }
+        if (key === "Escape" && knobDrag) {
+          event.preventDefault();
+          cancelKnobDrag();
+          return;
+        }
+        if (/^[0-9]$/.test(key) || key === "." || key === "," || key === "-") {
+          event.preventDefault();
+          beginKnobEdit(key, false);
+          return;
+        }
+        if (key === "Home") { event.preventDefault(); applyKnob(min, true, true); return; }
+        if (key === "End") { event.preventDefault(); applyKnob(max, true, true); return; }
+        if (key === "PageUp" || key === "PageDown") {
+          event.preventDefault();
+          knobNudge(key === "PageUp" ? 10 : -10, event);
+          return;
+        }
+        if (key === "ArrowUp" || key === "ArrowRight") {
+          event.preventDefault();
+          knobNudge(1, event);
+        } else if (key === "ArrowDown" || key === "ArrowLeft") {
+          event.preventDefault();
+          knobNudge(-1, event);
+        }
       });
       knob.addEventListener("dblclick", function (event) {
         if (event.preventDefault) event.preventDefault();
-        applyKnob(field.default === undefined ? min : Number(field.default), true);
+        if (rec.knobInput) return;
+        applyKnob(field.default === undefined ? min : Number(field.default), true, true);
       });
+
       var knobDrag = null;
-      var knobMove = function (event) {
-        if (!knobDrag) return;
-        var delta = knobDrag.y - Number(event.clientY || 0);
-        applyKnob(knobDrag.value + (delta / 120) * (max - min), false);
+      var knobDragTimer = null;
+      var clearKnobDragTimer = function () {
+        if (knobDragTimer !== null) {
+          clearTimeout(knobDragTimer);
+          knobDragTimer = null;
+        }
       };
-      var knobEnd = function () {
-        if (!knobDrag) return;
-        knobDrag = null;
-        rec.dragging = false;
+      var removeKnobDragListeners = function () {
         if (typeof document !== "undefined" && document.removeEventListener) {
           document.removeEventListener("pointermove", knobMove);
           document.removeEventListener("pointerup", knobEnd);
-          document.removeEventListener("pointercancel", knobEnd);
+          document.removeEventListener("pointercancel", knobCancel);
         }
+      };
+      var knobMove = function (event) {
+        if (!knobDrag) return;
+        var dx = Number(event.clientX || 0) - knobDrag.x;
+        var dy = knobDrag.y - Number(event.clientY || 0);
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+          knobDrag.moved = true;
+          clearKnobDragTimer();
+        }
+        var modifier = knobDrag.pointerType === "touch" ? 1 : modifierScale(event);
+        var distance = knobDrag.pointerType === "touch" ? 220 : 120;
+        applyKnob(knobDrag.value + (dy / distance) * (max - min) * modifier, false);
+        if (event.preventDefault) event.preventDefault();
+      };
+      var knobEnd = function () {
+        if (!knobDrag) return;
+        var drag = knobDrag;
         var current = readKnob();
+        clearKnobDragTimer();
+        removeKnobDragListeners();
+        knobDrag = null;
+        rec.dragging = false;
         if (!isNaN(current)) applyKnob(current, true);
       };
+      var knobCancel = function () {
+        if (!knobDrag) return;
+        var start = knobDrag.value;
+        clearKnobDragTimer();
+        removeKnobDragListeners();
+        knobDrag = null;
+        rec.dragging = false;
+        applyKnob(start, true, true);
+      };
+      var cancelKnobDrag = function () {
+        knobCancel();
+      };
       knob.addEventListener("pointerdown", function (event) {
+        if (rec.knobInput) return;
+        if (event.target === rec.knobInput) return;
         if (event.button !== undefined && event.button !== 0) return;
         if (event.preventDefault) event.preventDefault();
         if (knob.focus) knob.focus();
         var current = readKnob();
-        knobDrag = {y: Number(event.clientY || 0), value: isNaN(current) ? min : current};
+        knobDrag = {
+          x: Number(event.clientX || 0),
+          y: Number(event.clientY || 0),
+          value: isNaN(current) ? min : current,
+          pointerType: String(event.pointerType || "mouse"),
+          moved: false,
+        };
         rec.dragging = true;
+        if (knob.setPointerCapture && event.pointerId !== undefined) {
+          try { knob.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+        }
         if (typeof document !== "undefined" && document.addEventListener) {
           document.addEventListener("pointermove", knobMove);
           document.addEventListener("pointerup", knobEnd);
-          document.addEventListener("pointercancel", knobEnd);
+          document.addEventListener("pointercancel", knobCancel);
+        }
+        clearKnobDragTimer();
+        if (typeof setTimeout === "function") {
+          knobDragTimer = setTimeout(function () {
+            knobDragTimer = null;
+            if (!knobDrag || knobDrag.moved) return;
+            var start = knobDrag.value;
+            knobDrag = null;
+            rec.dragging = false;
+            removeKnobDragListeners();
+            beginKnobEdit(null, true);
+          }, 520);
         }
       });
       rec.knobPaint = paintKnob;
