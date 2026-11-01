@@ -270,7 +270,7 @@ drawers own focus/Escape/close; the transport is driven through PUI bindings.
 The split surfaces use PUI **1.8.0** drawer options: `contained`, `headless`,
 `trigger:false`, CSS-length `width` and `translucent`. The floating
 toolbar/auto-fade is host presentation around the PUI toolbar. The renderer/adapter are
-vendored from the latest clean `1.8.0` line snapshot (commit `d1b2c9c`).
+vendored from the latest clean `1.8.0` line snapshot (commit `dfa0e01`).
 The same options are available to other PUI consumers (see
 `spec/OPERATOR.md`).
 
