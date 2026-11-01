@@ -6038,6 +6038,7 @@
 
   Renderer.prototype.mediaTimelineSelect = function (rec, trackId, clipId) {
     this.mediaTimelineAction(rec, {op: "select", trackId: trackId, clipId: clipId});
+    this.mediaTimelineRefresh(rec);
   };
 
   Renderer.prototype.mediaTimelineKeyboard = function (rec, event, track, clip) {
@@ -6097,6 +6098,7 @@
       }
       if (!drag.moved) return;
       var delta = (Number(upEvent.clientX) - drag.x) / drag.width * rec.value.duration;
+      var accepted = true;
       if (drag.mode === "move" && rec.value.mode === "sequence") {
         var time = (Number(upEvent.clientX) - rect.left) / Math.max(1, rect.width) * rec.value.duration;
         var track = rec.value.tracks.find(function (item) { return String(item.id) === String(drag.trackId); });
@@ -6105,17 +6107,22 @@
         (track ? track.clips : []).forEach(function (item) {
           if (String(item.id) !== String(drag.clipId) && item.start + item.duration / 2 < time) target++;
         });
-        if (track && target !== itemIndex) rec.self.mediaTimelineAction(rec, {op: "reorder", trackId: drag.trackId, clipId: drag.clipId, index: target});
+        if (track && target !== itemIndex) accepted = rec.self.mediaTimelineAction(rec, {op: "reorder", trackId: drag.trackId, clipId: drag.clipId, index: target}) !== false;
       } else if (drag.mode === "move") {
         var start = drag.start + delta;
         if (rec.value.snap) start = Math.round(start / rec.value.snap) * rec.value.snap;
         start = Math.max(0, Math.min(rec.value.duration - drag.duration, start));
-        rec.self.mediaTimelineAction(rec, {op: "move", trackId: drag.trackId, clipId: drag.clipId, start: start});
+        accepted = rec.self.mediaTimelineAction(rec, {op: "move", trackId: drag.trackId, clipId: drag.clipId, start: start}) !== false;
       } else {
         var length = Math.max(0.01, drag.duration + delta);
         if (rec.value.snap) length = Math.max(rec.value.snap, Math.round(length / rec.value.snap) * rec.value.snap);
         length = Math.min(rec.value.duration - drag.start, length);
-        rec.self.mediaTimelineAction(rec, {op: "trim", trackId: drag.trackId, clipId: drag.clipId, start: drag.start, duration: length});
+        accepted = rec.self.mediaTimelineAction(rec, {op: "trim", trackId: drag.trackId, clipId: drag.clipId, start: drag.start, duration: length}) !== false;
+      }
+      if (!accepted && drag.element) {
+        drag.element.style.left = (drag.start / rec.value.duration * 100) + "%";
+        drag.element.style.width = (drag.duration / rec.value.duration * 100) + "%";
+        rec.self.adapter.announce("error", "Host rejected " + drag.mode + "; restored the segment.");
       }
       rec.self.mediaTimelineRefresh(rec);
     };
@@ -6127,6 +6134,92 @@
       document.addEventListener("pointerup", end);
       document.addEventListener("pointercancel", end);
     }
+  };
+
+  Renderer.prototype.mediaTimelineInspector = function (rec, force) {
+    if (!rec || !rec.inspector) return;
+    if (!Object.keys(rec.inspectorFields || {}).length) {
+      var self = this;
+      var fields = rec.inspectorFields = {};
+      var head = el("div", {class: "pui-media-inspector-head"});
+      head.appendChild(el("strong", {text: "Segment"}));
+      fields.title = el("span", {class: "pui-media-inspector-title"});
+      head.appendChild(fields.title);
+      rec.inspector.appendChild(head);
+      var grid = el("div", {class: "pui-media-inspector-grid"});
+      fields.label = el("input", {type: "text", "aria-label": "Segment label"});
+      fields.in = el("input", {type: "number", step: "0.01", min: "0", "aria-label": "Source in"});
+      fields.out = el("input", {type: "number", step: "0.01", min: "0", "aria-label": "Source out"});
+      fields.duration = el("output", {class: "pui-media-inspector-readout", "aria-label": "Duration"});
+      fields.timecode = el("output", {class: "pui-media-inspector-readout", "aria-label": "Source timecode"});
+      fields.enabled = el("input", {type: "checkbox", "aria-label": "Segment enabled"});
+      [["Label", fields.label], ["Source in", fields.in], ["Source out", fields.out], ["Duration", fields.duration], ["Source timecode", fields.timecode]].forEach(function (pair) {
+        var label = el("label", {class: "pui-media-inspector-field"});
+        label.appendChild(el("span", {text: pair[0]}));
+        label.appendChild(pair[1]);
+        grid.appendChild(label);
+      });
+      var enabledRow = el("label", {class: "pui-media-inspector-enabled"});
+      enabledRow.appendChild(fields.enabled);
+      enabledRow.appendChild(el("span", {text: "Enabled"}));
+      grid.appendChild(enabledRow);
+      rec.inspector.appendChild(grid);
+      var commit = function (intent) {
+        var accepted = self.mediaTimelineAction(rec, intent);
+        self.mediaTimelineRefresh(rec);
+        self.mediaTimelineInspector(rec, true);
+        if (accepted === false) {
+          rec.status.textContent = "Host rejected " + String(intent.op || "segment edit") + ".";
+          rec.status.hidden = false;
+          self.adapter.announce("error", rec.status.textContent);
+        } else {
+          rec.status.textContent = "";
+          rec.status.hidden = true;
+        }
+        return accepted !== false;
+      };
+      fields.label.addEventListener("change", function () {
+        var selected = self.mediaTimelineSelectedClip(rec.value);
+        if (selected) commit({op: "set_label", trackId: selected.track.id, clipId: selected.clip.id, label: fields.label.value});
+      });
+      var commitRange = function () {
+        var selected = self.mediaTimelineSelectedClip(rec.value);
+        if (!selected) return;
+        var tin = Number(fields.in.value), tout = Number(fields.out.value);
+        if (!isFinite(tin) || !isFinite(tout) || tin < 0 || tout <= tin) {
+          rec.status.textContent = "Source out must be greater than source in.";
+          rec.status.hidden = false;
+          self.mediaTimelineRefresh(rec);
+          self.mediaTimelineInspector(rec, true);
+          return;
+        }
+        commit({op: "set_in_out", trackId: selected.track.id, clipId: selected.clip.id, in: tin, out: tout});
+      };
+      fields.in.addEventListener("change", commitRange);
+      fields.out.addEventListener("change", commitRange);
+      fields.enabled.addEventListener("change", function () {
+        var selected = self.mediaTimelineSelectedClip(rec.value);
+        if (selected) commit({op: "enable", trackId: selected.track.id, clipId: selected.clip.id, enabled: fields.enabled.checked});
+      });
+    }
+    var selected = this.mediaTimelineSelectedClip(rec.value);
+    var sequence = rec.value && rec.value.mode === "sequence";
+    var visible = sequence && selected && rec.options.inspector !== false;
+    rec.inspector.hidden = !visible;
+    if (!visible) return;
+    var clip = selected.clip;
+    rec.inspectorFields.title.textContent = clip.label + " · " + selected.track.label;
+    if (force || document.activeElement !== rec.inspectorFields.label) rec.inspectorFields.label.value = clip.label;
+    if (force || document.activeElement !== rec.inspectorFields.in) rec.inspectorFields.in.value = String(clip.in);
+    if (force || document.activeElement !== rec.inspectorFields.out) rec.inspectorFields.out.value = String(clip.out);
+    var sourceDuration = Number(rec.value.source && rec.value.source.duration);
+    if (force || document.activeElement !== rec.inspectorFields.in) {
+      if (isFinite(sourceDuration) && sourceDuration > 0) rec.inspectorFields.in.max = rec.inspectorFields.out.max = String(sourceDuration);
+      else { rec.inspectorFields.in.removeAttribute("max"); rec.inspectorFields.out.removeAttribute("max"); }
+    }
+    rec.inspectorFields.duration.textContent = clip.duration.toFixed(2) + " s";
+    rec.inspectorFields.timecode.textContent = this.mediaTimelineTime(clip.in, rec.value);
+    rec.inspectorFields.enabled.checked = clip.enabled !== false;
   };
 
   Renderer.prototype.mediaTimelineBuild = function (rec, data) {
@@ -6193,6 +6286,7 @@
       });
     });
     this.mediaTimelineUpdateTools(rec, data);
+    this.mediaTimelineInspector(rec);
   };
 
   Renderer.prototype.mediaTimelineSelectedClip = function (data) {
@@ -6209,7 +6303,7 @@
     var self = this;
     var button = el("button", {type: "button", class: "pui-button pui-media-tool", text: label});
     button.disabled = !enabled;
-    button.addEventListener("click", function () { self.mediaTimelineAction(rec, op()); });
+    button.addEventListener("click", function () { self.mediaTimelineAction(rec, op()); self.mediaTimelineRefresh(rec); });
     rec.toolButtons[id] = button;
     rec.toolsEl.appendChild(button);
     return button;
@@ -6263,9 +6357,11 @@
     var lanesEl = el("div", {class: "pui-media-lanes"});
     stage.appendChild(corner); stage.appendChild(ruler); stage.appendChild(labelsEl); stage.appendChild(lanesEl);
     root.appendChild(stage);
+    var inspector = el("div", {class: "pui-media-inspector", "data-pui-segment-inspector": "", hidden: true});
+    root.appendChild(inspector);
     var status = el("p", {class: "pui-media-timeline-status", role: "status", "aria-live": "polite", hidden: true});
     root.appendChild(status);
-    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, time: time, toolsEl: tools, toolButtons: {}, ruler: ruler, labelsEl: labelsEl, lanesEl: lanesEl, status: status, playheadEl: null, clipEls: {}, signature: "", value: null, unsubscribe: null, self: self};
+    var rec = {block: block, path: path, root: root, options: options, labels: labels, text: text, time: time, toolsEl: tools, toolButtons: {}, ruler: ruler, labelsEl: labelsEl, lanesEl: lanesEl, inspector: inspector, inspectorFields: {}, status: status, playheadEl: null, clipEls: {}, signature: "", value: null, unsubscribe: null, self: self};
     if (typeof this.adapter.subscribeMediaTimeline === "function") {
       try { rec.unsubscribe = this.adapter.subscribeMediaTimeline(path, function (data) { if (isObject(data)) self.mediaTimelineRefresh(rec, data); }); } catch (error) {}
     }

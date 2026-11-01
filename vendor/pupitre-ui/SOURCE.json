@@ -3,9 +3,9 @@
   "source": "https://codeberg.org/gllm/pupitre-ui",
   "version": "1.8.0",
   "files": {
-    "pupitre-ui.js": "be2a44804f2af364f561632578982bfe352c737bde15125cb0e601cff25ba94c",
-    "pupitre-ui.css": "c4a2b987d98a845ec6cf29ce3270fd25470036af65f32c7080b820ccff43bffc",
+    "pupitre-ui.js": "a0ad7abd02ac931e0640eb0000efc57600ad32c59ff6152989c994537c29a060",
+    "pupitre-ui.css": "3c8420910313463420c21b106a0bb5c28fca339256b6fc225e83f0ad574ced62",
     "isf.js": "a821d46fc600367972540d8d23c59bad9545fa3bea3954a4782e2fddb887bab8"
   },
-  "commit": "a821610"
+  "commit": "aac7188"
 }
