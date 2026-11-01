@@ -4640,12 +4640,21 @@
     var options = isObject(block.canvas_options) ? block.canvas_options : {};
     var root = el("section", {class: "pui-canvas", "data-pui-canvas": path});
     if (a11y.name || label) root.setAttribute("aria-label", String(a11y.name || label));
+    var contextList = Canvas.contexts(value);
+    var activeContext = Canvas.activeContext(value, contextList);
+    var stageState = Canvas.stageState(value);
+    var showContext = Canvas.hasContext(value) && contextList.length > 0;
     var rec = {block: block, path: path, value: value, root: root, options: options,
       view: isObject(value.view) ? {zoom: Number(value.view.zoom) > 0 ? Number(value.view.zoom) : 1, panX: Number(value.view.panX) || 0, panY: Number(value.view.panY) || 0} : {zoom: 1, panX: 0, panY: 0},
       selected: {}, selectedRegion: "", drag: null, pan: null, marquee: null, regionDrag: null,
-      undo: [], redo: [], handleEls: {}, layerEls: [], regionEls: [], regionPaintEls: {}, paintMap: "alpha"};
+      undo: [], redo: [], handleEls: {}, layerEls: [], regionEls: [], regionPaintEls: {}, paintMap: "alpha",
+      contexts: contextList, activeContext: activeContext ? activeContext.id : "", stageMode: stageState.mode,
+      showContext: showContext, contextBar: null, contextButtons: {}, stageButtons: {}};
     (isArray(value.selected) ? value.selected : []).forEach(function (id) { rec.selected[String(id)] = true; });
     if (value.selected_region) rec.selectedRegion = String(value.selected_region);
+    else if (activeContext && activeContext.region) rec.selectedRegion = activeContext.region;
+    if (showContext) root.classList.add("is-contextual");
+    root.setAttribute("data-stage-mode", rec.stageMode);
     var head = el("div", {class: "pui-canvas-head"});
     head.appendChild(el("h4", {text: label}));
     var count = el("span", {class: "pui-canvas-count", text: (value.handles || []).length + " handles · " + (value.layers || []).length + " layers"});
@@ -4727,6 +4736,7 @@
     }
     if (value.profile) head.appendChild(el("span", {class: "pui-canvas-profile", text: String(value.profile)}));
     root.appendChild(head);
+    if (showContext) root.appendChild(this.canvasContextBar(rec));
     var viewport = el("div", {class: "pui-canvas-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas"});
     var content = el("div", {class: "pui-canvas-content"});
     var svg = svgEl("svg", {class: "pui-canvas-shapes", "aria-hidden": "true"});
@@ -4837,12 +4847,27 @@
     }
     rec.regionEls = [];
     rec.regionPaintEls = {};
+    var currentContext = Canvas.activeContext(rec.value, rec.contexts);
+    if ((!rec.selectedRegion || !rec.value.selected_region) && currentContext && currentContext.region) rec.selectedRegion = currentContext.region;
+    var stageActive = rec.selectedRegion || (currentContext && currentContext.region) || "";
+    var stage = Canvas.stageState(rec.value);
+    rec.stageMode = stage.mode;
+    rec.root.setAttribute("data-stage-mode", rec.stageMode);
+    var stageDim = function (active) {
+      if (!rec.showContext) return 1;
+      if (rec.stageMode === "composite") return 1;
+      if (rec.stageMode === "focus") return active ? 1 : 0.06;
+      return active ? 1 : 0.34;
+    };
     var regionGroup = svgEl("g", {class: "pui-canvas-regions"});
     (rec.value.regions || []).forEach(function (region) {
       if (!isObject(region)) return;
       var regionId = String(region.id || "");
-      var rect = svgEl("rect", {class: "pui-canvas-region" + (rec.selectedRegion === regionId ? " is-selected" : ""), "data-region-id": regionId,
-        x: Number(region.x) || 0, y: Number(region.y) || 0, width: Math.max(1, Number(region.w) || 1), height: Math.max(1, Number(region.h) || 1)});
+      var active = regionId === stageActive;
+      var dim = stageDim(active);
+      var rect = svgEl("rect", {class: "pui-canvas-region" + (active ? " is-selected is-stage-active" : " is-stage-inactive"), "data-region-id": regionId,
+        x: Number(region.x) || 0, y: Number(region.y) || 0, width: Math.max(1, Number(region.w) || 1), height: Math.max(1, Number(region.h) || 1),
+        opacity: String(dim)});
       rect.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
         if (event.preventDefault) event.preventDefault();
@@ -4859,7 +4884,7 @@
       ["alpha", "beta"].forEach(function (channel) {
         var map = region[channel];
         if (!isObject(map) || !isArray(map.data) || Number(map.width) <= 0 || Number(map.height) <= 0) return;
-        var cells = svgEl("g", {class: "pui-canvas-blend is-" + channel});
+        var cells = svgEl("g", {class: "pui-canvas-blend is-" + channel, opacity: String(dim)});
         var cw = Number(rect.getAttribute("width")) / Number(map.width);
         var ch = Number(rect.getAttribute("height")) / Number(map.height);
         var key = regionId + ":" + channel;
@@ -4933,6 +4958,7 @@
       var on = !!group && isArray(group.handles) && group.handles.length > 0 && group.handles.every(function (id) { return !!rec.selected[String(id)]; });
       button.setAttribute("aria-pressed", on ? "true" : "false");
     });
+    this.canvasRefreshContextBar(rec);
     this.canvasApplyView(rec);
   };
 
@@ -5021,12 +5047,119 @@
     return (rec.value.regions || []).find(function (region) { return isObject(region) && String(region.id || "") === String(id); }) || null;
   };
 
+  /** MPCDI context/stage toolbar: display → buffer → region, active context
+   * and the edit/composite/focus stage mode. */
+  Renderer.prototype.canvasContextBar = function (rec) {
+    var self = this;
+    var bar = el("div", {class: "pui-canvas-contextbar", role: "group", "aria-label": "MPCDI context and stage"});
+    var facts = el("div", {class: "pui-canvas-context-facts"});
+    bar.appendChild(facts);
+    var contexts = el("div", {class: "pui-canvas-contexts", role: "group", "aria-label": "Display, buffer and region contexts"});
+    rec.contextButtons = {};
+    (rec.contexts || []).forEach(function (entry) {
+      var button = el("button", {type: "button", class: "pui-button pui-canvas-context", text: String(entry.label), "aria-pressed": "false"});
+      button.setAttribute("data-context-id", entry.id);
+      button.title = "Display " + entry.displayLabel + " · Buffer " + entry.bufferLabel + " · Region " + entry.regionLabel;
+      button.addEventListener("click", function () { self.canvasSelectContext(rec, entry.id); });
+      contexts.appendChild(button);
+      rec.contextButtons[entry.id] = button;
+    });
+    bar.appendChild(contexts);
+    var stage = el("div", {class: "pui-canvas-stage", role: "group", "aria-label": "Stage mode"});
+    rec.stageButtons = {};
+    [["edit", "Edit"], ["composite", "Composite"], ["focus", "Focus"]].forEach(function (entry) {
+      var button = el("button", {type: "button", class: "pui-button pui-canvas-stage-mode", text: entry[1], "aria-pressed": "false"});
+      button.setAttribute("data-stage-mode", entry[0]);
+      button.title = "Stage " + entry[1].toLowerCase();
+      button.addEventListener("click", function () { self.canvasSetStageMode(rec, entry[0]); });
+      stage.appendChild(button);
+      rec.stageButtons[entry[0]] = button;
+    });
+    var fitRegion = el("button", {type: "button", class: "pui-button pui-canvas-fit-region", text: "Fit region"});
+    fitRegion.addEventListener("click", function () { self.canvasFitRegion(rec); });
+    stage.appendChild(fitRegion);
+    rec.fitRegionButton = fitRegion;
+    bar.appendChild(stage);
+    rec.contextBar = bar;
+    rec.contextFacts = facts;
+    this.canvasRefreshContextBar(rec);
+    return bar;
+  };
+
+  Renderer.prototype.canvasRefreshContextBar = function (rec) {
+    if (!rec || !rec.contextBar) return;
+    var active = (rec.contexts || []).find(function (entry) { return entry.id === rec.activeContext; }) || (rec.contexts || [])[0] || null;
+    if (rec.contextFacts) {
+      rec.contextFacts.textContent = active
+        ? "Display " + active.displayLabel + " · " + active.bufferLabel + " · " + active.coordinate_space
+        : "";
+    }
+    Object.keys(rec.contextButtons || {}).forEach(function (id) {
+      var on = id === rec.activeContext;
+      rec.contextButtons[id].setAttribute("aria-pressed", on ? "true" : "false");
+      rec.contextButtons[id].classList.toggle("is-active", on);
+    });
+    Object.keys(rec.stageButtons || {}).forEach(function (mode) {
+      var on = mode === rec.stageMode;
+      rec.stageButtons[mode].setAttribute("aria-pressed", on ? "true" : "false");
+      rec.stageButtons[mode].classList.toggle("is-active", on);
+    });
+    rec.root.setAttribute("data-stage-mode", rec.stageMode || "edit");
+    if (rec.fitRegionButton) {
+      rec.fitRegionButton.disabled = !rec.selectedRegion;
+      rec.fitRegionButton.title = rec.selectedRegion ? "Fit the active region " + rec.selectedRegion : "Select a region first";
+    }
+  };
+
+  Renderer.prototype.canvasSelectContext = function (rec, id, writeIntent) {
+    if (!rec) return false;
+    var entry = (rec.contexts || []).find(function (item) { return item.id === String(id); });
+    if (!entry) return false;
+    rec.activeContext = entry.id;
+    rec.value.active_context = entry.id;
+    if (entry.region) {
+      rec.selectedRegion = entry.region;
+      rec.value.selected_region = entry.region;
+    }
+    this.canvasRender(rec);
+    if (writeIntent !== false) this.writeCanvas(rec, {op: "context.select", context: entry.id, display: entry.display, buffer: entry.buffer, region: entry.region, coordinate_space: entry.coordinate_space});
+    return true;
+  };
+
+  Renderer.prototype.canvasSetStageMode = function (rec, mode) {
+    if (!rec || ["edit", "composite", "focus"].indexOf(String(mode)) < 0) return false;
+    rec.stageMode = String(mode);
+    if (!isObject(rec.value.stage)) rec.value.stage = {};
+    rec.value.stage.mode = rec.stageMode;
+    this.canvasRender(rec);
+    this.writeCanvas(rec, {op: "stage.mode", mode: rec.stageMode});
+    return true;
+  };
+
+  Renderer.prototype.canvasFitRegion = function (rec) {
+    if (!rec || !rec.selectedRegion) return false;
+    var region = this.canvasRegion(rec, rec.selectedRegion);
+    if (!region) return false;
+    var box = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {width: 800, height: 450};
+    var next = global.PupitreCanvas.fitRegion(rec.value, region, box.width || 800, box.height || 450, 24);
+    rec.view = next;
+    rec.value.view = {zoom: next.zoom, panX: next.panX, panY: next.panY};
+    this.canvasApplyView(rec);
+    this.writeCanvas(rec, {op: "view.fit_region", region: rec.selectedRegion});
+    return true;
+  };
+
   Renderer.prototype.canvasSelectRegion = function (rec, id, writeIntent) {
     if (!rec) return false;
     rec.selectedRegion = String(id || "");
     rec.value.selected_region = rec.selectedRegion;
+    var entry = (rec.contexts || []).find(function (item) { return item.region === rec.selectedRegion; });
+    if (entry) {
+      rec.activeContext = entry.id;
+      rec.value.active_context = entry.id;
+    }
     this.canvasRender(rec);
-    if (writeIntent !== false) this.writeCanvas(rec, {op: "region.select", region: rec.selectedRegion});
+    if (writeIntent !== false) this.writeCanvas(rec, {op: "region.select", region: rec.selectedRegion, context: rec.activeContext || ""});
     return true;
   };
 
