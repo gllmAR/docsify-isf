@@ -459,9 +459,21 @@
     this._collectionRecordIndex = -1;
     if (!this.mount) throw new Error("PupitreUI: mount is required");
     while (this.mount.firstChild) this.mount.removeChild(this.mount.firstChild);
-    var errors = validate(doc);
+    var errors = validateStructured(doc);
     if (errors.length) {
-      var warning = el("div", {class: "pui-warning", role: "alert", text: "PUI warning: " + errors.join("; ")});
+      var warning = el("div", {class: "pui-warning", role: "alert"});
+      warning.setAttribute("data-pui-errors", errors.map(function (error) { return error.code; }).join(" "));
+      warning.appendChild(el("strong", {text: "PUI warning"}));
+      var list = el("ul", {class: "pui-warning-list"});
+      errors.forEach(function (error) {
+        var item = el("li", {"data-error-code": error.code});
+        item.appendChild(el("code", {class: "pui-error-code", text: error.code}));
+        item.appendChild(el("span", {text: error.message + (error.path ? " (" + error.path + ")" : "")}));
+        if (error.hint) item.appendChild(el("span", {class: "pui-error-hint", text: error.hint}));
+        if (error.recovery) item.appendChild(el("span", {class: "pui-error-recovery", text: error.recovery}));
+        list.appendChild(item);
+      });
+      warning.appendChild(list);
       this.mount.appendChild(warning);
       return this;
     }
@@ -13117,13 +13129,79 @@
     return found;
   }
 
-  function validate(doc) {
+  var ERROR_CATALOG = {
+    document_not_object: {level: "error", message: "PUI document is not an object.", hint: "The document must be a JSON object with format, version and panels.", recovery: "Parse the JSON and pass an object to render()."},
+    document_format: {level: "error", message: "PUI document format is not \"pupitre-ui\".", hint: "Expected format: \"pupitre-ui\".", recovery: "Set format to \"pupitre-ui\" or migrate the document."},
+    document_version: {level: "error", message: "PUI document version is not supported.", hint: "This renderer supports document version 1.", recovery: "Set version to 1 or migrate the document."},
+    document_panels: {level: "error", message: "PUI document panels is not an array.", hint: "panels must be an array of panel objects.", recovery: "Add the missing panels array or fix its shape."},
+    panel_not_object: {level: "error", message: "PUI panel is not an object.", hint: "Each panel needs an id and a pages array.", recovery: "Replace the panel with an object."},
+    panel_pages: {level: "error", message: "PUI panel pages is not an array.", hint: "Each panel needs a pages array.", recovery: "Add pages or remove the panel."},
+    page_not_object: {level: "error", message: "PUI page is not an object.", hint: "Each page needs an id and sections.", recovery: "Replace the page with an object."},
+    page_sections: {level: "error", message: "PUI page sections is not an array.", hint: "Each page needs a sections array.", recovery: "Add sections or remove the page."},
+    section_not_object: {level: "error", message: "PUI section is not an object.", hint: "Each section needs an id and blocks.", recovery: "Replace the section with an object."},
+    section_blocks: {level: "error", message: "PUI section blocks is not an array.", hint: "Each section needs a blocks array.", recovery: "Add blocks or remove the section."},
+    block_not_object: {level: "error", message: "PUI block is not an object.", hint: "Each block needs a kind.", recovery: "Replace the block with an object."},
+    block_missing_kind: {level: "error", message: "PUI block is missing kind.", hint: "Give the block a kind such as field, action or note.", recovery: "Add kind or remove the block."},
+    block_missing_bind: {level: "error", message: "PUI field is missing bind.", hint: "A field needs an absolute host path.", recovery: "Add bind (for example /show/gain) or remove the field."},
+    duplicate_block_id: {level: "warning", message: "PUI block id is duplicated.", hint: "Ids should be unique within a document for stable updates.", recovery: "Rename one of the duplicate ids."},
+    adapter_missing_method: {level: "error", message: "The host adapter is missing a required method.", hint: "Implement the method named in details.method.", recovery: "Add the method or remove the surface that requires it."},
+    adapter_rejected: {level: "error", message: "The host rejected the action.", hint: "The host value was not changed.", recovery: "Inspect the host error, then retry or adjust the value."},
+    adapter_exception: {level: "error", message: "The host adapter threw an exception.", hint: "The action did not complete.", recovery: "Fix the adapter exception and retry."},
+    action_failed: {level: "error", message: "The action failed.", hint: "The host did not complete the intent.", recovery: "Check the host log and retry."},
+    action_timeout: {level: "error", message: "The action timed out.", hint: "The host did not acknowledge in time.", recovery: "Check connectivity and retry."}
+  };
+
+  function errorInfo(code, details) {
+    var base = ERROR_CATALOG[code] || {level: "error", message: String(code || "Unknown error."), hint: "", recovery: ""};
+    var out = {code: String(code || "unknown"), level: base.level, message: base.message, hint: base.hint, recovery: base.recovery};
+    if (details) Object.keys(details).forEach(function (key) { out[key] = details[key]; });
+    return out;
+  }
+
+  function errorFrom(error, fallbackCode, details) {
+    if (isObject(error) && error.code) return errorInfo(String(error.code), Object.assign({}, error, details || {}));
+    return errorInfo(fallbackCode || "action_failed", Object.assign({message: String(error && error.message || error || "Unknown error.")}, details || {}));
+  }
+
+  function validateStructured(doc) {
     var errors = [];
-    if (!isObject(doc)) return ["document is not an object"];
-    if (doc.format !== "pupitre-ui") errors.push("format is not pupitre-ui");
-    if (Number(doc.version) !== 1) errors.push("version is not 1");
-    if (!isArray(doc.panels)) errors.push("panels is not an array");
+    if (!isObject(doc)) return [errorInfo("document_not_object")];
+    if (doc.format !== "pupitre-ui") errors.push(errorInfo("document_format", {path: "format"}));
+    if (Number(doc.version) !== 1) errors.push(errorInfo("document_version", {path: "version"}));
+    if (!isArray(doc.panels)) errors.push(errorInfo("document_panels", {path: "panels"}));
+    var ids = {};
+    (isArray(doc.panels) ? doc.panels : []).forEach(function (panel, pi) {
+      if (!isObject(panel)) { errors.push(errorInfo("panel_not_object", {path: "panels[" + pi + "]"})); return; }
+      if (!isArray(panel.pages)) { errors.push(errorInfo("panel_pages", {path: "panels[" + pi + "].pages"})); return; }
+      panel.pages.forEach(function (page, gi) {
+        if (!isObject(page)) { errors.push(errorInfo("page_not_object", {path: "panels[" + pi + "].pages[" + gi + "]"})); return; }
+        if (!isArray(page.sections)) { errors.push(errorInfo("page_sections", {path: "panels[" + pi + "].pages[" + gi + "].sections"})); return; }
+        page.sections.forEach(function (section, si) {
+          if (!isObject(section)) { errors.push(errorInfo("section_not_object", {path: "panels[" + pi + "].pages[" + gi + "].sections[" + si + "]"})); return; }
+          if (!isArray(section.blocks)) { errors.push(errorInfo("section_blocks", {path: "panels[" + pi + "].pages[" + gi + "].sections[" + si + "].blocks"})); return; }
+          (function walk(blocks, base) {
+            (isArray(blocks) ? blocks : []).forEach(function (block, bi) {
+              var path = base + "[" + bi + "]";
+              if (!isObject(block)) { errors.push(errorInfo("block_not_object", {path: path})); return; }
+              if (!block.kind) errors.push(errorInfo("block_missing_kind", {path: path}));
+              if (block.kind === "field" && !block.bind) errors.push(errorInfo("block_missing_bind", {path: path, id: block.id || null}));
+              if (block.id) {
+                var id = String(block.id);
+                if (ids[id]) errors.push(errorInfo("duplicate_block_id", {path: path, id: id, firstPath: ids[id]}));
+                else ids[id] = path;
+              }
+              if (isArray(block.blocks)) walk(block.blocks, path + ".blocks");
+              if (isArray(block.template)) walk(block.template, path + ".template");
+            });
+          })(section.blocks, "panels[" + pi + "].pages[" + gi + "].sections[" + si + "].blocks");
+        });
+      });
+    });
     return errors;
+  }
+
+  function validate(doc) {
+    return validateStructured(doc).map(function (error) { return error.message; });
   }
 
   function create(options) {
@@ -13134,6 +13212,8 @@
     version: "1.8.0",
     create: create,
     validate: validate,
+    validateStructured: validateStructured,
+    errors: {catalog: function () { return JSON.parse(JSON.stringify(ERROR_CATALOG)); }, make: errorInfo, from: errorFrom},
     expandTemplates: expandTemplates,
     morph: morph,
     ease: ease,

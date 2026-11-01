@@ -1212,3 +1212,9 @@
 .pui-debug-close { border: 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
 .pui-debug-close:hover { color: var(--pui-text); }
 .pui-debug-body { max-height: 220px; overflow: auto; margin: 0; padding: 7px 8px; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.45; white-space: pre-wrap; }
+
+.pui-warning-list { margin: 5px 0 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 3px; }
+.pui-warning-list li { display: flex; flex-direction: column; gap: 1px; }
+.pui-error-code { align-self: flex-start; color: var(--pui-danger); font-size: calc(var(--pui-type-base) * 0.62); }
+.pui-error-hint { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
+.pui-error-recovery { color: var(--pui-text); font-size: calc(var(--pui-type-base) * 0.66); }
