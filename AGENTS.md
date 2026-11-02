@@ -32,6 +32,9 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
 - **Command palette is host-scoped.** One document shortcut resolves the active
   viewer and opens that PUI workbench palette; never enable a global PUI palette
   shortcut on every viewer instance.
+- **Keep chrome work coalesced.** Workbench `apply()` runs at most once per
+  animation frame; lazy-mount the editor More menu and avoid per-tick duplicate
+  applies. Space defaults: one-line description, compact playback strip.
 - **Adaptive by default.** The same workbench must work with mouse, keyboard and
   touch at desktop and phone widths. Workbench/controls need 32px+ targets.
 - **Verify the whole use.** `npm test` for the contract, `npm run test:smoke`

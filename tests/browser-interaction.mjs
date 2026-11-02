@@ -382,12 +382,17 @@ await closeOverlay();
 await moreAction("Revert to file");
 await sleep(300);
 await capture("18d-editor-revert");
-const templateTrigger = await page.$(`${selector} .isf-editor-more .pui-menu-trigger`);
-if (templateTrigger) {
-    await templateTrigger.click(); await sleep(200);
+const templateOpen = await blockEval((block) => {
+    const trigger = block.querySelector(".isf-editor-more .pui-menu-trigger");
+    if (!trigger) return false;
+    if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+    return true;
+});
+if (templateOpen) {
+    await sleep(220);
     await capture("21-templates");
-    const item = await page.$(`${selector} .isf-editor-more [role="menuitem"]`);
-    if (item) { await item.click(); await sleep(250); }
+    await editorMenu("float input");
+    await sleep(300);
 }
 const fold = await page.$(`${selector} .isf-fold-btn`);
 if (fold) { await fold.click(); await sleep(200); await capture("22-editor-folded"); await fold.click(); }

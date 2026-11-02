@@ -122,10 +122,25 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 - Phone stage: **~415 px** tall with Parameters open (previously ~286 px).
 - Source at 300 px keeps a `Ln x, Col y` and compile-status indicator without
   spending a full status row.
-- Playback strip: **~96 px** including the statusbar, with no dead controls;
-  editor toolbar is **one row** with Apply + More.
+- Playback strip: **~80 px** including the statusbar, with no dead controls;
+  editor toolbar is **one row** with Apply + More. The titlebar description is
+  one ellipsized line (full text in its tooltip/expandable heading).
 
 ---
+
+## 4.1 Runtime cost controls
+
+- Workbench state changes are **coalesced to one PUI apply per animation frame**;
+  the badge and transport no longer trigger separate applies.
+- The editor **More menu is mounted lazily** when Source first opens; a page
+  with many viewers otherwise pays for hidden PUI menus.
+- Pane state is host-bound through PUI `open_bind`, removing click-listener
+  mirroring and its extra state work.
+- PUI palette shortcuts are host-scoped to one active viewer, so a page with
+  many workbenches never opens multiple palettes.
+- Bare/OBS viewers opt out of parameter persistence entirely.
+- Initial lazy mount measured **2 PUI workbenches / 4 PUI roots**, with no open
+  More menus; off-screen viewers mount only when scrolled into view.
 
 ## 5. Remaining opportunities
 

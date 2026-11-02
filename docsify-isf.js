@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.40.1
+ * docsify-isf v1.40.2
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.40.1";
+    var VERSION = "1.40.2";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5458,7 +5458,7 @@
             ".isf-workbench .isf-editor-wrap{height:100%;min-height:0;display:flex;flex-direction:column}",
             ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto}",
             ".isf-workbench .isf-panel-intro{display:none!important}",
-            ".isf-workbench .pui-workbench-description{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:72ch}",
+            ".isf-workbench .pui-workbench-description{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72ch}",
             ".isf-workbench .pui-workbench-titlebar-toggle{min-width:28px;min-height:28px;font-size:12px}",
             ".isf-workbench .isf-params{padding:0;background:transparent}",
             ".isf-workbench .isf-editor-head{min-height:32px}",
@@ -5695,7 +5695,7 @@
             ".isf-workbench .pui-workbench-toggle,.isf-workbench .pui-workbench-action,.isf-workbench .pui-header-menu-trigger{min-width:32px;min-height:32px;padding:4px 6px!important}",
             ".isf-workbench .pui-workbench-toggle{order:1}.isf-workbench .pui-workbench-action{order:2}.isf-workbench .pui-header-menu{order:3;margin-inline-end:0;padding-inline-end:0;border-inline-end:0}",
             ".isf-workbench .pui-workbench-tools{gap:2px;align-items:center}",
-            ".isf-workbench .pui-workbench-pane.is-bottom{max-height:96px!important}",
+            ".isf-workbench .pui-workbench-pane.is-bottom{max-height:80px!important}",
             ".isf-workbench .pui-transport.is-compact{min-height:32px}",
             ".isf-workbench .pui-transport.is-compact .pui-transport-head .pui-button{min-height:30px;padding:3px 9px}",
             ".isf-workbench .pui-transport.is-compact .pui-transport-time{font-size:.66rem}",
@@ -5705,7 +5705,7 @@
             ".isf-workbench .pui-transport-head h4{display:none!important}",
             ".isf-workbench .pui-transport-head{min-height:32px;gap:6px}",
             ".isf-workbench .pui-workbench-eyebrow{margin-bottom:1px}",
-            "@media (max-width:600px){.isf-workbench .pui-workbench-toggle-label{display:none!important}.isf-workbench .pui-workbench-toggle{padding:4px 7px!important}.isf-workbench .pui-workbench-toggle-icon{font-size:15px;opacity:1}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px!important}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
+            "@media (max-width:600px){.isf-workbench .pui-workbench-toggle-label{display:none!important}.isf-workbench .pui-workbench-toggle{padding:4px 7px!important}.isf-workbench .pui-workbench-toggle-icon{font-size:15px;opacity:1}.isf-workbench .pui-workbench-pane.is-bottom{max-height:96px!important}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{display:flex;align-items:center;gap:6px}",
             ".isf-source-meta{display:none;margin-inline-start:auto;align-items:center;gap:5px;text-transform:none;letter-spacing:0;font-size:.66rem;color:var(--isf-muted);white-space:nowrap}",
             ".isf-editor-actions .isf-apply{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast);font-weight:600}",
@@ -6854,7 +6854,9 @@
                 if (moreMenuUI) { try { moreMenuUI.destroy(); } catch (error) { /* ignore */ } }
             });
         }
-        loadPUI().then(mountEditorMoreMenu, function () { /* keep Apply available */ });
+        // Mount the More menu only when the Source pane is first opened; a
+        // page with many viewers otherwise pays for hidden PUI menus.
+        loadPUI().then(function () { /* assets ready; lazy mount on Source */ }, function () { /* keep Apply available */ });
         var selectionHandler = function () {
             if (document.activeElement === textarea) scheduleCaret();
         };
@@ -7035,6 +7037,7 @@
             applyFontSize: applyFontSize,
             value: function () { return textarea.value; },
             setStatus: setStatus,
+            mountMoreMenu: function () { mountEditorMoreMenu(); },
             toggleToolbar: function () { setToolbarCollapsed(!toolbarCollapsed, true); },
             folded: function () { return toolbarCollapsed; },
             refreshFold: refreshFold,
@@ -7993,9 +7996,6 @@
             status.className = "isf-status" + (viewer.statusText ? "" : " isf-hidden") +
                 (kind ? " is-" + kind : "");
             statusText.textContent = viewer.statusText;
-            if (viewer.puiWorkbench) {
-                try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
-            }
             if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         };
         viewer.warn = function (message) {
@@ -8098,6 +8098,7 @@
                 window.__isfActiveSourceEditor = viewer;
                 viewer.editorOpen = true;
                 viewer.inspectorImport = false;
+                if (viewer.editor && viewer.editor.mountMoreMenu) viewer.editor.mountMoreMenu();
                 setEditorPanel();
                 viewer.applyPUIWorkbench();
                 focusEditor();
@@ -8741,7 +8742,7 @@
                         left: {title: "Source", icon: "</>", width: {initial: 300, min: 260, max: 520}, collapsible: true, open_bind: "/isf/ui/editorOpen"},
                         stage: {title: "Preview", fit: "contain", min_width: 280},
                         right: {title: "Parameters", icon: "⚙", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"], open_bind: "/isf/ui/inspectorOpen"},
-                        bottom: {title: "Playback", icon: "▶", height: 96, collapsible: false, open_bind: "/isf/ui/playbackOpen"}
+                        bottom: {title: "Playback", icon: "▶", height: 80, collapsible: false, open_bind: "/isf/ui/playbackOpen"}
                     },
                     sections: [
                         {
@@ -8797,8 +8798,12 @@
         };
 
         viewer.applyPUIWorkbench = function () {
-            if (!viewer.puiWorkbench) return;
-            try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
+            if (!viewer.puiWorkbench || viewer._puiWorkbenchFrame) return;
+            viewer._puiWorkbenchFrame = requestAnimationFrame(function () {
+                viewer._puiWorkbenchFrame = 0;
+                if (viewer.disposed || !viewer.puiWorkbench) return;
+                try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
+            });
         };
 
         viewer.mountWorkbench = function () {

@@ -407,7 +407,7 @@ The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
 keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.13.1's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.13.2's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -451,9 +451,13 @@ Density decisions:
   title bar carry identity/close); the editor toolbar is one row with Apply +
   More. More holds Revert/Copy/Import, keyboard help and snippets/templates.
 - The Playback strip hides the transport heading and any loop/rate controls the
-  host reports as unsupported, then keeps the statusbar visible. The titlebar
-  Playback toggle can collapse the whole strip; fullscreen/focus/reset/share are
-  direct titlebar actions.
+  host reports as unsupported, then keeps the statusbar visible in ~80 px. The
+  titlebar Playback toggle can collapse the whole strip; fullscreen/focus/
+  reset/share are direct titlebar actions.
+- Workbench applies coalesce to one per animation frame; the editor More PUI is
+  lazy-mounted on first Source open; pane state is host-bound instead of
+  mirrored click state. The description is one ellipsized line with the full
+  text in its tooltip/expandable titlebar.
 - At a Source pane width below 360 px the editor caret/status row is visually
   hidden; the status stays an aria-live/visually-hidden region. A compact
   status dot + `Ln x, Col y` is mirrored into the Source pane title so the
