@@ -407,7 +407,7 @@ The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
 keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.12.1's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.13.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 

@@ -16,6 +16,7 @@ checked against established editor/workbench implementations.
 | Desktop, defaults (Parameters open) | ![desktop default](ui-audit/desktop-default.png) |
 | Desktop, Source + Parameters | ![desktop both panes](ui-audit/desktop-both-panes.png) |
 | Desktop, View tab | ![desktop view](ui-audit/desktop-view-tab.png) |
+| Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
 | Desktop, title bar compact | ![desktop compact](ui-audit/desktop-compact.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |

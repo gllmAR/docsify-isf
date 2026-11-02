@@ -29,6 +29,9 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   in-view viewer and never steals.
 - **Space is a feature.** Prefer icon actions with accessible names/tooltips,
   one-row toolbars, compact transport strips and hidden unavailable controls.
+- **Command palette is host-scoped.** One document shortcut resolves the active
+  viewer and opens that PUI workbench palette; never enable a global PUI palette
+  shortcut on every viewer instance.
 - **Adaptive by default.** The same workbench must work with mouse, keyboard and
   touch at desktop and phone widths. Workbench/controls need 32px+ targets.
 - **Verify the whole use.** `npm test` for the contract, `npm run test:smoke`

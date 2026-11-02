@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.39.1
+ * docsify-isf v1.40.1
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.39.1";
+    var VERSION = "1.40.1";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -4063,6 +4063,32 @@
     var LAYOUT_KEY = "docsify-isf:layout";
     var VALUES_KEY_PREFIX = "docsify-isf:values:";
     var VIEWERS = [];
+    var PALETTE_SHORTCUT_BOUND = false;
+
+    // One document shortcut owns command-palette opening for the active
+    // viewer; PUI's per-instance shortcut is deliberately not used because a
+    // docsify page can mount many workbenches at once.
+    function bindPaletteShortcut() {
+        if (PALETTE_SHORTCUT_BOUND || typeof document === "undefined") return;
+        PALETTE_SHORTCUT_BOUND = true;
+        document.addEventListener("keydown", function (event) {
+            if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+            if (String(event.key).toLowerCase() !== "p") return;
+            if (document.querySelector(".pui-palette")) return;
+            var active = window.__isfActiveInspector;
+            if (!active || !active.puiWorkbench) {
+                active = VIEWERS.filter(function (viewer) { return viewer.puiWorkbench && viewer.visible; })
+                    .sort(function (a, b) { return b.lastUsed - a.lastUsed; })[0];
+            }
+            if (!active || !active.puiWorkbench) {
+                active = VIEWERS.filter(function (viewer) { return viewer.puiWorkbench; })
+                    .sort(function (a, b) { return b.lastUsed - a.lastUsed; })[0];
+            }
+            if (!active || !active.puiWorkbench) return;
+            event.preventDefault();
+            active.puiWorkbench.ui.openPalette();
+        });
+    }
     var TOASTS = [];
     var TOAST_SEQ = 0;
     var toastUI = null;
@@ -5403,6 +5429,7 @@
             ".isf-fallback .isf-body{flex:1 1 auto;min-height:0}",
             ".isf-fallback .isf-stage{height:100%!important;min-height:0!important;aspect-ratio:auto!important}",
             ".isf-workbench > .pui{height:100%;min-height:0;flex:1 1 auto}",
+            ".isf-workbench > .pui > .pui-search{display:none!important}",
             ".isf-workbench .pui-workbench{height:100%;min-height:0;display:flex;flex-direction:column}",
             ".isf-workbench .pui-workbench-body{flex:1 1 auto;min-height:0;max-height:none}",
             ".isf-workbench .pui-workbench-pane.is-left,.isf-workbench .pui-workbench-pane.is-right{background:var(--isf-bg)!important}",
@@ -7658,6 +7685,7 @@
             (viewer.layout && viewer.layout.quality) || config.resolution || "auto";
         viewer.includes = {};
         VIEWERS.push(viewer);
+        bindPaletteShortcut();
         viewer.saveLayout = function (patch) {
             if (config.persistLayout === false) return;
             for (var key in patch) {
@@ -8199,6 +8227,7 @@
                 ["Ctrl/Cmd + B", "Show / hide the editor"],
                 ["Ctrl/Cmd + Shift + B", "Fold / unfold the editor toolbar"],
                 ["Ctrl/Cmd + K", "Show / hide the parameters"],
+                ["Ctrl/Cmd + Shift + P", "Open the command palette"],
                 ["Enter / Space", "Fullscreen the preview"],
                 ["Drag the dividers", "Resize the editor and panel"]
             ];
@@ -8701,6 +8730,7 @@
                             blocks: [{kind: "actions", id: "isf-actions", items: [
                                 {id: "randomize", label: "Randomize parameters", call: "isf.randomize"},
                                 {id: "export", label: "Export PNG", call: "isf.export"},
+                                {id: "palette", label: "Command palette", call: "isf.palette"},
                                 {id: "help", label: "Keyboard shortcuts", call: "isf.help"},
                                 {id: "source", label: "Open source file", call: "isf.source"}
                             ]}]
@@ -8809,6 +8839,10 @@
                     if (name === "isf.share") { viewer.copyLink(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
                     if (name === "isf.focus") { viewer.focusPreview(); return true; }
+                    if (name === "isf.palette") {
+                        if (viewer.puiWorkbench) { viewer.puiWorkbench.ui.openPalette(); return true; }
+                        return false;
+                    }
                     if (name === "isf.help") { viewer.showShortcuts(); return true; }
                     if (name === "isf.source") { if (viewer.url) window.open(viewer.url, "_blank", "noopener"); return true; }
                     if (name === "isf.inspector") { if (viewer.isInspectorOpen()) closeInspector(); else openInspector("params"); return true; }

@@ -251,7 +251,7 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.12.1 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.13.1 **collapsible title
 bar**. Pane toggles and direct actions are icon-only (`</>`, `⚙`, `▶`,
 fullscreen, focus, reset, share, menu) with accessible names/tooltips, keeping
 one compact controls row at every width. Collapsing
@@ -274,8 +274,8 @@ one Parameters pane is open across viewers at a time, so panels never stack;
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.12.1** snapshot (commit
-`15be22c`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.13.1** snapshot (commit
+`33c5556`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -394,7 +394,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.12.1) hides the description and keeps a compact
+  Its collapse control (PUI 1.13.1) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden

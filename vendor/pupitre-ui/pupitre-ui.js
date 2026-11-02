@@ -13532,7 +13532,7 @@
     if (this._palette) { this._palette.close(); return 0; }
     var dialog = el("dialog", {class: "pui-dialog pui-palette", "aria-label": this.t("palette.title", "Commands")});
     var form = el("form", {method: "dialog"});
-    var input = el("input", {type: "search", "aria-label": this.t("palette.title", "Commands"), placeholder: this.t("search.filter", "Filter parameters")});
+    var input = el("input", {type: "search", "aria-label": this.t("palette.title", "Commands"), placeholder: this.t("palette.filter", "Filter commands")});
     var list = el("div", {class: "pui-palette-list", role: "listbox", "aria-label": this.t("palette.title", "Commands")});
     form.appendChild(input);
     form.appendChild(list);
