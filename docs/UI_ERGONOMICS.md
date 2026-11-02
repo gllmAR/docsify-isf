@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.10.0
+**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.11.1
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -114,14 +114,15 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 
 ### Measured result
 
-- Desktop title bar: **111 px** expanded, compact afterwards; section controls
-  are 32 px high.
+- Desktop title bar: **111 px** expanded, compact afterwards; section/action
+  controls are 32 px high and icon-only.
 - Phone title bar: **~121 px** with identity + one icon row (previously ~192 px
   with stacked text controls).
 - Phone stage: **~415 px** tall with Parameters open (previously ~286 px).
 - Source at 300 px keeps a `Ln x, Col y` and compile-status indicator without
   spending a full status row.
-- Playback strip: **~116 px** including the statusbar, with no dead controls.
+- Playback strip: **~96 px** including the statusbar, with no dead controls;
+  editor toolbar is **one row** with Apply + More.
 
 ---
 
@@ -132,7 +133,7 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
   `pane.open_bind` could persist per-viewer state without stacking Parameters.
 - **Command palette**: PUI has one, but docsify's Ctrl+K already toggles
   Parameters. A deliberate shortcut migration would make the palette the
-  primary command surface.
+  primary command surface; the full interaction trace is the regression net.
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.

@@ -398,15 +398,16 @@ The viewer is a PUI workbench page with named regions:
 - **Parameters** right: a PUI tab set. **Parameters** renders the normalised
   `INPUTS`; **View** owns pass/scale/resolution/randomize/export; **Log** owns
   status/render/input/pass readouts and quick actions.
-- **Playback** bottom: a native PUI `transport` bound to `/isf/transport`,
-  followed by a PUI `statusbar` bound to status and render readouts.
+- **Playback** bottom: a compact PUI `transport` bound to `/isf/transport`,
+  followed by a PUI `statusbar` bound to status and render readouts. The
+  transport keeps one play/stop + seek/time strip.
 
 The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 (plus credit when present), a labeled collapse chevron and the function
 buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
 keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.10.0's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.11.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -420,13 +421,14 @@ persists pane widths/collapse state and the titlebar collapse state.
 | Surface | Control | Keys | Persisted |
 |---|---|---|---|
 | Parameters pane | titlebar Parameters button / tab | H, Escape (fullscreen) | runtime + PUI width/collapse |
-| Source pane | titlebar Source button / editor close | Ctrl-Cmd+B, Escape | runtime + PUI width/collapse |
+| Source pane | titlebar Source button / Source toggle | Ctrl-Cmd+B, Escape | runtime + PUI width/collapse |
+| Editor actions | Apply / More menu | Ctrl-Cmd+Enter, More | runtime |
 | Title bar | collapse chevron | — | PUI localStorage |
 | Parameters fields | PUI document | — | runtime values |
 | Editor height | rail above the editor | ↑/↓, Home/End; double-click resets | `editorHeight` |
 | Editor toolbar | chevron / Ctrl-Cmd+Shift+B | — | `editorToolbar` |
 | Import | Import action | Escape returns to Source | — |
-| Playback | bottom PUI transport | — | — |
+| Playback | compact bottom PUI transport | — | — |
 | View/Log | Parameters pane tabs | — | PUI localStorage |
 
 The Menu actions call back into the viewer. Only one Parameters pane is open
@@ -443,11 +445,12 @@ Density decisions:
   use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
   collapses Source, Parameters and Playback for a content-first stage.
 - The Source editor head is hidden in the workbench (the Source pane title and
-  title bar carry identity/close); the editor toolbar starts directly under the
-  pane title.
+  title bar carry identity/close); the editor toolbar is one row with Apply +
+  More. More holds Revert/Copy/Import, keyboard help and snippets/templates.
 - The Playback strip hides the transport heading and any loop/rate controls the
   host reports as unsupported, then keeps the statusbar visible. The titlebar
-  Playback toggle can collapse the whole strip.
+  Playback toggle can collapse the whole strip; fullscreen/focus/reset/share are
+  direct titlebar actions.
 - At a Source pane width below 360 px the editor caret/status row is visually
   hidden; the status stays an aria-live/visually-hidden region. A compact
   status dot + `Ln x, Col y` is mirrored into the Source pane title so the
@@ -508,8 +511,9 @@ body-level PUI `toast` stack. When PUI is unavailable the plain host status
 line remains.
 
 The titlebar and pane toggles are PUI workbench controls. The host sets
-`layout.titlebar` with the page title/description; PUI renders the heading,
-collapse control and function buttons. Pane toggles carry
+`layout.titlebar` with the page title/description/actions; PUI renders the
+heading, collapse control, pane toggles and direct actions in one roving
+toolbar. Pane toggles carry
 `aria-expanded`/`aria-controls`; the host mirrors their clicks into its
 `inspectorOpen`/`editorOpen` state and enforces the one-open Parameters rule.
 Icon-only controls keep `aria-label`/`title`. The main header, floating
@@ -526,19 +530,20 @@ comment/preprocessor/string/number/keyword/type/builtin/ISF/operator.
 
 - Enter auto-indents (current indentation, plus one level after an opening
   bracket); Tab/Shift+Tab indent and dedent the selection; Ctrl/Cmd+Enter or
-  **Apply** compiles; **Revert** restores the fetched file; **Copy** copies
-  the buffer. Indentation follows `editorIndent`.
+  **Apply** compiles. The single-row editor toolbar keeps **Apply** + **More**;
+  More holds Revert, Copy, Import, keyboard help and snippets. Indentation
+  follows `editorIndent`.
 - **Fragment/Vertex tabs**: a fetched `.vs` lands in the Vertex tab; an empty
   Vertex tab prefills `VERTEX_STARTER` and becomes the applied vertex shader.
   `buildShader()` returns `vertexLineMap`, so vertex compile errors switch to
   that tab and highlight the right line.
 - **Shortcuts**: Ctrl/Cmd+Enter or Ctrl/Cmd+S apply, Ctrl/Cmd+/ toggles
   comments, Ctrl/Cmd +/-/0 zooms (persisted), Enter auto-indents, Tab indents.
-- **Templates menu**: a PUI `menu` block in the editor toolbar inserts
-  `INPUTS` snippets (float, bool, color, point2D, event, long, image,
-  audioFFT) at the caret or replaces the buffer with a starter
-  generator/filter/transition/multi-pass shader. The native select is only the
-  fallback until the toolkit assets load.
+- **More menu**: a PUI `menu` block in the editor toolbar inserts `INPUTS`
+  snippets (float, bool, color, point2D, event, long, image, audioFFT) at the
+  caret, replaces the buffer with a starter generator/filter/transition/
+  multi-pass shader, and exposes Revert/Copy/Import/keyboard help. The source
+  toolbar stays one row; templates no longer require a second toolbar control.
 - **Import** opens the Shadertoy/GLSL Sandbox paste box (5.6).
 - `editorLive` recompiles after `editorDebounce` ms of inactivity and the
   status line reports the measured compile time.
@@ -624,7 +629,8 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: every viewer mounts the PUI workbench with Source left, Parameters right, Preview stage and Playback/status; the titlebar shows the shader title and ISF description and keeps its buttons when collapsed; Source/Parameters buttons show/hide the panes; the Parameters tabs expose Parameters/View/Log; the Menu drives reset/randomize/export/share/help/fullscreen/source; a real slider drag reaches the host; the editor opens in Source, highlights, reports the caret, applies, folds and inserts a template; View randomize and Log readouts work; the PUI transport plays/seeks; fullscreen keeps the workbench and fills the stage; only one Parameters pane is open across viewers; a budget-released viewer recovers; phones swap Source/Parameters/View as overlays; the OBS bare viewer reveals the full workbench; broken headers keep a visible fallback error; no unexpected console errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: every viewer mounts the PUI workbench with Source left, Parameters right, Preview stage and compact Playback/status; icon-only pane/direct actions; Source/Parameters buttons show/hide; Parameters/View/Log tabs; direct focus/fullscreen/reset/share and the Menu for randomize/export/help/source; search filter; editor one-row Apply/More + templates; source status dot/caret; transport play/seek; fullscreen; focus; budget recovery; phone overlays; OBS bare; fallback errors |
+| Interaction | `tests/browser-interaction.mjs` | complete desktop/mobile click+touch trace; every pane/tab, menu/direct action, parameter family, filter, editor More/import/templates, transport, focus, fullscreen and phone actions; captures each result under `tests/artifacts/interaction/` |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser
 layer (skips with a message when Chrome or puppeteer-core is unavailable).

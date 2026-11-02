@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.37.0
+ * docsify-isf v1.38.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.37.0";
+    var VERSION = "1.38.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3546,6 +3546,8 @@
             ".isf-workbench .pui-workbench-pane.is-left .pui-section{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-fields{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-slot{flex:1 1 auto;min-height:0;height:100%}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=isf.editor]:has(.isf-editor.isf-hidden){display:none!important}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=isf.import]{display:flex;flex-direction:column}",
             ".isf-workbench .isf-editor-wrap{height:100%;min-height:0;display:flex;flex-direction:column}",
             ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto}",
             ".isf-workbench .isf-panel-intro{display:none!important}",
@@ -3573,34 +3575,6 @@
             ".isf-actions::-webkit-scrollbar{display:none}",
             ".isf-btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;border:1px solid var(--isf-border);background:var(--isf-bg);color:var(--isf-text);border-radius:7px;padding:.25rem .4rem;font-size:.75rem;line-height:1;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .12s ease,border-color .12s ease}",
             ".isf-btn:hover{background:var(--isf-surface-2)}",
-            ".isf-pui-header{flex:1 1 auto;min-width:0;display:flex;height:100%;align-items:center;pointer-events:none}",
-            ".isf-header .isf-pui-header .pui-toolbar{pointer-events:none}",
-            ".isf-pui-header .pui{width:100%;min-width:0;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.92rem;color:var(--isf-text)}",
-            ".isf-pui-header .pui-panel,.isf-pui-header .pui-page,.isf-pui-header .pui-section,.isf-pui-header .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
-            ".isf-pui-header .pui-toolbar{border:0;background:transparent;padding:0;min-height:0;gap:.3rem;flex-wrap:nowrap;align-items:center;width:100%;min-width:0;max-width:100%}",
-            ".isf-header .isf-pui-header .pui-toolbar > .pui-button,.isf-header .isf-pui-header .pui-toolbar > .pui-menu,.isf-header .isf-pui-header .pui-toolbar > .pui-toolbar-link,.isf-header .isf-pui-header .pui-toolbar > .pui-toolbar-readout,.isf-header .isf-title,.isf-header .isf-actions,.isf-header .isf-actions .isf-btn{pointer-events:auto}",
-            ".isf-pui-header .pui-toolbar-link[data-pui-item=title]{display:flex;align-items:center;justify-content:flex-start;text-align:left;flex:1 1 auto;min-width:0;background:transparent;border-color:transparent;color:var(--isf-text);font-weight:650;font-size:.9rem;letter-spacing:-.01em;padding:0 .08rem;min-height:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}",
-            ".isf-pui-header .pui-toolbar-link[data-pui-item=title]:hover{color:var(--isf-accent);text-decoration:underline}",
-            ".isf-pui-header .pui-toolbar > .pui-button,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger{min-width:28px;min-height:28px;padding:.15rem .24rem;background:transparent;border-color:transparent;color:var(--isf-text);box-shadow:none;font-size:.75rem;border-radius:8px;transition:background .12s ease,border-color .12s ease,color .12s ease}",
-            ".isf-pui-header .pui-toolbar > .pui-button:hover,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger:hover{background:var(--isf-surface-2);border-color:var(--isf-border)}",
-            ".isf-pui-header .pui-toolbar > .pui-button[aria-pressed=true],.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger[aria-expanded=true]{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
-            ".isf-pui-header .pui-toolbar-separator{width:1px;height:18px;background:color-mix(in srgb,var(--isf-border) 80%,transparent);margin:0 .12rem;align-self:center}",
-            ".isf-pui-header .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:240px;max-width:min(280px,calc(100vw - 24px));padding:6px;border-radius:10px;background:var(--isf-surface);border-color:var(--isf-border);box-shadow:0 18px 44px rgba(0,0,0,.4);z-index:80}",
-            ".isf-pui-header .pui-menu-popup .pui-button{display:flex;align-items:center;gap:.55rem;width:100%;min-height:34px;padding:.38rem .55rem;border:0;border-radius:6px;background:transparent;color:var(--isf-text);font-size:.78rem;text-align:left}",
-            ".isf-pui-header .pui-menu-popup .pui-button:hover{background:var(--isf-surface-2);border-color:transparent}",
-            ".isf-pui-header .pui-menu-popup .pui-toolbar-icon{min-width:18px}",
-            ".isf-pui-header .pui-menu-popup .pui-toolbar-icon svg{width:16px;height:16px}",
-            ".isf-pui-header .pui-menu-popup .pui-toolbar-label{display:block;color:var(--isf-text);font-size:.78rem;font-weight:500;padding:0;white-space:nowrap}",
-            ".isf-pui-header .pui-menu-popup .pui-toolbar-link{text-decoration:none}",
-            ".isf-pui-header .pui-toolbar-link[data-pui-item=title] .pui-toolbar-badge{background:transparent;border:1px solid var(--isf-border);color:var(--isf-muted);border-radius:999px;padding:0 .32rem;margin-inline-start:.4rem;font-size:.58rem;letter-spacing:.05em;line-height:1.5;vertical-align:middle}",
-            ".isf-pui-header .pui-toolbar-icon{min-width:16px}",
-            ".isf-pui-header .pui-toolbar-icon svg{width:16px;height:16px;display:block}",
-            ".isf-pui-header .pui-toolbar-badge{min-width:1.1em;padding:0 4px;border-radius:999px;background:var(--isf-accent);color:var(--isf-accent-contrast);font-size:.6rem;line-height:1.5;text-align:center}",
-            ".isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{display:inline-flex;padding:.08rem .42rem;border:1px solid var(--isf-border);border-radius:999px;background:var(--isf-surface-2);color:var(--isf-muted);font-size:.64rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
-            ".isf-pui-header .pui-toolbar-readout[data-pui-item=stats][hidden]{display:none}",
-            ".isf-pui-header .pui-toolbar-readout-label{display:none}",
-            ".isf-pui-header .pui-toolbar-readout-value{color:inherit;font-weight:400}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;min-width:0}",
             "@media (max-width:600px){.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:1 1 0;order:0;font-size:.9rem}}",
             "@media (pointer:coarse){.isf-pui-header .pui-toolbar > .pui-button,.isf-pui-header .pui-toolbar > .pui-menu > .pui-menu-trigger{min-width:36px;min-height:36px}.isf-pui-header .pui-menu-popup .pui-button{min-height:36px}.isf-view select,.isf-view .isf-btn{min-height:36px}}",
             "@media (max-width:600px){.isf-header > .isf-title{flex:1 1 auto;min-width:0}.isf-header > .isf-actions{flex:0 1 auto;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:1px}.isf-header > .isf-actions .isf-btn{flex:0 0 auto}}",
@@ -3617,71 +3591,13 @@
             ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-badge{display:inline-flex;align-items:center;flex:0 0 auto;background:var(--isf-surface-2);color:var(--isf-muted);border:1px solid var(--isf-border);border-radius:999px;padding:.12rem .5rem;font-size:.68rem;font-variant-numeric:tabular-nums;pointer-events:none;letter-spacing:.01em;white-space:nowrap}",
-            ".isf-drawer{position:absolute;top:8px;bottom:8px;z-index:5;display:flex;flex-direction:column;width:min(352px,46%);max-width:calc(92% - 8px);background:var(--isf-drawer-bg);-webkit-backdrop-filter:blur(18px) saturate(135%);backdrop-filter:blur(18px) saturate(135%);border:1px solid var(--isf-border);border-radius:12px;overflow:hidden;transition:transform .18s ease,opacity .18s ease;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
-            ".isf-drawer-left{left:8px}",
-            ".isf-drawer-right{right:8px}",
-            ".isf-drawer.isf-drawer-closed{opacity:0;visibility:hidden;pointer-events:none}",
-            ".isf-drawer-left.isf-drawer-closed{transform:translateX(-12px)}",
-            ".isf-drawer-right.isf-drawer-closed{transform:translateX(12px)}",
-            ".isf-drawer-inner{flex:1 1 auto;min-height:0;overflow:auto}",
-            ".isf-inspector-bottom{position:sticky;bottom:0;z-index:7;display:flex;flex-direction:column;background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
-            ".isf-inspector-pui{position:absolute;inset:0;z-index:9;pointer-events:none}",
-            ".isf-inspector-pui .pui{--pui-bg:var(--isf-drawer-bg);--pui-surface:var(--isf-surface)!important;--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
-            ".isf-inspector-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
-            ".isf-inspector-pui .pui-drawer-trigger{display:none}",
-            ".isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel{position:absolute;top:46px!important;right:8px!important;bottom:8px!important;left:auto!important;height:auto;z-index:20;pointer-events:auto;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
             "@keyframes isf-pui-drawer-in{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}",
-            ".isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-drawer-in .18s ease both}",
             "@media (prefers-reduced-motion:reduce){.isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
-            ".isf-inspector-pui .pui-drawer-head{display:none!important}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-toolbar-label{flex:1 1 auto;min-width:0;max-width:none;padding:0;color:var(--isf-text);font-size:.78rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-            ".isf-inspector-pui .pui-drawer-head h4{margin:0;font-size:.8rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
-            ".isf-inspector-pui .pui-drawer-close{width:30px;height:30px;border-radius:6px;color:var(--isf-muted)}",
-            ".isf-inspector-pui .pui-drawer-body{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:0;padding:0;overflow:hidden;min-height:0}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar{grid-row:1;grid-column:1}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-transport{grid-row:3;grid-column:1}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar{position:relative;z-index:6;flex:0 0 auto;padding:.35rem .55rem;border:0;border-bottom:1px solid var(--isf-border);background:var(--isf-surface)}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:30px;font-size:.74rem}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-menu-popup{z-index:90}",
-            ".isf-inspector-pui .pui-slot{grid-row:2;grid-column:1;min-height:0;overflow:auto}",
-            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .7rem .4rem}",
-            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex-direction:column;overflow:hidden;padding:0}",
-            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.editor] .isf-editor-wrap{flex:1 1 auto;height:100%;min-height:0}",
-            ".isf-inspector-pui .pui-slot[data-pui-slot=isf.import]{padding:.6rem .7rem}",
-            ".isf-inspector-pui .pui-drawer-body > .pui-transport{flex:0 0 auto;padding:.35rem .6rem;border-top:1px solid var(--isf-border);background:var(--isf-surface)}",
-            ".isf-inspector-pui .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.45rem;padding:0;border:0;border-radius:0;background:transparent}",
-            ".isf-inspector-pui .pui-transport-head{flex:0 0 auto;gap:.3rem}",
-            ".isf-inspector-pui .pui-transport-head h4{display:none}",
-            ".isf-inspector-pui .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
-            ".isf-inspector-pui .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.4rem}",
-            ".isf-inspector-pui .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
-            ".isf-inspector-pui .pui-transport-time{color:var(--isf-muted);font-size:.68rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
-            ".isf-inspector-pui .pui-transport-loop,.isf-inspector-pui .pui-transport select{display:none}",
-            ".isf-inspector-pui .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:220px;padding:6px;border-radius:9px;background:var(--isf-surface);border-color:var(--isf-border);box-shadow:0 16px 38px rgba(0,0,0,.38);z-index:90}",
-            ".isf-inspector-pui .pui-menu-popup .pui-button{display:flex;align-items:center;gap:.5rem;width:100%;min-height:34px;padding:.35rem .5rem;border:0;background:transparent;text-align:left}",
-            ".isf-inspector-pui .pui-menu-popup .pui-toolbar-label{display:inline;padding:0;color:var(--isf-text);font-size:.76rem}",
-            ".isf-inspector-pui .pui-menu-popup .pui-toolbar-link{text-decoration:none}",
             "@media (pointer:coarse){.isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-head .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-pui .pui-menu-popup .pui-button{min-height:36px}}",
             "@media (max-width:600px){.isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:fixed;inset:0;width:100vw!important;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
-            ".isf-editor-pui{position:absolute;inset:0;z-index:10;pointer-events:none}",
-            ".isf-editor-pui .pui{--pui-bg:transparent;--pui-surface:var(--isf-surface)!important;--pui-surface-2:var(--isf-surface-2);--pui-border:var(--isf-border);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-accent:var(--isf-accent);--pui-radius:8px}",
-            ".isf-editor-pui .pui-drawer{position:absolute;inset:0;pointer-events:none}",
-            ".isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:absolute;top:46px!important;right:auto!important;bottom:8px!important;left:8px!important;height:auto;z-index:20;pointer-events:auto;color:var(--isf-text);border:1px solid var(--isf-border);border-radius:12px;box-shadow:0 18px 46px rgba(0,0,0,.34)}",
-            ".isf-editor-pui .pui-drawer-body{display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;min-height:0;background:transparent}",
-            ".isf-editor-pui .pui-slot{min-height:0;overflow:auto;background:transparent}",
-            ".isf-editor-pui .pui-slot[data-pui-slot=isf.editor]{display:flex;flex:1 1 auto;flex-direction:column;overflow:hidden;min-height:0;padding:0}",
-            ".isf-editor-pui .pui-slot[data-pui-slot=isf.editor] .isf-editor-wrap{flex:1 1 auto;height:100%;min-height:0;background:transparent}",
-            ".isf-editor-pui .pui-slot[data-pui-slot=isf.import]{flex:1 1 auto;padding:.6rem .7rem;background:var(--isf-surface)}",
-            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title{display:flex;padding:.25rem .4rem;background:color-mix(in srgb,var(--isf-surface) 88%,transparent);position:static}",
-            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title > span{font-size:.76rem;font-weight:600}",
-            ".isf-editor-pui .isf-editor-wrap > .isf-panel-title .isf-btn{min-width:30px;min-height:30px}",
-            ".isf-editor-pui .isf-editor-toolbar{background:color-mix(in srgb,var(--isf-surface) 88%,transparent)}",
-            ".isf-editor-pui .isf-editor{background:var(--isf-code-bg)}",
             "@keyframes isf-pui-editor-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}",
-            ".isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:isf-pui-editor-in .18s ease both}",
             "@media (prefers-reduced-motion:reduce){.isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
             "@media (max-width:600px){.isf-editor-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}}",
-            ".isf-inspector-head{display:flex;align-items:center;justify-content:flex-end;gap:.35rem;padding:.3rem .5rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 92%,transparent)}",
             ".isf-inspector-tabs{display:flex;gap:.15rem;flex:0 1 auto;min-width:0}",
             ".isf-inspector-tab{border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted);font:inherit;font-size:.76rem;font-weight:600;padding:.32rem .55rem;min-height:30px;cursor:pointer;white-space:nowrap}",
             ".isf-inspector-tab:hover{color:var(--isf-text);background:var(--isf-surface-2)}",
@@ -3691,8 +3607,6 @@
             ".isf-inspector .isf-params > .isf-panel-title,.isf-inspector .isf-editor-wrap > .isf-panel-title{display:none}",
             ".isf-inspector .isf-params{border-bottom:0}",
             ".isf-inspector .isf-editor-wrap{height:100%}",
-            ".isf-drawer .isf-panel{background:transparent;border-bottom:1px solid var(--isf-border)}",
-            ".isf-drawer .isf-editor-wrap{background:rgba(0,0,0,.12)}",
             ".isf-panel{display:flex;flex-direction:column;border-bottom:1px solid var(--isf-border)}",
             ".isf-panel:last-child{border-bottom:0}",
             ".isf-panel-title{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.55rem .75rem;font-size:.84rem;font-weight:600;color:var(--isf-text);background:color-mix(in srgb,var(--isf-surface) 92%,transparent);border-bottom:1px solid var(--isf-border);position:sticky;top:0;z-index:2;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
@@ -3709,40 +3623,7 @@
             ".isf-status.is-error{color:var(--isf-danger)}",
             ".isf-status.is-warn{color:#b7791f}",
             ".isf-status.is-pui{padding:0;border:0;background:transparent;white-space:normal}",
-            ".isf-inspector-transport{padding:.3rem .5rem;border-top:1px solid var(--isf-border);background:var(--isf-surface)}",
-            ".isf-inspector-transport .pui{width:100%;padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-inspector-transport .pui-panel,.isf-inspector-transport .pui-page,.isf-inspector-transport .pui-section,.isf-inspector-transport .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
-            ".isf-inspector-transport .pui-transport{display:flex;flex-direction:row;align-items:center;gap:.45rem;padding:0;border:0;border-radius:0;background:transparent}",
-            ".isf-inspector-transport .pui-transport-head{flex:0 0 auto;gap:.3rem}",
-            ".isf-inspector-transport .pui-transport-head h4{display:none}",
-            ".isf-inspector-transport .pui-transport-head .pui-button{min-height:28px;padding:.2rem .5rem;font-size:.72rem}",
-            ".isf-inspector-transport .pui-transport-controls{flex:1 1 auto;min-width:0;flex-wrap:nowrap;gap:.4rem}",
-            ".isf-inspector-transport .pui-transport-controls input[type=range]{flex:1 1 auto;min-width:0;min-height:28px;accent-color:var(--isf-accent)}",
-            ".isf-inspector-transport .pui-transport-time{color:var(--isf-muted);font-size:.68rem;font-variant-numeric:tabular-nums;white-space:nowrap}",
-            ".isf-inspector-transport .pui-transport-loop,.isf-inspector-transport .pui-transport select{display:none}",
-            ".isf-inspector-more .pui{padding:0;background:transparent;border-radius:0;font-family:inherit;font-size:.8rem;color:var(--isf-text)}",
-            ".isf-inspector-more .pui-menu-trigger{display:inline-flex;align-items:center;justify-content:center;min-width:30px;min-height:30px;padding:.15rem .25rem;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--isf-muted)}",
-            ".isf-inspector-more .pui-menu-trigger:hover,.isf-inspector-more .pui-menu-trigger[aria-expanded=true]{background:var(--isf-surface-2);border-color:var(--isf-border);color:var(--isf-text)}",
-            ".isf-inspector-more .pui-menu-trigger .pui-toolbar-icon svg{width:16px;height:16px;display:block}",
-            ".isf-inspector-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;top:auto;bottom:calc(100% + 6px);min-width:220px;max-width:min(280px,calc(100vw - 24px));max-height:60vh;overflow:auto;padding:6px;border:1px solid var(--isf-border);border-radius:10px;background:var(--isf-surface);box-shadow:0 18px 44px rgba(0,0,0,.4);z-index:80}",
-            ".isf-inspector-more .pui-menu-popup .pui-button{display:flex;align-items:center;gap:.55rem;width:100%;min-height:34px;padding:.38rem .55rem;border:0;border-radius:6px;background:transparent;color:var(--isf-text);font-size:.78rem;text-align:left;text-decoration:none}",
-            ".isf-inspector-more .pui-menu-popup .pui-button:hover{background:var(--isf-surface-2)}",
-            ".isf-inspector-more .pui-menu-popup .pui-toolbar-icon{min-width:18px}",
-            ".isf-inspector-more .pui-menu-popup .pui-toolbar-icon svg{width:16px;height:16px}",
-            ".isf-inspector-more .pui-menu-popup .pui-toolbar-label{display:block;color:var(--isf-text);font-size:.78rem;font-weight:500;padding:0;white-space:nowrap}",
             "@media (pointer:coarse){.isf-inspector-transport .pui-transport-head .pui-button{min-height:36px}.isf-inspector-transport .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-more .pui-menu-trigger{min-width:36px;min-height:36px}.isf-inspector-more .pui-menu-popup .pui-button{min-height:36px}}",
-            ".isf-pui-statusbar{background:var(--isf-surface);border-top:1px solid var(--isf-border)}",
-            ".isf-pui-statusbar .pui{width:100%;padding:0;background:transparent;border-radius:0;font-size:.74rem;color:var(--isf-muted)}",
-            ".isf-pui-statusbar .pui-panel,.isf-pui-statusbar .pui-page,.isf-pui-statusbar .pui-section,.isf-pui-statusbar .pui-fields{padding:0;margin:0;border:0;background:transparent;display:block}",
-            ".isf-pui-statusbar .pui-statusbar{border:0;background:transparent;padding:.3rem .65rem;min-height:0;gap:.5rem;font-size:.74rem;color:var(--isf-muted)}",
-            ".isf-pui-statusbar .pui-statusbar-label{display:none}",
-            ".isf-pui-statusbar .pui-statusbar-value{white-space:pre-wrap;font-weight:400;text-align:start;color:inherit}",
-            ".isf-pui-statusbar .pui-statusbar-item{display:inline-flex;align-items:center;gap:.42rem}",
-            ".isf-pui-statusbar .pui-statusbar-item::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--isf-muted);flex:0 0 auto}",
-            ".isf-pui-statusbar .pui-statusbar-item[data-tone=success]::before{background:#3fb950;box-shadow:0 0 0 3px rgba(63,185,80,.13)}",
-            ".isf-pui-statusbar .pui-statusbar-item[data-tone=warning]::before{background:#d29922}",
-            ".isf-pui-statusbar .pui-statusbar-item[data-tone=error]::before{background:var(--isf-danger)}",
-            ".isf-pui-statusbar .pui-statusbar-item[data-tone=info]::before{background:var(--isf-accent)}",
             ".isf-editor-wrap{display:flex;flex-direction:column;min-height:0;height:100%}",
             ".isf-editor-toolbar{display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem;border-bottom:1px solid var(--isf-border);background:var(--isf-surface);flex-wrap:wrap;position:sticky;top:0;z-index:2}",
             ".isf-editor-status{flex:1 1 auto;min-width:0;font-size:.74rem;color:var(--isf-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
@@ -3786,9 +3667,6 @@
             ".isf-block:fullscreen .isf-stage{height:100%;min-height:0}",
             ".isf-block:fullscreen .isf-header,.isf-block.isf-fullscreen .isf-header{display:none}",
             ".isf-block:fullscreen .isf-status,.isf-block.isf-fullscreen .isf-status{display:none}",
-            ".isf-fullscreen-hint{position:absolute;top:max(10px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));z-index:2147483001;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);border-radius:50%;background:var(--isf-drawer-bg);color:var(--isf-text);opacity:.42;cursor:pointer;transition:opacity .2s ease,background .12s ease;box-shadow:0 6px 18px rgba(0,0,0,.24);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}",
-            ".isf-fullscreen-hint:hover,.isf-fullscreen-hint:focus-visible{opacity:.95;background:var(--isf-surface)}",
-            ".isf-fullscreen-hint .isf-icon{width:16px;height:16px}",
             ".isf-block:fullscreen .isf-stage{height:100%!important;min-height:0}",
             ".isf-block:fullscreen .isf-drawer{top:0;bottom:0;width:min(480px,44vw)}",
             ".isf-block:fullscreen .isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-block.isf-fullscreen .isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-block:fullscreen .isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-block.isf-fullscreen .isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{top:8px!important}",
@@ -3821,30 +3699,24 @@
             ".isf-resize-y{position:relative;flex:0 0 auto;height:9px;cursor:ns-resize;touch-action:none;background:var(--isf-surface);border-bottom:1px solid var(--isf-border);z-index:3}",
             ".isf-resize-y::after{content:'';position:absolute;left:50%;top:3px;width:34px;height:2px;transform:translateX(-50%);border-radius:2px;background:var(--isf-border)}",
             ".isf-resize-y:hover::after,.isf-resize-y:focus-visible::after,.isf-resize-y.is-dragging::after{background:var(--isf-accent)}",
-            ".isf-resize-x{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none;z-index:6;display:block}",
             ".isf-resize-left{left:auto;right:-4px}",
             ".isf-resize-right{left:-4px;right:auto}",
-            ".isf-resize-x::after{content:'';position:absolute;top:50%;left:3px;width:2px;height:36px;transform:translateY(-50%);border-radius:2px;background:var(--isf-border)}",
-            ".isf-resize-x:hover::after,.isf-resize-x:focus-visible::after,.isf-resize-x.is-dragging::after{background:var(--isf-accent)}",
             ".isf-active-line{position:absolute;left:0;right:0;top:0;height:0;background:rgba(255,255,255,.055);pointer-events:none;z-index:0;border-radius:2px}",
             ".isf-gutter-error{color:#ff7b72;font-weight:700}",
             ".isf-editor-pos{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--isf-muted);font-size:.7rem;white-space:nowrap}",
             ".isf-editor-tabs{display:flex;gap:.2rem;flex:0 0 auto}",
             ".isf-tab{opacity:.75}",
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
-            ".isf-template-select{border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;padding:.18rem .25rem;max-width:9.5rem}",
-            ".isf-editor-actions .isf-template-menu{display:inline-flex;flex:0 0 auto}",
-            ".isf-editor-head{padding-inline-start:.75rem}",
-            ".isf-editor-head > span:first-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-            ".isf-editor-actions .isf-template-menu .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
+            ".isf-editor-actions .isf-template-menu,.isf-editor-actions .isf-editor-more{display:inline-flex;flex:0 0 auto}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-trigger,.isf-editor-actions .isf-editor-more .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
             ".isf-editor-actions .isf-template-menu .pui-menu-trigger:hover{background:var(--isf-surface-2)}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-label{color:inherit;font-size:.72rem;font-weight:500;padding:0}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-icon{min-width:12px}",
             ".isf-editor-actions .isf-template-menu .pui-toolbar-icon svg{width:12px;height:12px}",
-            ".isf-editor-actions .isf-template-menu .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
-            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup,.isf-editor-actions .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button,.isf-editor-actions .isf-editor-more .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
             ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-button:hover{background:var(--isf-surface-2)}",
-            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
+            ".isf-editor-actions .isf-template-menu .pui-menu-popup .pui-toolbar-label,.isf-editor-actions .isf-editor-more .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
             ".isf-editor-actions .isf-template-menu .pui-menu-label{padding:.3rem .5rem;color:var(--isf-muted);font-size:.6rem;letter-spacing:.05em;text-transform:uppercase}",
             ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .6rem;padding:.55rem .75rem .6rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 35%,transparent)}",
             ".isf-view-heading{flex:1 1 100%;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:var(--isf-muted);font-weight:650;margin-bottom:.05rem}",
@@ -3871,7 +3743,6 @@
             ".isf-import-actions{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}",
             ".isf-import-status{flex:1 1 auto;font-size:.72rem;color:var(--isf-muted)}",
             ".isf-panel-close{padding:.18rem .4rem;font-size:.85rem;line-height:1}",
-            ".isf-keys-btn{padding:.18rem .4rem;font-weight:700}",
             ".isf-overlay-actions{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-top:.6rem}",
             ".isf-overlay pre{margin:.5rem 0 0;padding:.5rem .6rem;border-radius:6px;background:rgba(0,0,0,.35);color:#ffb4b8;text-align:left;font-size:.74rem;max-height:8rem;overflow:auto;white-space:pre-wrap}",
             ".isf-spinner{width:22px;height:22px;margin:0 auto .5rem;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:isf-spin .8s linear infinite}",
@@ -3881,13 +3752,8 @@
             "@media (max-width:600px){.isf-header{flex-wrap:wrap;row-gap:.35rem;padding:.45rem max(.5rem,env(safe-area-inset-left)) .45rem max(.5rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 100%}.isf-pui-header .pui-toolbar{flex-wrap:nowrap;row-gap:0}.isf-pui-header .pui-toolbar-link[data-pui-item=title]{flex:1 1 auto;order:0;font-size:.95rem}.isf-pui-header .pui-toolbar-spacer{display:none}.isf-pui-header .pui-toolbar-readout[data-pui-item=stats]{display:none}.isf-stage{height:auto!important;aspect-ratio:16/9}.isf-drawer{top:0;bottom:0;left:0;right:0;width:100%!important;max-width:100vw;border-radius:0;border:0}.isf-block.isf-drawer-open{contain:none;overflow:visible}.isf-block.isf-drawer-open .isf-drawer{position:fixed;inset:0;z-index:2147483001;height:100dvh;max-height:100dvh;background:var(--isf-drawer-bg)}body:has(.isf-block.isf-drawer-open){overflow:hidden}.isf-drawer-right.isf-drawer-closed{transform:none}.isf-resize-x{display:none}.isf-editor-wrap > .isf-resize-y{display:none}.isf-editor-wrap .isf-editor{height:auto!important;flex:1 1 auto!important;min-height:0}.isf-editor{min-height:0}.isf-template-select{max-width:100%}.isf-editor-status{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}.isf-editor-pos{display:none}.isf-editor-toolbar{padding:.22rem .35rem;gap:.25rem}.isf-editor-tabs{gap:.15rem}.isf-editor-actions{gap:.2rem}.isf-editor-actions .isf-btn{padding:.2rem .35rem}.isf-panel-title{padding:.45rem .6rem}.isf-inspector-head{padding:.25rem .4rem}.isf-inspector-transport{padding:.25rem .4rem}.isf-inspector-transport .pui-transport-time{font-size:.64rem}.isf-inspector-more .pui-menu-trigger{min-width:32px;min-height:32px}}",
             "@media (max-width:600px){.isf-header{flex-wrap:nowrap;row-gap:0;min-height:36px;padding:.2rem max(.35rem,env(safe-area-inset-left)) .2rem max(.35rem,env(safe-area-inset-right))}.isf-pui-header{flex:1 1 auto}.isf-pui-header .pui-toolbar{flex-wrap:nowrap}.isf-header .isf-title{font-size:.88rem}.isf-header .isf-actions{flex-wrap:nowrap}}",
             "@media (max-width:600px){.isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:fixed!important;inset:0!important;width:100vw!important;max-width:none!important;height:100dvh!important;top:0!important;right:0!important;bottom:0!important;left:0!important;border-radius:0;border:0;z-index:2147483003}}",
-            ".isf-editor-head{padding-inline-start:1rem}",
             // Auto-overflow headers stay on one measured row; the title may
             // shrink, while the stats pill and the More trigger stay inline.
-            ".isf-pui-header .pui-toolbar.is-overflow-auto{flex-wrap:nowrap;row-gap:0}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title]{flex:0 0 auto;order:0;min-width:0;max-width:46%;font-size:.9rem}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-spacer{display:none}",
-            ".isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{order:0;margin-inline-start:0;flex:0 0 auto}",
             "@media (max-width:600px){.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-readout[data-pui-item=stats]{display:none}.isf-pui-header .pui-toolbar.is-overflow-auto .pui-toolbar-link[data-pui-item=title] .pui-toolbar-badge{display:none}}",
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
@@ -3916,7 +3782,17 @@
             "@media (max-width:600px){.isf-workbench-mode .isf-stage{height:100%!important;aspect-ratio:auto!important}.isf-workbench .pui-workbench-toolbar{flex-wrap:wrap;gap:.28rem;padding:.12rem .18rem}.isf-workbench .pui-workbench-heading{flex:1 1 0;min-width:0}.isf-workbench .pui-workbench-title{font-size:1rem;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.isf-workbench .pui-workbench-description{display:block;font-size:.66rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}.isf-workbench .pui-workbench-tools{width:100%!important;margin-inline-start:0!important;flex-wrap:wrap;justify-content:flex-start}.isf-workbench .pui-header-menu-trigger{font-size:0!important;padding:4px 8px}.isf-workbench .pui-header-menu-icon{font-size:16px!important;line-height:1}.isf-workbench .pui-workbench-toggle{min-height:32px;padding:4px 4px;font-size:.66rem}.isf-workbench .pui-workbench-titlebar-toggle{min-width:32px;min-height:32px;font-size:13px}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px}.isf-workbench .pui-transport{padding:4px 6px;border:0;background:transparent;gap:2px}.isf-workbench .pui-transport-head h4{display:none}.isf-workbench .pui-transport-head{gap:6px}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
             ".isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-title{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
             ".isf-workbench .pui-workbench-pane.is-bottom{max-height:116px!important}",
-            ".isf-workbench .pui-header-menu{margin-inline-end:.25rem;padding-inline-end:.5rem;border-inline-end:1px solid var(--isf-border)}",
+            ".isf-workbench .pui-workbench-toggle-label,.isf-workbench .pui-header-menu-trigger{font-size:0!important}",
+            ".isf-workbench .pui-header-menu-icon{font-size:16px!important;line-height:1}",
+            ".isf-workbench .pui-workbench-toggle-icon,.isf-workbench .pui-workbench-action-icon{font-size:15px!important;opacity:1}",
+            ".isf-workbench .pui-workbench-toggle,.isf-workbench .pui-workbench-action,.isf-workbench .pui-header-menu-trigger{min-width:32px;min-height:32px;padding:4px 6px!important}",
+            ".isf-workbench .pui-workbench-toggle{order:1}.isf-workbench .pui-workbench-action{order:2}.isf-workbench .pui-header-menu{order:3;margin-inline-end:0;padding-inline-end:0;border-inline-end:0}",
+            ".isf-workbench .pui-workbench-tools{gap:2px;align-items:center}",
+            ".isf-workbench .pui-workbench-pane.is-bottom{max-height:96px!important}",
+            ".isf-workbench .pui-transport.is-compact{min-height:32px}",
+            ".isf-workbench .pui-transport.is-compact .pui-transport-head .pui-button{min-height:30px;padding:3px 9px}",
+            ".isf-workbench .pui-transport.is-compact .pui-transport-time{font-size:.66rem}",
+            ".isf-workbench .pui-statusbar{min-height:24px}",
             ".isf-workbench .pui-transport-loop:has(input:disabled),.isf-workbench .pui-transport select:disabled{display:none!important}",
             ".isf-workbench .pui-transport{border:0!important;background:transparent!important;padding:4px 2px!important;gap:2px!important}",
             ".isf-workbench .pui-transport-head h4{display:none!important}",
@@ -4491,16 +4367,6 @@
             // input. It runs as a host block inside the normal PUI flow, so
             // the whole drawer is one renderer without inventing a portable
             // block kind or moving host state into the document.
-            blocks: {
-                "isf.view": function () {
-                    try {
-                        return viewer.buildViewControls(inputs);
-                    } catch (error) {
-                        viewer.warn("View controls unavailable: " + (error && error.message ? error.message : error));
-                        return null;
-                    }
-                }
-            },
             getValue: function (path) { return adapter.getValue(path); },
             setValue: function (path, value) { return adapter.setValue(path, value); },
             callAction: function (name, args) { return adapter.callAction(name, args); },
@@ -4649,47 +4515,9 @@
         var posLabel = h("span", "isf-editor-pos", { text: "Ln 1, Col 1" });
         var actions = h("span", "isf-editor-actions");
         var applyButton = h("button", "isf-btn isf-apply", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
-        var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
-        var copyButton = h("button", "isf-btn", { type: "button", text: "Copy", title: "Copy source" });
-        var importButton = h("button", "isf-btn", { type: "button", text: "Import", title: "Import from Shadertoy / GLSL Sandbox" });
-        var templateMenuHost = h("span", "isf-template-menu isf-pui isf-hidden");
-        var templateSelect = h("select", "isf-template-select", {
-            "aria-label": "Insert a snippet or start from a template",
-            title: "Insert an input snippet or start from a template"
-        });
-        templateSelect.appendChild(h("option", null, { value: "", text: "Templates…" }));
-        var inputGroup = document.createElement("optgroup");
-        inputGroup.label = "Insert input";
-        [
-            ["float", "float"], ["bool", "bool"], ["color", "color"], ["point2D", "point2D"],
-            ["event", "event"], ["long", "long"], ["image", "image"], ["audioFFT", "audioFFT"]
-        ].forEach(function (entry) {
-            inputGroup.appendChild(h("option", null, { value: "input:" + entry[0], text: entry[1] + " input" }));
-        });
-        templateSelect.appendChild(inputGroup);
-        var newGroup = document.createElement("optgroup");
-        newGroup.label = "New shader";
-        [
-            ["generator", "Generator"], ["filter", "Filter"], ["transition", "Transition"], ["multipass", "Multi-pass"]
-        ].forEach(function (entry) {
-            newGroup.appendChild(h("option", null, { value: "template:" + entry[0], text: entry[1] }));
-        });
-        templateSelect.appendChild(newGroup);
-        var editorClose = h("button", "isf-btn isf-panel-close", { type: "button", "aria-label": "Close editor", title: "Close", text: "×" });
-        var editorTitle = h("div", "isf-panel-title isf-editor-head");
-        editorTitle.appendChild(h("span", null, { text: "Source editor" }));
-        editorTitle.appendChild(editorClose);
+        var moreMenuHost = h("span", "isf-editor-more isf-pui isf-hidden");
         actions.appendChild(applyButton);
-        actions.appendChild(revertButton);
-        actions.appendChild(copyButton);
-        actions.appendChild(importButton);
-        actions.appendChild(templateMenuHost);
-        actions.appendChild(templateSelect);
-        var keysButton = h("button", "isf-btn isf-keys-btn", { type: "button", text: "?", title: "Keyboard shortcuts", "aria-label": "Keyboard shortcuts" });
-        editorTitle.insertBefore(keysButton, editorClose);
-        keysButton.addEventListener("click", function () { if (viewer.showShortcuts) viewer.showShortcuts(); });
-        editorClose.addEventListener("click", function () { if (viewer.toggleEditor) viewer.toggleEditor(); });
-        importButton.addEventListener("click", function () { if (viewer.openImport) viewer.openImport(); });
+        actions.appendChild(moreMenuHost);
         var foldButton = h("button", "isf-btn isf-fold-btn", {
             type: "button", html: ICONS.chevron,
             title: "Collapse the editor toolbar", "aria-label": "Collapse the editor toolbar",
@@ -4723,7 +4551,6 @@
             "aria-label": "Resize the editor pane", tabindex: "0",
             title: "Drag to resize the editor — double-click to reset"
         });
-        wrap.appendChild(editorTitle);
         wrap.appendChild(toolbar);
         wrap.appendChild(resizeY);
         wrap.appendChild(editor);
@@ -5050,22 +4877,21 @@
             vertexEnabled = true;
             setActiveBuffer("vertex");
         });
-        templateSelect.addEventListener("change", function () {
-            var choice = templateSelect.value;
-            templateSelect.value = "";
-            if (!choice) return;
-            if (choice.indexOf("input:") === 0) insertInputTemplate(choice.slice(6));
-            else if (choice.indexOf("template:") === 0) applyShaderTemplate(choice.slice(9));
-        });
-
-        // PUI menu adoption with the native select as the pre-load fallback.
-        var templateMenuMounted = false;
-        var templateMenuUI = null;
-        function mountEditorTemplateMenu() {
-            if (templateMenuMounted || viewer.disposed || !puiAvailable()) return;
+        var moreMenuMounted = false;
+        var moreMenuUI = null;
+        function mountEditorMoreMenu() {
+            if (moreMenuMounted || viewer.disposed || !puiAvailable()) return;
             var insertPrefix = "isf.editor.insert.";
             var templatePrefix = "isf.editor.template.";
-            var menuItems = [{kind: "label", text: "Insert input"}];
+            var menuItems = [
+                {id: "revert", label: "Revert to file", call: "isf.editor.revert"},
+                {id: "copy", label: "Copy source", call: "isf.editor.copy"},
+                {id: "import", label: "Import shader…", call: "isf.editor.import"},
+                {kind: "separator"},
+                {id: "keys", label: "Keyboard shortcuts", call: "isf.editor.keys"},
+                {kind: "separator"},
+                {kind: "label", text: "Insert input"}
+            ];
             Object.keys(INPUT_TEMPLATES).forEach(function (type) {
                 menuItems.push({id: "input." + type, label: type + " input", call: insertPrefix + type});
             });
@@ -5074,27 +4900,26 @@
             Object.keys(SHADER_TEMPLATES).forEach(function (name) {
                 menuItems.push({id: "template." + name, label: name.charAt(0).toUpperCase() + name.slice(1), call: templatePrefix + name});
             });
-            var menuDoc = {
-                format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-editor-menu", title: "Editor templates", embedded: true, pages: [{id: "menu", title: "Templates", sections: [{
-                    id: "menu", title: "Templates", blocks: [{
-                        kind: "menu", id: "templates", label: "Templates", icon: "chevron", icon_only: true, items: menuItems
-                    }]
-                }]}]}]
+            var iconFactory = function (name) {
+                return function () {
+                    var wrap = document.createElement("span");
+                    wrap.innerHTML = ICONS[name] || "";
+                    return wrap.firstChild || null;
+                };
             };
             var ui;
             try {
                 ui = PupitreUI.create({
-                    mount: templateMenuHost,
+                    mount: moreMenuHost,
                     density: "compact",
-                    icons: {chevron: function () {
-                        var wrap = document.createElement("span");
-                        wrap.innerHTML = ICONS.chevron;
-                        return wrap.firstChild || null;
-                    }},
+                    icons: {more: iconFactory("more")},
                     getValue: function () { return undefined; },
                     setValue: function () { return false; },
                     callAction: function (name) {
+                        if (name === "isf.editor.revert") { viewer.revertSource(); return true; }
+                        if (name === "isf.editor.copy") { copySource(); return true; }
+                        if (name === "isf.editor.import") { viewer.openImport(); return true; }
+                        if (name === "isf.editor.keys") { viewer.showShortcuts(); return true; }
                         if (name.indexOf(insertPrefix) === 0) { insertInputTemplate(name.slice(insertPrefix.length)); return true; }
                         if (name.indexOf(templatePrefix) === 0) { applyShaderTemplate(name.slice(templatePrefix.length)); return true; }
                         return false;
@@ -5102,21 +4927,27 @@
                     getPathMeta: function () { return {}; },
                     translate: function (key, fallback) { return fallback; }
                 });
-                ui.render(menuDoc);
+                ui.render({
+                    format: "pupitre-ui", version: 1, host: "docsify-isf",
+                    panels: [{id: "isf-editor-more", title: "Editor actions", embedded: true, pages: [{id: "menu", title: "Actions", sections: [{
+                        id: "menu", title: "Actions", blocks: [{
+                            kind: "menu", id: "more", label: "More editor actions", icon: "more", icon_only: true, items: menuItems
+                        }]
+                    }]}]}]
+                });
             } catch (error) {
                 if (ui) { try { ui.destroy(); } catch (destroyError) { /* ignore */ } }
-                templateMenuHost.classList.add("isf-hidden");
+                moreMenuHost.classList.add("isf-hidden");
                 return;
             }
-            templateMenuMounted = true;
-            templateMenuUI = ui;
-            templateMenuHost.classList.remove("isf-hidden");
-            if (templateSelect.parentNode) templateSelect.parentNode.removeChild(templateSelect);
+            moreMenuMounted = true;
+            moreMenuUI = ui;
+            moreMenuHost.classList.remove("isf-hidden");
             viewer.listeners.push(function () {
-                if (templateMenuUI) { try { templateMenuUI.destroy(); } catch (error) { /* ignore */ } }
+                if (moreMenuUI) { try { moreMenuUI.destroy(); } catch (error) { /* ignore */ } }
             });
         }
-        loadPUI().then(mountEditorTemplateMenu, function () { /* keep the native select */ });
+        loadPUI().then(mountEditorMoreMenu, function () { /* keep Apply available */ });
         var selectionHandler = function () {
             if (document.activeElement === textarea) scheduleCaret();
         };
@@ -5250,20 +5081,16 @@
         applyFontSize(fontSize, false);
         requestAnimationFrame(measureMetrics);
         applyButton.addEventListener("click", function () { viewer.applySource(); });
-        revertButton.addEventListener("click", function () { viewer.revertSource(); });
-        copyButton.addEventListener("click", function () {
+        function copySource() {
             var text = textarea.value;
-            var done = function () {
-                copyButton.innerHTML = ICONS.check;
-                setTimeout(function () { copyButton.textContent = "Copy"; }, 900);
-            };
+            var done = function () { setStatus("Source copied", "ok"); };
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
             } else {
                 fallbackCopy(text);
                 done();
             }
-        });
+        }
 
         function fallbackCopy(text) {
             try {
@@ -6005,8 +5832,6 @@
         if (shareButton) actions.appendChild(shareButton);
         header.appendChild(titleEl);
         header.appendChild(actions);
-        var headerPUIHost = h("div", "isf-pui isf-pui-header isf-hidden");
-        header.appendChild(headerPUIHost);
 
         var body = h("div", "isf-body");
         var stage = h("div", "isf-stage");
@@ -6029,8 +5854,6 @@
         var paramsList = h("div", "isf-params-list");
         paramsPanel.appendChild(paramsList);
 
-        var inspectorPUIHost = h("div", "isf-pui isf-inspector-pui isf-hidden", { id: uid + "-inspector-pui" });
-        var editorPUIHost = h("div", "isf-pui isf-editor-pui isf-hidden", { id: uid + "-editor-pui" });
         var viewPanel = h("div", "isf-view-panel");
         var workbenchHost = h("div", "isf-workbench isf-pui isf-hidden", { id: uid + "-workbench" });
         block.classList.add("isf-workbench-mode");
@@ -6062,21 +5885,9 @@
         importPanel.appendChild(importArea);
         importPanel.appendChild(importActions);
         // Parameters, editor and import are host surfaces mounted into the PUI
-        // drawer by custom slots; they are not host chrome.
+        // workbench by custom slots; they are not host chrome.
 
-        var fullscreenHint = h("button", "isf-fullscreen-hint isf-hidden", {
-            type: "button", html: ICONS.inspector, title: "Show inspector (H)",
-            "aria-label": "Show inspector", "aria-pressed": "false"
-        });
         updateDrawerButtons();
-        fullscreenHint.addEventListener("click", function () {
-            viewer.hideFullscreenHint();
-            openInspector(viewer.inspectorTab || "params");
-        });
-        fullscreenHint.addEventListener("pointerenter", clearHintTimer);
-        fullscreenHint.addEventListener("pointerleave", function () { viewer.showFullscreenHint(); });
-        fullscreenHint.addEventListener("focus", clearHintTimer);
-        fullscreenHint.addEventListener("blur", function () { viewer.showFullscreenHint(); });
         var headerIdleTimer = null;
         function armHeaderIdle() {
             clearTimeout(headerIdleTimer);
@@ -6113,8 +5924,6 @@
         var status = h("div", "isf-status isf-hidden", { "aria-live": "polite" });
         var statusText = h("span", "isf-status-text");
         status.appendChild(statusText);
-        var statusPUIHost = h("div", "isf-pui isf-pui-statusbar");
-        status.appendChild(statusPUIHost);
         // Keep the plain stage/header/status visible until PUI has mounted,
         // and as the error surface when the shader header cannot be parsed.
         // The workbench slot moves the same stage node when it is ready.
@@ -6126,7 +5935,6 @@
         fallback.appendChild(status);
         block.appendChild(fallback);
         block.appendChild(workbenchHost);
-        block.appendChild(fullscreenHint);
 
         viewer.dom = {
             block: block,
@@ -6154,13 +5962,8 @@
             shareButton: shareButton,
             status: status,
             statusText: statusText,
-            statusPUIHost: statusPUIHost,
-            headerPUIHost: headerPUIHost,
-            inspectorPUIHost: inspectorPUIHost,
-            editorPUIHost: editorPUIHost,
             viewPanel: viewPanel,
-            workbenchHost: workbenchHost,
-            fullscreenHint: fullscreenHint
+            workbenchHost: workbenchHost
         };
         viewer.editor = editor;
         viewer.runtime = null;
@@ -6279,12 +6082,10 @@
             viewer.statusText = message ? String(message) : "";
             viewer.statusKind = kind ? String(kind) : "";
             status.className = "isf-status" + (viewer.statusText ? "" : " isf-hidden") +
-                (kind ? " is-" + kind : "") + (viewer.puiStatus ? " is-pui" : "");
-            if (viewer.puiStatus) {
-                statusText.textContent = "";
-                try { viewer.puiStatus.ui.apply(); } catch (error) { /* ignore */ }
-            } else {
-                statusText.textContent = viewer.statusText;
+                (kind ? " is-" + kind : "");
+            statusText.textContent = viewer.statusText;
+            if (viewer.puiWorkbench) {
+                try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
             }
             if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         };
@@ -6313,7 +6114,10 @@
             importPanel.classList.toggle("isf-hidden", !viewer.inspectorImport);
             // The Source pane has two custom slots. Keep the import slot out
             // of the flex allocation unless it is the visible surface.
-            var importSlot = viewer.dom.workbenchHost && viewer.dom.workbenchHost.querySelector('[data-pui-slot="isf.import"]');
+            var host = viewer.dom.workbenchHost;
+            var editorSlot = host && host.querySelector('[data-pui-slot="isf.editor"]');
+            var importSlot = host && host.querySelector('[data-pui-slot="isf.import"]');
+            if (editorSlot) editorSlot.style.display = viewer.inspectorImport ? "none" : "";
             if (importSlot) importSlot.style.display = viewer.inspectorImport ? "" : "none";
             if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
         }
@@ -6322,9 +6126,7 @@
         }
         // Fullscreen uses the same workbench controls; the hint is retained as
         // an inert node so embedders that dispatch the old events keep working.
-        var hintTimer = null;
-        function clearHintTimer() { if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; } }
-        viewer.hideFullscreenHint = function () { clearHintTimer(); fullscreenHint.classList.add("isf-hidden"); };
+        viewer.hideFullscreenHint = function () { };
         viewer.showFullscreenHint = function () { };
         viewer.armFullscreenHint = function () { };
         function focusInspector() {
@@ -6417,8 +6219,10 @@
         }
         viewer.openImport = function () {
             if (!viewer.editor) return;
-            viewer.inspectorImport = true;
+            // setEditorOpen() opens/activates the Source pane; set the import
+            // sub-surface after it so the editor does not overwrite the flag.
             viewer.setEditorOpen(true);
+            viewer.inspectorImport = true;
             setEditorPanel();
             try { importArea.focus(); } catch (err) { /* ignore */ }
         };
@@ -6660,18 +6464,9 @@
         viewer.listeners.push(function () { document.removeEventListener("keydown", fullscreenKeyHandler); });
         document.addEventListener("fullscreenchange", fullscreenHandler);
         document.addEventListener("webkitfullscreenchange", fullscreenHandler);
-        var hintActivity = function () { viewer.armFullscreenHint(); };
-        document.addEventListener("pointermove", hintActivity, { passive: true });
-        document.addEventListener("pointerdown", hintActivity, { passive: true });
-        document.addEventListener("touchstart", hintActivity, { passive: true });
-        document.addEventListener("keydown", hintActivity);
         viewer.listeners.push(function () {
             document.removeEventListener("fullscreenchange", fullscreenHandler);
             document.removeEventListener("webkitfullscreenchange", fullscreenHandler);
-            document.removeEventListener("pointermove", hintActivity);
-            document.removeEventListener("pointerdown", hintActivity);
-            document.removeEventListener("touchstart", hintActivity);
-            document.removeEventListener("keydown", hintActivity);
         });
 
         /* ------------------------------------------------- parameter APIs */
@@ -6945,55 +6740,6 @@
             return section;
         };
 
-        viewer.mountPUIStatusbar = function () {
-            if (viewer.puiStatus || viewer.disposed || !puiAvailable()) return;
-            var host = viewer.dom.statusPUIHost;
-            if (!host) return;
-            var adapter = {
-                getValue: function (path) {
-                    if (path === "/isf/status") return viewer.statusText || "";
-                    if (path === "/isf/statusTone") {
-                        var kind = String(viewer.statusKind || "");
-                        if (/error/i.test(kind)) return "error";
-                        if (/warn/i.test(kind)) return "warning";
-                        if (/ok|success/i.test(kind)) return "success";
-                        return "info";
-                    }
-                    return undefined;
-                },
-                setValue: function () { return false; },
-                getPathMeta: function () { return {}; }
-            };
-            var ui = PupitreUI.create({
-                mount: host,
-                density: "compact",
-                getValue: adapter.getValue,
-                setValue: adapter.setValue,
-                getPathMeta: adapter.getPathMeta,
-                translate: function (key, fallback) { return fallback; }
-            });
-            var document = {
-                format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-status", title: "Status", embedded: true, pages: [{id: "status", title: "Status", sections: [{
-                    id: "status", title: "Status", blocks: [{
-                        kind: "statusbar", label: "Status",
-                        a11y: {name: "Status", live: "off"},
-                        items: [{bind: "/isf/status", label: "Status", tone_bind: "/isf/statusTone"}]
-                    }]
-                }]}]}]
-            };
-            try {
-                ui.render(document);
-            } catch (error) {
-                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                if (host.parentNode) host.parentNode.removeChild(host);
-                viewer.warn("Status bar unavailable: " + (error && error.message ? error.message : error));
-                return;
-            }
-            viewer.puiStatus = {ui: ui, host: host};
-            viewer.setState(viewer.statusText, viewer.statusKind);
-        };
-
         viewer.transportValue = function () {
             var runtime = viewer.runtime;
             var duration = 60;
@@ -7038,297 +6784,6 @@
             }
             return false;
         };
-        viewer.applyPUIInspector = function () {
-            if (!viewer.puiInspector) return;
-            try { viewer.puiInspector.ui.apply(); } catch (error) { /* ignore */ }
-        };
-        viewer.applyPUIEditor = function () {
-            if (!viewer.puiEditor) return;
-            try { viewer.puiEditor.ui.apply(); } catch (error) { /* ignore */ }
-        };
-        viewer.applyPUITransport = function () { viewer.applyPUIInspector(); viewer.applyPUIEditor(); };
-        viewer.buildPUIInspectorDocument = function () {
-            var items = [{
-                kind: "label", text: String(viewer.title || "Shader")
-            }, {kind: "spacer"}, {
-                kind: "menu", id: "more", label: "More actions", title: "More actions",
-                icon: "more", icon_only: true, items: [
-                    {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", title_bind: "/isf/ui/fullscreenLabel", icon: "fullscreen", call: "isf.fullscreen"},
-                    {id: "reset", label: "Reset parameters", icon: "reset", call: "isf.reset"},
-                    {id: "share", label: "Copy OBS link", icon: "share", call: "isf.share"},
-                    {kind: "separator"},
-                    {id: "help", label: "Keyboard shortcuts", icon: "help", call: "isf.help"},
-                    {kind: "link", id: "source-file", href: viewer.url || "#", target: "_blank", rel: "noopener", label: "Open source file", icon: "source"}
-                ]
-            }, {
-                id: "close", label: "Close inspector", title: "Close inspector",
-                icon: "close", icon_only: true, call: "isf.inspectorClose"
-            }];
-            return {
-                format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-inspector", title: String(viewer.title || "Shader") + " controls", embedded: true, pages: [{id: "inspector", title: "Inspector", sections: [{
-                    id: "inspector", title: "Inspector", blocks: [{
-                        kind: "drawer", id: "inspector", label: String(viewer.title || "Shader") + " controls", trigger: false,
-                        open_bind: "/isf/ui/inspectorOpen", side: "right", width: "min(420px, 40%)", modal: false,
-                        contained: true, headless: true,
-                        blocks: [
-                            {kind: "toolbar", id: "inspector-toolbar", label: "Inspector", align: "start", items: items},
-                            {kind: "custom", slot: "isf.params", a11y: {name: "Parameters", role: "region"}},
-                            {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"}, transport_options: {rates: [1], labels: {
-                                title: "Playback", play: "Play", pause: "Pause", stop: "Stop", seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
-                            }}}
-                        ]
-                    }]
-                }]}]}]
-            };
-        };
-        viewer.buildPUIEditorDocument = function () {
-            return {
-                format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-editor", title: String(viewer.title || "Shader") + " source", embedded: true, pages: [{id: "editor", title: "Source editor", sections: [{
-                    id: "editor", title: "Source editor", blocks: [{
-                        kind: "drawer", id: "source-editor", label: String(viewer.title || "Shader") + " source", trigger: false,
-                        open_bind: "/isf/ui/editorOpen", side: "left", width: "min(560px, 48%)", modal: false,
-                        contained: true, headless: true, translucent: true,
-                        blocks: [
-                            {kind: "custom", slot: "isf.editor", a11y: {name: "Source editor", role: "region"}},
-                            {kind: "custom", slot: "isf.import", a11y: {name: "Import shader", role: "region"}}
-                        ]
-                    }]
-                }]}]}]
-            };
-        };
-        viewer.mountPUIInspector = function () {
-            if (viewer.puiInspector || viewer.disposed || !puiAvailable()) return;
-            var host = viewer.dom.inspectorPUIHost;
-            if (!host) return;
-            var adapter = {
-                getValue: function (path) {
-                    if (path === "/isf/ui/inspectorOpen") return !!viewer.inspectorOpen;
-                    if (path === "/isf/ui/fullscreen") return isFullscreenActive();
-                    if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
-                    if (path === "/isf/transport") return viewer.transportValue();
-                    return undefined;
-                },
-                setValue: function (path, value) {
-                    if (path === "/isf/ui/inspectorOpen") { viewer.setInspectorOpen(!!value); return true; }
-                    return false;
-                },
-                callAction: function (name) {
-                    if (name === "isf.inspector" || name === "isf.inspectorClose") {
-                        if (name === "isf.inspectorClose" || viewer.inspectorOpen) closeInspector();
-                        else openInspector("params");
-                        return true;
-                    }
-                    if (name === "isf.params") { openInspector("params"); return true; }
-                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
-                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
-                    if (name === "isf.reset") { viewer.resetAll(); return true; }
-                    if (name === "isf.share") { viewer.copyLink(); return true; }
-                    if (name === "isf.help") { viewer.showShortcuts(); return true; }
-                    return false;
-                },
-                getPathMeta: function () { return {}; },
-                transportAction: function (intent) { return viewer.transportAction(intent); },
-                announce: function (level, message) {
-                    if (level === "error") viewer.warn(message);
-                    else viewer.setState(message, level === "success" ? "ok" : "");
-                }
-            };
-            var ui = PupitreUI.create({
-                mount: host,
-                density: "compact",
-                icons: HEADER_ICONS,
-                getValue: adapter.getValue,
-                setValue: adapter.setValue,
-                callAction: adapter.callAction,
-                getPathMeta: adapter.getPathMeta,
-                transportAction: adapter.transportAction,
-                announce: adapter.announce,
-                translate: function (key, fallback) { return fallback; }
-            });
-            ui.registerSlot("isf.params", {mount: function (container) { container.appendChild(paramsPanel); }});
-            try {
-                ui.render(viewer.buildPUIInspectorDocument());
-            } catch (error) {
-                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                viewer.warn("PUI inspector unavailable: " + (error && error.message ? error.message : error));
-                return;
-            }
-            viewer.puiInspector = {ui: ui, host: host};
-            host.classList.remove("isf-hidden");
-            setInspectorPanel();
-            if (viewer.dom.timeRow) viewer.dom.timeRow.classList.add("isf-hidden");
-            var panel = host.querySelector(".pui-drawer-panel");
-            var control = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="controls"]');
-            if (panel && control) control.setAttribute("aria-controls", panel.id);
-            viewer.applyPUIInspector();
-        };
-        viewer.mountPUIEditor = function () {
-            if (viewer.puiEditor || viewer.disposed || !puiAvailable() || !viewer.editor) return;
-            var host = viewer.dom.editorPUIHost;
-            if (!host) return;
-            var adapter = {
-                getValue: function (path) {
-                    if (path === "/isf/ui/editorOpen") return !!viewer.editorOpen;
-                    if (path === "/isf/ui/importOpen") return !!viewer.inspectorImport;
-                    return undefined;
-                },
-                setValue: function (path, value) {
-                    if (path === "/isf/ui/editorOpen") { viewer.setEditorOpen(!!value); return true; }
-                    return false;
-                },
-                callAction: function (name) {
-                    if (name === "isf.editorClose") { viewer.setEditorOpen(false); return true; }
-                    return false;
-                },
-                getPathMeta: function () { return {}; },
-                announce: function (level, message) {
-                    if (level === "error") viewer.warn(message);
-                    else viewer.setState(message, level === "success" ? "ok" : "");
-                }
-            };
-            var ui = PupitreUI.create({
-                mount: host,
-                density: "compact",
-                icons: HEADER_ICONS,
-                getValue: adapter.getValue,
-                setValue: adapter.setValue,
-                callAction: adapter.callAction,
-                getPathMeta: adapter.getPathMeta,
-                announce: adapter.announce,
-                translate: function (key, fallback) { return fallback; }
-            });
-            ui.registerSlot("isf.editor", {mount: function (container) { container.appendChild(editor.el); }});
-            ui.registerSlot("isf.import", {mount: function (container) { container.appendChild(importPanel); }});
-            try {
-                ui.render(viewer.buildPUIEditorDocument());
-            } catch (error) {
-                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                viewer.warn("PUI source editor unavailable: " + (error && error.message ? error.message : error));
-                return;
-            }
-            viewer.puiEditor = {ui: ui, host: host};
-            host.classList.remove("isf-hidden");
-            setEditorPanel();
-            var panel = host.querySelector(".pui-drawer-panel");
-            var control = viewer.dom.headerPUIHost && viewer.dom.headerPUIHost.querySelector('[data-pui-item="editor"]');
-            if (panel && control) control.setAttribute("aria-controls", panel.id);
-            viewer.applyPUIEditor();
-        };
-        viewer.mountPUITransport = function () { viewer.mountPUIInspector(); viewer.mountPUIEditor(); };
-
-        /* --------------------------------------- PUI header toolbar */
-
-        viewer.buildPUIHeaderDocument = function () {
-            var items = [{
-                id: "editor", label: "Source editor", icon: "editor", icon_only: true,
-                title: "Source editor", call: "isf.editor",
-                pressed_bind: "/isf/ui/editorOpen", aria_controls: uid + "-editor-pui", collapse: false
-            }, {
-                kind: "link",
-                id: "title",
-                href: viewer.url || "#",
-                target: "_blank",
-                rel: "noopener",
-                label: String(viewer.title || "ISF viewer"),
-                title: "Open " + String(viewer.title || "shader") + " source",
-                badge: "ISF",
-                collapse: false
-            }, {kind: "spacer"}, {
-                kind: "readout", id: "stats", bind: "/isf/ui/badge", hide_empty: true,
-                a11y: {name: "Render statistics"},
-                collapse: false
-            }, {
-                id: "controls", label: "Inspector", icon: "inspector", icon_only: true,
-                title: "Show inspector", call: "isf.inspector",
-                pressed_bind: "/isf/ui/inspectorOpen", aria_controls: uid + "-inspector", collapse: false
-            }];
-            return {
-                format: "pupitre-ui", version: 1, host: "docsify-isf",
-                panels: [{id: "isf-header", title: String(viewer.title || "ISF viewer"), embedded: true, pages: [{id: "header", title: "Header", sections: [{
-                    id: "header", title: "Header", blocks: [{
-                        kind: "toolbar", id: "isf-header", label: "ISF viewer controls", align: "start", items: items
-                    }]
-                }]}]}]
-            };
-        };
-        viewer.applyPUIHeader = function () {
-            if (!viewer.puiHeader) return;
-            try { viewer.puiHeader.ui.apply(); } catch (error) { /* ignore */ }
-        };
-        viewer.refreshPUIHeader = function () {
-            if (!viewer.puiHeader) return;
-            try { viewer.puiHeader.ui.render(viewer.buildPUIHeaderDocument()); } catch (error) { /* ignore */ }
-        };
-        viewer.mountPUIHeader = function () {
-            if (viewer.puiHeader || viewer.disposed || !puiAvailable()) return;
-            var host = viewer.dom.headerPUIHost;
-            if (!host) return;
-            var adapter = {
-                getValue: function (path) {
-                    if (path === "/isf/ui/inspectorOpen") return viewer.isInspectorOpen();
-                    if (path === "/isf/ui/editorOpen") return !!viewer.editorOpen;
-                    if (path === "/isf/ui/fullscreen") return isFullscreenActive();
-                    if (path === "/isf/ui/inputCount") return viewer.built ? String(viewer.built.inputs.length) : "";
-                    if (path === "/isf/ui/playLabel") return viewer.runtime && !viewer.runtime.playing ? "Play" : "Pause";
-                    if (path === "/isf/ui/playIcon") return viewer.runtime && !viewer.runtime.playing ? "play" : "pause";
-                    if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
-                    if (path === "/isf/ui/badge") return viewer.badgeText || "";
-                    return undefined;
-                },
-                setValue: function () { return false; },
-                callAction: function (name) {
-                    if (name === "isf.inspector") {
-                        if (viewer.isInspectorOpen()) closeInspector();
-                        else openInspector(viewer.inspectorTab || "params");
-                        return true;
-                    }
-                    if (name === "isf.editor") { viewer.toggleEditor(); return true; }
-                    if (name === "isf.play") { viewer.togglePlay(); return true; }
-                    if (name === "isf.reset") { viewer.resetAll(); return true; }
-                    if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
-                    if (name === "isf.share") { viewer.copyLink(); return true; }
-                    return false;
-                },
-                getPathMeta: function () { return {}; },
-                announce: function (level, message) {
-                    if (level === "error") viewer.warn(message);
-                    else viewer.setState(message, level === "success" ? "ok" : "");
-                }
-            };
-            var ui = PupitreUI.create({
-                mount: host,
-                density: "compact",
-                icons: HEADER_ICONS,
-                getValue: adapter.getValue,
-                setValue: adapter.setValue,
-                callAction: adapter.callAction,
-                getPathMeta: adapter.getPathMeta,
-                announce: adapter.announce,
-                translate: function (key, fallback) { return fallback; }
-            });
-            try {
-                ui.render(viewer.buildPUIHeaderDocument());
-            } catch (error) {
-                try { ui.destroy(); } catch (destroyError) { /* ignore */ }
-                viewer.warn("PUI header unavailable: " + (error && error.message ? error.message : error));
-                return;
-            }
-            viewer.puiHeader = {ui: ui, host: host};
-            host.classList.remove("isf-hidden");
-            var drawerPanel = viewer.dom.inspectorPUIHost && viewer.dom.inspectorPUIHost.querySelector(".pui-drawer-panel");
-            var control = host.querySelector('[data-pui-item="controls"]');
-            if (drawerPanel && control) control.setAttribute("aria-controls", drawerPanel.id);
-            var editorPanel = viewer.dom.editorPUIHost && viewer.dom.editorPUIHost.querySelector(".pui-drawer-panel");
-            var editorControl = host.querySelector('[data-pui-item="editor"]');
-            if (editorPanel && editorControl) editorControl.setAttribute("aria-controls", editorPanel.id);
-            if (viewer.dom.title && viewer.dom.title.parentNode) viewer.dom.title.parentNode.removeChild(viewer.dom.title);
-            if (viewer.dom.badge && viewer.dom.badge.parentNode) viewer.dom.badge.parentNode.removeChild(viewer.dom.badge);
-            if (viewer.dom.actions && viewer.dom.actions.parentNode) viewer.dom.actions.parentNode.removeChild(viewer.dom.actions);
-            viewer.applyPUIHeader();
-        };
-
         /* ------------------------------------------------ PUI workbench */
 
         // One complete workbench per viewer, modelled on the ISF editor in the
@@ -7355,16 +6810,20 @@
                         // The title bar carries the shader name and its ISF
                         // description. Collapsing it hides only the heading;
                         // Menu, Source, Parameters and Playback stay reachable.
-                        titlebar: {collapsible: true, eyebrow: eyebrow},
+                        titlebar: {
+                            collapsible: true, eyebrow: eyebrow,
+                            actions: [
+                                {id: "fullscreen", label: "Fullscreen", title: "Toggle fullscreen", icon: "⛶", call: "isf.fullscreen", icon_only: true},
+                                {id: "focus", label: "Focus preview", title: "Focus preview", icon: "⌖", call: "isf.focus", icon_only: true},
+                                {id: "reset", label: "Reset parameters", title: "Reset parameters", icon: "⟲", call: "isf.reset", icon_only: true},
+                                {id: "share", label: "Copy OBS link", title: "Copy OBS link", icon: "⧉", call: "isf.share", icon_only: true}
+                            ]
+                        },
                         header_menu: {
                             label: "Menu", title: title + " actions", icon: "☰",
                             blocks: [{kind: "actions", id: "isf-actions", items: [
-                                {id: "reset", label: "Reset parameters", call: "isf.reset"},
                                 {id: "randomize", label: "Randomize parameters", call: "isf.randomize"},
                                 {id: "export", label: "Export PNG", call: "isf.export"},
-                                {id: "share", label: "Copy OBS link", call: "isf.share"},
-                                {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", call: "isf.fullscreen"},
-                                {id: "focus", label: "Focus preview", call: "isf.focus"},
                                 {id: "help", label: "Keyboard shortcuts", call: "isf.help"},
                                 {id: "source", label: "Open source file", call: "isf.source"}
                             ]}]
@@ -7415,7 +6874,7 @@
                             id: "playback", title: "Playback", region: "bottom",
                             blocks: [
                                 {kind: "transport", id: "transport", label: "Playback", bind: "/isf/transport", a11y: {name: "Shader playback"},
-                                    transport_options: {rates: [1], labels: {
+                                    transport_options: {compact: true, rates: [1], labels: {
                                         title: "Playback", play: "Play", pause: "Pause", stop: "Stop",
                                         seek: "Scrub shader time", loop: "Loop", rate: "Playback rate"
                                     }}},
@@ -8062,19 +7521,8 @@
                 try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
                 viewer.pui = null;
             }
-            if (viewer.puiStatus) {
-                try { viewer.puiStatus.ui.destroy(); } catch (error) { /* ignore */ }
-                viewer.puiStatus = null;
-            }
             if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
-            if (viewer.puiHeader) {
-                try { viewer.puiHeader.ui.destroy(); } catch (error) { /* ignore */ }
-                viewer.puiHeader = null;
-            }
-            if (viewer.puiInspector) {
-                try { viewer.puiInspector.ui.destroy(); } catch (error) { /* ignore */ }
-                viewer.puiInspector = null;
-            }
+            if (window.__isfActiveSourceEditor === viewer) window.__isfActiveSourceEditor = null;
             clearTimeout(viewer._liveTimer);
             clearTimeout(viewer._storeTimer);
             if (viewer.audioState) {

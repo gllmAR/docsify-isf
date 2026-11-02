@@ -597,12 +597,12 @@ try {
         const heightFolded = block.querySelector(".isf-editor").getBoundingClientRect().height;
         if (fold) fold.click();
         await wait(200);
-        const template = block.querySelector(".isf-template-menu .pui-menu-trigger");
+        const template = block.querySelector(".isf-editor-more .pui-menu-trigger");
         let templateInserted = false;
         if (template) {
             template.click();
             await wait(200);
-            const item = Array.from(block.querySelectorAll('.isf-template-menu [role="menuitem"]')).find((node) => /float input/i.test(node.textContent));
+            const item = Array.from(block.querySelectorAll('.isf-editor-more [role="menuitem"]')).find((node) => /float input/i.test(node.textContent));
             if (item) { item.click(); await wait(300); templateInserted = /Inserted a float input/.test(block.querySelector(".isf-editor-status").textContent); }
         }
         return { applied: applied, changed: changed, folded: folded, grew: heightFolded > heightBefore, templateInserted: templateInserted, sourceOpen: window.isfPaneOpen(block, "left") };
@@ -647,7 +647,9 @@ try {
         window.isfOpenEditor(block);
         if (!window.isfPaneOpen(block, "bottom")) window.isfTogglePane(block, "bottom", true);
         await wait(350);
-        const action = window.isfMenuAction(block, /Focus preview/i);
+        const focusAction = block.querySelector('.pui-workbench-action[data-pui-action="focus"]');
+        if (focusAction) focusAction.click();
+        const action = !!focusAction;
         await wait(350);
         return {
             action: action,
@@ -676,7 +678,8 @@ try {
         speed.dispatchEvent(new Event("input", { bubbles: true }));
         speed.dispatchEvent(new Event("change", { bubbles: true }));
         await wait(250);
-        const reset = window.isfMenuAction(block, /^Reset parameters$/i);
+        const resetAction = block.querySelector('.pui-workbench-action[data-pui-action="reset"]');
+        if (resetAction) resetAction.click();
         await wait(300);
         const afterReset = Number(block.querySelector('[data-isf-param="speed"] input[type="range"]').value);
         const help = window.isfMenuAction(block, /Keyboard shortcuts/i);
@@ -686,9 +689,10 @@ try {
         const close = overlay && Array.from(overlay.querySelectorAll("button")).find((button) => /Close/i.test(button.textContent));
         if (close) close.click();
         await wait(150);
-        const share = window.isfMenuAction(block, /Copy OBS link/i);
+        const shareAction = block.querySelector('.pui-workbench-action[data-pui-action="share"]');
+        if (shareAction) shareAction.click();
         await wait(300);
-        return { reset: reset, afterReset: afterReset, help: help, helpShown: helpShown, share: share, copied: window.__copied };
+        return { reset: !!resetAction, afterReset: afterReset, help: help, helpShown: helpShown, share: !!shareAction, copied: window.__copied };
     });
     if (!menuResult.reset || Math.abs(menuResult.afterReset - 0.4) > 0.02) problems.push("the header menu Reset action did not reset speed: " + JSON.stringify(menuResult));
     if (!menuResult.help || !menuResult.helpShown) problems.push("the header menu Help action did not show shortcuts");
