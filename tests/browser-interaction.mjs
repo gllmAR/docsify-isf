@@ -42,6 +42,7 @@ const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
 });
 const page = await browser.newPage();
+try { await browser.defaultBrowserContext().overridePermissions(url, []); } catch (error) { /* headless defaults */ }
 const errors = [];
 const actions = [];
 const checks = [];
@@ -233,28 +234,81 @@ for (const name of fieldNames) {
     const eventButton = await field.$("button.pui-primary, button.pui-button");
     if (eventButton) {
         const label = await eventButton.evaluate((el) => el.textContent);
-        if (/trigger|event/i.test(name) || /trigger/i.test(label)) {
+        if (!/reset|choose|mic|audio|image/i.test(name + " " + label)) {
             await eventButton.click();
             await sleep(150);
             await capture("12-field-" + name + "-event");
         }
     }
 }
+// PUI per-field reset is a real button and must be exercised.
+const resetField = await page.$(`${selector} [data-isf-param="level"] button.pui-reset`);
+if (resetField) {
+    await resetField.click();
+    await sleep(200);
+    await capture("12-field-level-reset");
+}
 // image chooser, if this fixture exposes one
 const imageButton = await page.$(`${selector} [data-isf-param="inputImage"] button`);
 if (imageButton) {
     try {
-        const chooser = await Promise.race([
-            page.waitForFileChooser({ timeout: 1500 }),
-            (async () => { await imageButton.click(); return null; })()
-        ]);
-        if (chooser) {
-            await chooser.accept([path.join(root, "samples", "isf-logo.png")]);
-            await sleep(500);
-            await capture("13-image-input");
-        }
+        const chooserPromise = page.waitForFileChooser({ timeout: 2000 });
+        await imageButton.click();
+        const chooser = await chooserPromise;
+        await chooser.accept([path.join(root, "samples", "isf-logo.png")]);
+        await sleep(500);
+        await capture("13-image-input");
     } catch (error) { /* optional control */ }
 }
+const hasMicButton = await blockEval((block) => Array.from(block.querySelectorAll("button")).some((node) => /Use mic/i.test(node.textContent)));
+if (hasMicButton) {
+    await blockEval((block) => {
+        const button = Array.from(block.querySelectorAll("button")).find((node) => /Use mic/i.test(node.textContent));
+        if (button) button.click();
+    });
+    await sleep(500);
+    await capture("13b-microphone-attempt");
+}
+
+// ── View and Log tabs own real host actions
+await selectTab("View");
+await sleep(250);
+await capture("13c-view-tab");
+const viewActions = await blockEval((block) => {
+    const scale = block.querySelector('.isf-view select[aria-label="Render scale"]');
+    const resolution = block.querySelector('.isf-view select[aria-label="Render resolution"]');
+    if (scale) { scale.value = "0.5"; scale.dispatchEvent(new Event("change", { bubbles: true })); }
+    if (resolution) { resolution.value = "hd"; resolution.dispatchEvent(new Event("change", { bubbles: true })); }
+    return { scale: !!scale, resolution: !!resolution };
+});
+await sleep(400);
+await capture("13d-view-scale-resolution");
+const viewRandom = await blockEval((block) => {
+    const button = Array.from(block.querySelectorAll(".isf-view button")).find((node) => /Randomize/i.test(node.textContent));
+    if (button) button.click();
+    return !!button;
+});
+await sleep(250);
+await capture("13e-view-randomize");
+await blockEval((block) => {
+    const button = Array.from(block.querySelectorAll(".isf-view button")).find((node) => /Export PNG/i.test(node.textContent));
+    if (button) button.click();
+    return !!button;
+});
+await sleep(400);
+await capture("13f-view-export");
+check("View controls execute", viewActions.scale && viewActions.resolution && viewRandom, viewActions);
+await selectTab("Log");
+await sleep(250);
+await capture("13g-log-tab");
+await blockEval((block) => {
+    const button = Array.from(block.querySelectorAll("[data-pui-section=log] button, .pui-section[data-pui-section=log] button"))
+        .find((node) => /Reset parameters/i.test(node.textContent));
+    if (button) button.click();
+    return !!button;
+});
+await sleep(250);
+await capture("13h-log-reset");
 
 // ── transport controls
 await togglePane("bottom", true);
@@ -309,6 +363,25 @@ if (await editorMenu("Import shader")) {
         await sleep(500);
     }
 }
+const moreAction = async (label) => blockEval((block, [re]) => {
+    const trigger = block.querySelector(".isf-editor-more .pui-menu-trigger");
+    if (!trigger) return false;
+    if (trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+    const item = Array.from(block.querySelectorAll(".isf-editor-more .pui-menu-popup [role=menuitem], .isf-editor-more .pui-menu-popup .pui-button"))
+        .find((node) => new RegExp(re).test(node.textContent));
+    if (item) item.click();
+    return !!item;
+}, label);
+await moreAction("Copy source");
+await sleep(250);
+await capture("18b-editor-copy");
+await moreAction("Keyboard shortcuts");
+await sleep(250);
+await capture("18c-editor-help");
+await closeOverlay();
+await moreAction("Revert to file");
+await sleep(300);
+await capture("18d-editor-revert");
 const templateTrigger = await page.$(`${selector} .isf-editor-more .pui-menu-trigger`);
 if (templateTrigger) {
     await templateTrigger.click(); await sleep(200);
@@ -387,7 +460,10 @@ await capture("29-mobile-playback");
 await page.screenshot({ path: path.join(artifacts, "30-mobile-page.png") });
 
 check("no console errors", errors.length === 0, errors.slice(0, 5));
-await browser.close();
+try {
+    await Promise.race([browser.close(), new Promise((resolve) => setTimeout(resolve, 4000))]);
+} catch (error) { /* force-close below */ }
+try { if (browser.process()) browser.process().kill("SIGKILL"); } catch (error) { /* ignore */ }
 server.close();
 const failed = checks.filter((c) => !c.ok);
 console.log("\nbrowser-interaction: " + actions.length + " actions captured, " + (checks.length - failed.length) + "/" + checks.length + " checks passed");
@@ -396,3 +472,4 @@ if (failed.length) {
     console.log(JSON.stringify(failed, null, 2));
     process.exit(1);
 }
+process.exit(0);

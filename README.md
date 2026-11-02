@@ -275,7 +275,7 @@ one Parameters pane is open across viewers at a time, so panels never stack;
 another open one.
 
 The renderer/adapter are vendored from the clean PUI **1.11.1** snapshot (commit
-`7ce99fa`). The workbench titlebar contract (`description`, collapsible
+`7ab670f`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
