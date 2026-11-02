@@ -671,6 +671,9 @@
 .pui-workbench-tools { display: flex; gap: 4px; flex-wrap: wrap; margin-inline-start: auto; }
 .pui-workbench-toggle { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.7); padding: 3px 7px; cursor: pointer; }
 .pui-workbench-toggle-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.1em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.94em; opacity: 0.78; line-height: 1; }
+.pui-workbench-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 30px; min-height: 30px; padding: 3px 5px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 0.7); cursor: pointer; }
+.pui-workbench-action:hover { color: var(--pui-text); background: var(--pui-surface-2); border-color: var(--pui-border); }
+.pui-workbench-action-icon { display: inline-flex; align-items: center; justify-content: center; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05em; line-height: 1; }
 .pui-workbench-eyebrow { display: block; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.58); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2; }
 .pui-workbench-toolbar.is-titlebar-collapsed .pui-workbench-eyebrow { display: none; }
 .pui-workbench-toggle[aria-expanded="false"] { color: var(--pui-muted); border-style: dashed; }
@@ -995,6 +998,9 @@
 .pui-graph-param-value.is-numeric { display: inline-flex; flex: 1 1 auto; flex-direction: column; align-items: stretch; gap: 2px; min-width: 4.8em; padding: 1px 3px; }
 .pui-graph-param-value.is-numeric:hover, .pui-graph-param-value.is-numeric:focus-visible { background: transparent; color: var(--pui-text); }
 .pui-graph-param-value.is-bool { min-width: 3.4em; border: 1px solid var(--pui-border); background: var(--pui-surface); }
+.pui-graph-param-value.is-knob { display: inline-flex; align-items: center; gap: 5px; min-width: 5.4em; padding: 1px 3px; }
+.pui-graph-knob-dial { position: relative; display: inline-block; width: 22px; height: 22px; flex: 0 0 22px; border: 1px solid var(--pui-border); border-radius: 50%; background: radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--pui-surface) 70%, white), var(--pui-surface-2) 65%); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pui-accent) 12%, transparent); transform: rotate(var(--pui-graph-knob-angle, -135deg)); }
+.pui-graph-knob-pointer { position: absolute; left: 50%; top: 3px; width: 2px; height: 7px; border-radius: 1px; background: var(--pui-accent); transform: translateX(-50%); }
 .pui-graph-param-value.is-enum, .pui-graph-param-value.is-color { min-width: 5.2em; min-height: 20px; padding: 0 3px; font: inherit; font-size: calc(var(--pui-type-base) * 0.62); border: 1px solid var(--pui-border); border-radius: 3px; background: var(--pui-surface); color: var(--pui-text); }
 .pui-graph-param-track { --pui-graph-zero: 50%; position: relative; display: block; height: 7px; border-radius: 3px; background: color-mix(in srgb, var(--pui-border) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pui-border) 70%, transparent); }
 .pui-graph-param-fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; border-radius: 3px; background: var(--pui-accent); transition: left 70ms linear, width 70ms linear, background-color 120ms ease; }
@@ -1056,6 +1062,13 @@
 
 /* P1 surfaces: transport, meter, key capture. */
 .pui-transport { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
+.pui-transport.is-compact { flex-direction: row; align-items: center; gap: 5px; padding: 3px 4px; border: 0; border-radius: 0; background: transparent; }
+.pui-transport.is-compact .pui-transport-head { min-height: 0; gap: 4px; }
+.pui-transport.is-compact .pui-transport-head h4 { display: none; }
+.pui-transport.is-compact .pui-transport-controls { flex: 1 1 auto; min-width: 0; gap: 5px; flex-wrap: nowrap; }
+.pui-transport.is-compact .pui-transport-controls input[type="range"] { flex: 1 1 90px; }
+.pui-transport.is-compact .pui-transport-loop, .pui-transport.is-compact .pui-transport select { display: none; }
+.pui-transport.is-compact .pui-transport-time { font-size: calc(var(--pui-type-base) * 0.68); }
 .pui-transport-head { display: flex; align-items: center; gap: 6px; }
 .pui-transport-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.88); }
 .pui-transport-controls { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }

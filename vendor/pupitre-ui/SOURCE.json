@@ -1,11 +1,12 @@
 {
   "note": "Vendored from pupitre-ui by tools/sync-pupitre-ui.mjs — never edit these files; re-sync and rebuild instead.",
   "source": "https://codeberg.org/gllm/pupitre-ui",
-  "version": "1.10.0",
+  "version": "1.11.1",
   "files": {
-    "pupitre-ui.js": "76bab6b9e324622a29b9a0651bf018e1f90b9d89f886a76581d901802036de3a",
-    "pupitre-ui.css": "35fc02b59fe3b0d10191bbd408f4e3f8267e7461199aa86fe9658634fdde4d6d",
+    "pupitre-ui.js": "d874c83142cfbed71e1cae23447999b84966d12124ae1be8d55643db8beca354",
+    "pupitre-ui.css": "d1effc20da9ed6773e8baa2ec6bad16eb521404e5e9cb5da61059f9f52f226d6",
     "isf.js": "a821d46fc600367972540d8d23c59bad9545fa3bea3954a4782e2fddb887bab8"
   },
-  "commit": "74c8443"
+  "commit": "7ce99fa",
+  "dirty": true
 }

@@ -1279,11 +1279,25 @@
     if (rightInfo) toggle("right", rightInfo, "Control+Alt+R");
     if (bottomInfo) toggle("bottom", bottomInfo, "Control+Alt+B");
 
+    var titlebarActions = isObject(layout.titlebar) && isArray(layout.titlebar.actions) ? layout.titlebar.actions : [];
+    titlebarActions.forEach(function (action) {
+      if (!isObject(action) || !action.call) return;
+      var actionLabel = String(action.label || action.title || action.id || "Action");
+      var actionButton = el("button", {type: "button", class: "pui-workbench-action", "data-pui-action": String(action.id || action.call)});
+      actionButton.setAttribute("aria-label", actionLabel);
+      actionButton.title = String(action.title || actionLabel);
+      if (action.icon) actionButton.appendChild(el("span", {class: "pui-workbench-action-icon", "aria-hidden": "true", text: String(action.icon)}));
+      else actionButton.appendChild(el("span", {class: "pui-workbench-action-label", text: actionLabel}));
+      if (action.icon && action.icon_only === false) actionButton.appendChild(el("span", {class: "pui-workbench-action-label", text: actionLabel}));
+      actionButton.addEventListener("click", function () { self.adapter.callAction(String(action.call), isObject(action.args) ? action.args : {}); });
+      tools.appendChild(actionButton);
+    });
+
     // Ark/Radi-style roving toolbar: one tab stop, arrows/Home/End move
     // between the Header menu trigger and the pane toggles.
     var toolButtons = [];
     Array.prototype.slice.call(tools.children).forEach(function (child) {
-      if (child.classList.contains("pui-workbench-toggle")) toolButtons.push(child);
+      if (child.classList.contains("pui-workbench-toggle") || child.classList.contains("pui-workbench-action")) toolButtons.push(child);
       if (child.classList.contains("pui-header-menu")) {
         var trigger = child.querySelector(".pui-header-menu-trigger");
         if (trigger) toolButtons.push(trigger);
@@ -2019,14 +2033,21 @@
           return;
         }
         var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
+        var knob = numeric && String(param.widget || "") === "knob";
         var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id), "data-param-type": String(param.type || "float")});
-        if (bounded) {
+        if (bounded && !knob) {
           var track = el("span", {class: "pui-graph-param-track", "aria-hidden": "true"});
           track.appendChild(el("span", {class: "pui-graph-param-fill", "aria-hidden": "true"}));
           track.appendChild(el("span", {class: "pui-graph-param-ticks", "aria-hidden": "true"}));
           track.appendChild(el("span", {class: "pui-graph-param-default", "aria-hidden": "true"}));
           track.appendChild(el("span", {class: "pui-graph-param-thumb", "aria-hidden": "true"}));
           valueButton.appendChild(track);
+        }
+        if (knob) {
+          valueButton.classList.add("is-knob");
+          var dial = el("span", {class: "pui-graph-knob-dial", "aria-hidden": "true"});
+          dial.appendChild(el("span", {class: "pui-graph-knob-pointer", "aria-hidden": "true"}));
+          valueButton.appendChild(dial);
         }
         valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: displayValue}));
         valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
@@ -4148,6 +4169,10 @@
       if (marker.classList) marker.classList.toggle("is-hidden", !hasDefault);
     }
     if (track && track.style) track.style.setProperty("--pui-graph-zero", (zero * 100).toFixed(2) + "%");
+    if (element.classList && element.classList.contains("is-knob")) {
+      var angle = -135 + ratio * 270;
+      element.style.setProperty("--pui-graph-knob-angle", angle.toFixed(2) + "deg");
+    }
   };
 
   Renderer.prototype.graphParamScrub = function (rec, node, param, event) {
@@ -7418,7 +7443,8 @@
     var options = isObject(block.transport_options) ? block.transport_options : {};
     var labels = isObject(options.labels) ? options.labels : {};
     var text = function (key, fallback) { return String(labels[key] || self.t("transport." + key, fallback)); };
-    var root = el("section", {class: "pui-transport", "data-pui-transport": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Transport"))});
+    var compact = options.compact === true;
+    var root = el("section", {class: "pui-transport" + (compact ? " is-compact" : ""), "data-pui-transport": path, role: "group", "aria-label": String(block.a11y && block.a11y.name || block.label || text("title", "Transport"))});
     var rec = {block: block, path: path, value: null, root: root, labels: labels, text: text};
     var head = el("div", {class: "pui-transport-head"});
     head.appendChild(el("h4", {text: String(block.label || text("title", "Transport"))}));
@@ -10604,6 +10630,7 @@
     var popupId = this.id("header-menu");
     var label = String(block.label || "Menu");
     var trigger = el("button", {type: "button", class: "pui-button pui-header-menu-trigger", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": popupId, text: label});
+    trigger.title = label;
     if (block.icon) trigger.insertBefore(el("span", {class: "pui-header-menu-icon", "aria-hidden": "true", text: String(block.icon)}), trigger.firstChild);
     var popup = el("div", {class: "pui-header-menu-popup", id: popupId, role: "dialog", "aria-label": String(block.title || label), hidden: true});
     var head = el("div", {class: "pui-header-menu-head"});
@@ -10623,7 +10650,7 @@
     popup.addEventListener("click", function (event) {
       var target = event.target && event.target.closest ? event.target.closest(".pui-actions button, .pui-actions a") : null;
       if (target) setTimeout(closeMenu, 0);
-    });
+    }, true);
     root.appendChild(trigger);
     root.appendChild(popup);
     return root;
@@ -13895,7 +13922,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.10.0",
+    version: "1.11.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
