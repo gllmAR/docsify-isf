@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.35.0
+ * docsify-isf v1.36.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.35.0";
+    var VERSION = "1.36.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3923,6 +3923,14 @@
             ".isf-workbench .pui-transport-head{min-height:32px;gap:6px}",
             ".isf-workbench .pui-workbench-eyebrow{margin-bottom:1px}",
             "@media (max-width:600px){.isf-workbench .pui-workbench-toggle-label{display:none!important}.isf-workbench .pui-workbench-toggle{padding:4px 7px!important}.isf-workbench .pui-workbench-toggle-icon{font-size:15px;opacity:1}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px!important}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{display:flex;align-items:center;gap:6px}",
+            ".isf-source-meta{display:none;margin-inline-start:auto;align-items:center;gap:5px;text-transform:none;letter-spacing:0;font-size:.66rem;color:var(--isf-muted);white-space:nowrap}",
+            ".isf-source-dot{width:7px;height:7px;border-radius:50%;background:var(--isf-muted);flex:0 0 auto}",
+            ".isf-source-dot.is-ok{background:#3fb950}",
+            ".isf-source-dot.is-error{background:var(--isf-danger)}",
+            ".isf-source-dot.is-warn{background:#d29922}",
+            ".isf-source-caret{font-variant-numeric:tabular-nums}",
+            "@container (max-width:360px){.isf-workbench .isf-source-meta{display:inline-flex}}",
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -7505,7 +7513,38 @@
             // then let the auto-open pass decide whether Material is visible.
             if (editor) editor.el.classList.remove("isf-hidden");
             setEditorPanel();
+            viewer.mountSourceMeta();
             if (viewer.inspectorOpen) openInspector(viewer.inspectorTab || "params");
+        };
+
+        viewer.mountSourceMeta = function () {
+            if (!viewer.editor || viewer.sourceMetaObserver) return;
+            var left = viewer.workbenchPane("left");
+            var title = left && left.querySelector(".pui-workbench-pane-title");
+            if (!title) return;
+            var meta = h("span", "isf-source-meta", { "aria-hidden": "true" });
+            var dot = h("span", "isf-source-dot");
+            var caret = h("span", "isf-source-caret");
+            meta.appendChild(dot);
+            meta.appendChild(caret);
+            title.appendChild(meta);
+            var statusEl = viewer.editor.el.querySelector(".isf-editor-status");
+            var posEl = viewer.editor.el.querySelector(".isf-editor-pos");
+            var sync = function () {
+                var kind = statusEl ? String(statusEl.className || "") : "";
+                dot.className = "isf-source-dot" +
+                    (/is-error/.test(kind) ? " is-error" : /is-ok/.test(kind) ? " is-ok" : /is-warn/.test(kind) ? " is-warn" : "");
+                dot.title = statusEl ? String(statusEl.textContent || "") : "";
+                caret.textContent = posEl ? String(posEl.textContent || "") : "";
+            };
+            sync();
+            if (typeof MutationObserver !== "undefined") {
+                var observer = new MutationObserver(sync);
+                if (statusEl) observer.observe(statusEl, { attributes: true, childList: true, characterData: true, subtree: true });
+                if (posEl) observer.observe(posEl, { childList: true, characterData: true, subtree: true });
+                viewer.sourceMetaObserver = observer;
+                viewer.listeners.push(function () { observer.disconnect(); });
+            }
         };
 
         viewer.workbenchPane = function (region) {

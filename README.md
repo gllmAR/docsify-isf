@@ -406,6 +406,9 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   toast stack. On phones the transport collapses to play/stop + seek, keeps the
   statusbar, and the titlebar uses two compact rows: identity/description then
   the function buttons (the Menu becomes the ☰ icon).
+- The Source pane title carries a compact compile-status dot and `Ln x, Col y`
+  when the editor chrome is folded at narrow widths; the full editor status
+  remains aria-live.
 - The right pane's tab bar is its heading, and the stage's "Preview" label is
   redundant: both pane titles are visually hidden while their accessible
   names remain. The Source editor head is folded into the Source pane

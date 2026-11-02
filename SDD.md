@@ -445,8 +445,10 @@ Density decisions:
 - The Playback strip hides the transport heading and any loop/rate controls the
   host reports as unsupported, then keeps the statusbar visible. The titlebar
   Playback toggle can collapse the whole strip.
-- At a Source pane width below 360 px the caret/status readouts are visually
-  hidden; the status stays an aria-live/visually-hidden region.
+- At a Source pane width below 360 px the editor caret/status row is visually
+  hidden; the status stays an aria-live/visually-hidden region. A compact
+  status dot + `Ln x, Col y` is mirrored into the Source pane title so the
+  editor never loses its position/compile context.
 - On phones the titlebar wraps identity/description and controls onto two rows;
   the Menu becomes the ☰ icon with its text retained for the accessible name.
   The titlebar is compact (under 130 px), the editor head/status are hidden and

@@ -443,10 +443,21 @@ try {
         const editor = block.querySelector(".isf-editor");
         const visible = window.isfPaneOpen(block, "left");
         const editorBox = editor ? editor.getBoundingClientRect() : null;
-        return { missing: false, visible: visible, editor: !!editor, editorHeight: editorBox ? Math.round(editorBox.height) : 0, stage: block.querySelector(".isf-stage").getBoundingClientRect().width };
+        const meta = block.querySelector(".isf-source-meta");
+        const caret = block.querySelector(".isf-source-caret");
+        return {
+            missing: false, visible: visible, editor: !!editor,
+            editorHeight: editorBox ? Math.round(editorBox.height) : 0,
+            stage: block.querySelector(".isf-stage").getBoundingClientRect().width,
+            meta: !!meta && getComputedStyle(meta).display !== "none",
+            caret: caret ? caret.textContent : ""
+        };
     });
     if (sourceButton.missing || !sourceButton.visible || !sourceButton.editor || sourceButton.editorHeight < 120) {
         problems.push("the Source show/hide button did not open the editor: " + JSON.stringify(sourceButton));
+    }
+    if (!sourceButton.meta || !/^Ln \d+, Col \d+$/.test(sourceButton.caret)) {
+        problems.push("the compact Source status/caret readout is missing: " + JSON.stringify(sourceButton));
     }
 
     // Collapsing the title bar must leave the function buttons in place.
