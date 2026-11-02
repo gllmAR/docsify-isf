@@ -2288,20 +2288,24 @@
       var id = String(node.id || "");
       var type = typeMap[String(node.type)] || null;
       var rect = self.graphNodeRect(rec, node, type);
+      var portal = Graph.portalInfo(node, type);
       var nodeEl = el("div", {
-        class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : ""),
+        class: "pui-graph-node" + (node.enabled === false ? " is-disabled" : "") + (selected[id] ? " is-selected" : "") + (portal ? " is-portal is-portal-" + portal.direction : ""),
         "data-node-id": id,
         "data-node-lazy": "1",
+        "data-portal-direction": portal ? portal.direction : "",
+        "data-portal-name": portal ? portal.name : "",
         role: "group",
         tabindex: "0",
         style: "left:" + rect.x + "px;top:" + rect.y + "px;width:" + rect.w + "px;height:" + rect.h + "px;"
       });
       rec.nodeEls[id] = nodeEl;
       var nodeLabel = String(node.label || (type && type.label) || node.type || id);
-      nodeEl.setAttribute("aria-label", nodeLabel + (type && type.label ? ", " + type.label : "") + (node.enabled === false ? ", disabled" : ""));
+      nodeEl.setAttribute("aria-label", nodeLabel + (type && type.label ? ", " + type.label : "") + (portal ? ", " + portal.direction + " portal " + (portal.name || "(unnamed)") : "") + (node.enabled === false ? ", disabled" : ""));
       nodeEl.appendChild(el("div", {class: "pui-graph-node-head"},
         el("span", {class: "pui-graph-node-title", text: nodeLabel}),
-        el("span", {class: "pui-graph-node-type", text: String((type && type.label) || node.type || "")})
+        el("span", {class: "pui-graph-node-type", text: String((type && type.label) || node.type || "")}),
+        portal ? el("span", {class: "pui-graph-portal-name", text: portal.direction.toUpperCase() + " · " + (portal.name || "—")}) : null
       ));
       rec.nodeById[id] = node;
       content.appendChild(nodeEl);
@@ -2774,6 +2778,8 @@
       });
       item.appendChild(button);
       if (type) item.appendChild(el("span", {class: "pui-graph-outline-type", text: String(type.label || type.id)}));
+      var outlinePortal = Graph.portalInfo(node, type);
+      if (outlinePortal) item.appendChild(el("span", {class: "pui-graph-outline-portal", text: " · " + outlinePortal.direction + " " + (outlinePortal.name || "(unnamed)")}));
       (Graph.paramPorts(type) || []).forEach(function (paramPort) {
         item.appendChild(el("span", {class: "pui-graph-outline-port", text: " ↳ " + String(paramPort.label || paramPort.param) + " (" + String(paramPort.type || "control") + ")"}));
       });
@@ -4490,6 +4496,12 @@
       if (el.classList) el.classList.toggle("is-disabled", node.enabled === false);
       var title = el.querySelector ? el.querySelector(".pui-graph-node-title") : null;
       if (title) title.textContent = String(node.label || (rec.typeMap[String(node.type)] && rec.typeMap[String(node.type)].label) || node.type || node.id);
+      var portalNow = Graph.portalInfo(node, rec.typeMap[String(node.type)]);
+      if (el.classList && portalNow) el.classList.add("is-portal", "is-portal-" + portalNow.direction);
+      if (el.setAttribute) el.setAttribute("data-portal-direction", portalNow ? portalNow.direction : "");
+      if (el.setAttribute) el.setAttribute("data-portal-name", portalNow ? portalNow.name : "");
+      var portalEl = el.querySelector ? el.querySelector(".pui-graph-portal-name") : null;
+      if (portalEl && portalNow) portalEl.textContent = portalNow.direction.toUpperCase() + " · " + (portalNow.name || "—");
       var paramInfo = rec.paramEls[String(node.id)];
       if (paramInfo) {
         paramInfo.defs.forEach(function (param, index) {

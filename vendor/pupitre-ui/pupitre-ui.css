@@ -515,6 +515,11 @@
 .pui-graph-crumb-sep { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.7); }
 .pui-graph-interface { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
 .pui-graph-node.is-subgraph { border-style: double; border-width: 3px; }
+.pui-graph-node.is-portal { border-style: dashed; }
+.pui-graph-node.is-portal-send { border-color: var(--pui-accent); }
+.pui-graph-node.is-portal-receive { border-color: var(--pui-warning); }
+.pui-graph-portal-name { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.52); letter-spacing: 0.03em; }
+.pui-graph-outline-portal { color: var(--pui-warning); font-size: calc(var(--pui-type-base) * 0.66); }
 .pui-graph-open-subgraph { margin: 6px 8px 8px; border: 1px solid var(--pui-accent); border-radius: 4px; background: transparent; color: var(--pui-accent); font: inherit; font-size: calc(var(--pui-type-base) * 0.65); padding: 2px 6px; cursor: pointer; }
 .pui-graph-open-subgraph:hover { background: var(--pui-accent); color: var(--pui-bg); }
 .pui-graph-value-texture { margin: 4px 6px 6px; padding: 4px; border: 1px solid color-mix(in srgb, var(--pui-accent) 40%, var(--pui-border)); border-radius: 4px; background: color-mix(in srgb, var(--pui-accent) 4%, var(--pui-surface)); }
