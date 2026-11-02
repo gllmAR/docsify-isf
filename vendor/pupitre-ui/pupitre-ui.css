@@ -524,6 +524,9 @@
 .pui-graph-vt-cell { min-width: 0; border: 1px solid var(--pui-border); border-radius: 2px; }
 .pui-graph-vt-summary { display: block; overflow: hidden; color: var(--pui-text); font-size: calc(var(--pui-type-base) * 0.54); white-space: nowrap; text-overflow: ellipsis; }
 .pui-graph-cable.is-cross-type { stroke-dasharray: 5 3; stroke-width: 2; }
+.pui-graph-cable.is-flow-exec { stroke-dasharray: 7 4; stroke-width: 2.5; }
+.pui-graph-cable.is-flow-event { stroke-dasharray: 2 4; stroke-width: 2.5; }
+.pui-graph-cable.is-flow-mod { stroke-dasharray: 1 3; stroke-width: 2; }
 .pui-graph-port-dot[data-port-channel]:not([data-port-channel=""]) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--pui-accent) 35%, transparent); }
 .pui-graph-gop { margin: 5px 6px 6px; border: 1px solid color-mix(in srgb, var(--pui-accent) 45%, var(--pui-border)); border-radius: 5px; background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface)); overflow: hidden; }
 .pui-graph-gop-head { display: flex; align-items: center; gap: 4px; padding: 3px 5px; border-bottom: 1px solid var(--pui-border); }

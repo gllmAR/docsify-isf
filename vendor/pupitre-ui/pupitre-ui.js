@@ -1650,7 +1650,7 @@
         node.hidden_inputs, node.hidden_outputs, node.hidden_params, node.value_texture]);
     });
     (graph.cables || []).forEach(function (cable) {
-      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to, cable.via || null]);
+      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to, cable.via || null, cable.flow || null]);
     });
     (graph.frames || []).forEach(function (frame) {
       if (isObject(frame)) frames.push([String(frame.id || ""), frame.members]);
@@ -2351,8 +2351,10 @@
       var p = route.path;
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
       var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
+      var cableFlow = Graph.cableFlow(cable, cableType);
       var path = svgEl("path", {
-        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : ""),
+        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : "") + " is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-"),
+        "data-cable-flow": cableFlow,
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
         "data-cross-type": crossType,
