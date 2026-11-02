@@ -662,7 +662,10 @@
 }
 .pui[data-embedded="true"] .pui-workbench-toolbar .pui-page-title { display: block; }
 .pui-workbench-tools { display: flex; gap: 4px; flex-wrap: wrap; margin-inline-start: auto; }
-.pui-workbench-toggle { border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.7); padding: 3px 7px; cursor: pointer; }
+.pui-workbench-toggle { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.7); padding: 3px 7px; cursor: pointer; }
+.pui-workbench-toggle-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.1em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.94em; opacity: 0.78; line-height: 1; }
+.pui-workbench-eyebrow { display: block; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.58); font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.2; }
+.pui-workbench-toolbar.is-titlebar-collapsed .pui-workbench-eyebrow { display: none; }
 .pui-workbench-toggle[aria-expanded="false"] { color: var(--pui-muted); border-style: dashed; }
 .pui-workbench-toolbar-blocks { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; }
 .pui-workbench-body { display: flex; align-items: stretch; min-height: 360px; max-height: var(--pui-workbench-height); border: 1px solid var(--pui-border); border-radius: var(--pui-radius); overflow: hidden; }

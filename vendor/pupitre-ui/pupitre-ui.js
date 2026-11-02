@@ -1109,6 +1109,9 @@
     var headingDescription = titlebar && typeof titlebar.description === "string" ? titlebar.description : (typeof page.description === "string" ? page.description : "");
     var headingId = self.id("workbench-heading");
     var heading = el("div", {class: "pui-workbench-heading", id: headingId});
+    if (titlebar && typeof titlebar.eyebrow === "string" && titlebar.eyebrow) {
+      heading.appendChild(el("span", {class: "pui-workbench-eyebrow", text: titlebar.eyebrow}));
+    }
     heading.appendChild(el("h2", {class: "pui-page-title pui-workbench-title", id: titleId, text: headingTitle}));
     if (headingDescription) {
       var descriptionEl = el("p", {class: "pui-workbench-description", text: headingDescription});
@@ -1257,10 +1260,15 @@
 
     var toggle = function (region, info, shortcut) {
       if (!groups[region].length && !(layout[region] && layout[region].collapsible)) return;
-      var button = el("button", {type: "button", class: "pui-workbench-toggle", text: info.title});
+      var paneIcon = String((layout[region] && layout[region].icon) || "");
+      var button = el("button", {type: "button", class: "pui-workbench-toggle", "data-pui-region": region});
       button.setAttribute("aria-controls", info.id);
       button.setAttribute("aria-expanded", "true");
       button.setAttribute("aria-keyshortcuts", shortcut);
+      button.setAttribute("aria-label", "Toggle " + info.title);
+      button.title = "Toggle " + info.title;
+      if (paneIcon) button.appendChild(el("span", {class: "pui-workbench-toggle-icon", "aria-hidden": "true", text: paneIcon}));
+      button.appendChild(el("span", {class: "pui-workbench-toggle-label", text: info.title}));
       button.addEventListener("click", function () { self.workbenchToggle(rec, region); });
       rec.buttons[region] = button;
       tools.appendChild(button);
@@ -1268,9 +1276,6 @@
     if (leftInfo) toggle("left", leftInfo, "Control+Alt+L");
     if (rightInfo) toggle("right", rightInfo, "Control+Alt+R");
     if (bottomInfo) toggle("bottom", bottomInfo, "Control+Alt+B");
-    rec.buttons.left && (rec.buttons.left.title = "Toggle left pane");
-    rec.buttons.right && (rec.buttons.right.title = "Toggle right pane");
-    rec.buttons.bottom && (rec.buttons.bottom.title = "Toggle bottom pane");
 
     var stored = function (region, key, fallback) {
       try {
@@ -13666,7 +13671,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.9.1",
+    version: "1.9.2",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

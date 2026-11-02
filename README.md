@@ -250,8 +250,11 @@ overlays, tabs, title bar, transport and statusbar. The host owns the WebGL
 renderer, the source editor/import surface, the View controls and the ISF
 values.
 
-The workbench title bar labels the shader with its **title** and ISF
-**description**, and adds a PUI 1.9.1 **collapsible title bar**. Collapsing
+The workbench title bar labels the shader with an ISF **eyebrow**, its
+**title** and ISF **description**, and adds a PUI 1.9.2 **collapsible title
+bar**. Pane toggles carry host glyphs plus labels (`</> Source`, `⚙
+Parameters`, `▶ Playback`); phones keep the glyphs and drop the labels to
+preserve a one-line controls row. Collapsing
 hides the description and compacts the title to one ellipsized line: the
 Menu, **Source**, **Parameters** and **Playback** buttons stay available, so
 the host can reclaim vertical space without losing controls or the shader
@@ -271,8 +274,8 @@ one Parameters pane is open across viewers at a time, so panels never stack;
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.9.1** snapshot (commit
-`5df2690`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.9.2** snapshot (commit
+`9d21ad5`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -390,7 +393,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.9.1) hides the description and keeps a compact
+  Its collapse control (PUI 1.9.2) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -403,13 +406,18 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   toast stack. On phones the transport collapses to play/stop + seek, keeps the
   statusbar, and the titlebar uses two compact rows: identity/description then
   the function buttons (the Menu becomes the ☰ icon).
-- The right pane's tab bar is its heading, so the redundant pane title is
-  visually hidden (the pane keeps its accessible name). The Source editor head
-  is folded into the Source pane title/titlebar; the narrow Source pane hides
-  the caret/status readouts visually while keeping the status aria-live.
-  Active Source/Parameters/Playback toggles use the accent border, and the
-  collapsed titlebar keeps the shader title while removing only the
+- The right pane's tab bar is its heading, and the stage's "Preview" label is
+  redundant: both pane titles are visually hidden while their accessible
+  names remain. The Source editor head is folded into the Source pane
+  title/titlebar; the narrow Source pane hides the caret/status readouts
+  visually while keeping the status aria-live. Active
+  Source/Parameters/Playback toggles use the accent border and host glyphs; the
+  collapsed titlebar keeps the shader title while removing the eyebrow and
   description.
+- Playback is a compact strip: transport no-op loop/rate controls are hidden
+  when the host cannot honour them, the transport heading is removed, and the
+  statusbar remains visible below it. The Playback toggle in the title bar can
+  collapse the whole strip.
 - Controls stay at least 32–36 px tall on touch devices; panes, transport and
   form fields respect safe areas and coarse-pointer sizing. The preview is
   keyboard focusable: **Enter/Space** or a double-click toggles fullscreen.

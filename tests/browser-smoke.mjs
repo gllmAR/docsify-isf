@@ -405,8 +405,8 @@ try {
             leftTabs: left ? Array.from(left.querySelectorAll(".pui-pane-tab")).map((tab) => tab.textContent) : [],
             rightOpen: !!right && !right.classList.contains("is-collapsed"),
             rightTab: right && right.querySelector('.pui-pane-tab[aria-selected="true"]') ? right.querySelector('.pui-pane-tab[aria-selected="true"]').textContent : "",
-            sourceToggle: !!block && Array.from(block.querySelectorAll(".pui-workbench-toggle")).some((button) => button.textContent === "Source"),
-            paramsToggle: !!block && Array.from(block.querySelectorAll(".pui-workbench-toggle")).some((button) => button.textContent === "Parameters"),
+            sourceToggle: !!block && !!block.querySelector('.pui-workbench-toggle[data-pui-region="left"]'),
+            paramsToggle: !!block && !!block.querySelector('.pui-workbench-toggle[data-pui-region="right"]'),
             title: block && block.querySelector(".pui-workbench-title") ? block.querySelector(".pui-workbench-title").textContent : "",
             description: block && block.querySelector(".pui-workbench-description") ? block.querySelector(".pui-workbench-description").textContent : "",
             titlebarToggle: block && !!block.querySelector(".pui-workbench-titlebar-toggle"),
@@ -436,7 +436,7 @@ try {
     const sourceButton = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
-        const source = Array.from(block.querySelectorAll(".pui-workbench-toggle")).find((button) => button.textContent === "Source");
+        const source = block.querySelector('.pui-workbench-toggle[data-pui-region="left"]');
         if (!source) return { missing: true };
         source.click();
         await wait(250);

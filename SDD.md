@@ -401,10 +401,12 @@ The viewer is a PUI workbench page with named regions:
 - **Playback** bottom: a native PUI `transport` bound to `/isf/transport`,
   followed by a PUI `statusbar` bound to status and render readouts.
 
-The titlebar carries the shader title and ISF `DESCRIPTION` (plus credit when
-present), a labeled collapse chevron and the function buttons. Collapsing
-hides the description and keeps a compact one-line title; the Menu, Source,
-Parameters and Playback buttons remain. This is PUI 1.9.1's `layout.titlebar` contract; the
+The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
+(plus credit when present), a labeled collapse chevron and the function
+buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
+keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
+keeps a compact one-line title; the Menu, Source, Parameters and Playback
+buttons remain. This is PUI 1.9.2's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -434,11 +436,15 @@ the render settings and diagnostics out of the primary parameter flow.
 
 Density decisions:
 
-- The right pane's tab bar is its heading; its redundant pane title is visually
-  hidden but kept for the region's accessible name.
+- The right pane's tab bar is its heading; the stage's "Preview" label is
+  redundant too. Both pane titles are visually hidden but kept for accessible
+  names.
 - The Source editor head is hidden in the workbench (the Source pane title and
   title bar carry identity/close); the editor toolbar starts directly under the
   pane title.
+- The Playback strip hides the transport heading and any loop/rate controls the
+  host reports as unsupported, then keeps the statusbar visible. The titlebar
+  Playback toggle can collapse the whole strip.
 - At a Source pane width below 360 px the caret/status readouts are visually
   hidden; the status stays an aria-live/visually-hidden region.
 - On phones the titlebar wraps identity/description and controls onto two rows;

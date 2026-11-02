@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.34.0
+ * docsify-isf v1.35.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.34.0";
+    var VERSION = "1.35.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3528,7 +3528,7 @@
             ".isf-workbench .pui-workbench-pane.is-left,.isf-workbench .pui-workbench-pane.is-right{background:var(--isf-bg)!important}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-content,.isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{background:var(--isf-bg)}",
             ".isf-workbench .pui-workbench-pane.is-bottom{max-height:132px;background:var(--isf-surface)!important}",
-            ".isf-workbench .pui-workbench-pane.is-bottom .pui-workbench-pane-title{display:none}",
+            ".isf-workbench .pui-workbench-pane.is-bottom .pui-workbench-pane-title{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
             ".isf-workbench .pui-workbench-pane.is-stage{min-height:0!important}",
             ".isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-content{padding:0;overflow:hidden;display:flex;flex-direction:column}",
             ".isf-workbench .pui-workbench-pane.is-stage .pui-section{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0}",
@@ -3913,7 +3913,16 @@
             ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-title{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
             ".isf-workbench .isf-editor-head{display:none!important}",
             "@container (max-width:360px){.isf-workbench .isf-editor-status{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}.isf-workbench .isf-editor-pos{display:none!important}}",
-            "@media (max-width:600px){.isf-workbench-mode .isf-stage{height:100%!important;aspect-ratio:auto!important}.isf-workbench .pui-workbench-toolbar{flex-wrap:wrap;gap:.28rem;padding:.12rem .18rem}.isf-workbench .pui-workbench-heading{flex:1 1 0;min-width:0}.isf-workbench .pui-workbench-title{font-size:1rem;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.isf-workbench .pui-workbench-description{display:block;font-size:.66rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}.isf-workbench .pui-workbench-tools{width:100%!important;margin-inline-start:0!important;flex-wrap:wrap;justify-content:flex-start}.isf-workbench .pui-header-menu-trigger{font-size:0!important;padding:4px 8px}.isf-workbench .pui-header-menu-icon{font-size:16px!important;line-height:1}.isf-workbench .pui-workbench-toggle{min-height:32px;padding:4px 4px;font-size:.66rem}.isf-workbench .pui-workbench-titlebar-toggle{min-width:32px;min-height:32px;font-size:13px}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px}.isf-workbench .pui-transport{padding:4px 6px;border:0;background:transparent;gap:2px}.isf-workbench .pui-transport-head h4{display:none}.isf-workbench .pui-transport-head{gap:6px}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}"
+            "@media (max-width:600px){.isf-workbench-mode .isf-stage{height:100%!important;aspect-ratio:auto!important}.isf-workbench .pui-workbench-toolbar{flex-wrap:wrap;gap:.28rem;padding:.12rem .18rem}.isf-workbench .pui-workbench-heading{flex:1 1 0;min-width:0}.isf-workbench .pui-workbench-title{font-size:1rem;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.isf-workbench .pui-workbench-description{display:block;font-size:.66rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}.isf-workbench .pui-workbench-tools{width:100%!important;margin-inline-start:0!important;flex-wrap:wrap;justify-content:flex-start}.isf-workbench .pui-header-menu-trigger{font-size:0!important;padding:4px 8px}.isf-workbench .pui-header-menu-icon{font-size:16px!important;line-height:1}.isf-workbench .pui-workbench-toggle{min-height:32px;padding:4px 4px;font-size:.66rem}.isf-workbench .pui-workbench-titlebar-toggle{min-width:32px;min-height:32px;font-size:13px}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px}.isf-workbench .pui-transport{padding:4px 6px;border:0;background:transparent;gap:2px}.isf-workbench .pui-transport-head h4{display:none}.isf-workbench .pui-transport-head{gap:6px}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
+            ".isf-workbench .pui-workbench-pane.is-stage .pui-workbench-pane-title{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
+            ".isf-workbench .pui-workbench-pane.is-bottom{max-height:116px!important}",
+            ".isf-workbench .pui-header-menu{margin-inline-end:.25rem;padding-inline-end:.5rem;border-inline-end:1px solid var(--isf-border)}",
+            ".isf-workbench .pui-transport-loop:has(input:disabled),.isf-workbench .pui-transport select:disabled{display:none!important}",
+            ".isf-workbench .pui-transport{border:0!important;background:transparent!important;padding:4px 2px!important;gap:2px!important}",
+            ".isf-workbench .pui-transport-head h4{display:none!important}",
+            ".isf-workbench .pui-transport-head{min-height:32px;gap:6px}",
+            ".isf-workbench .pui-workbench-eyebrow{margin-bottom:1px}",
+            "@media (max-width:600px){.isf-workbench .pui-workbench-toggle-label{display:none!important}.isf-workbench .pui-workbench-toggle{padding:4px 7px!important}.isf-workbench .pui-workbench-toggle-icon{font-size:15px;opacity:1}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px!important}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -7303,6 +7312,10 @@
             var description = String(meta.DESCRIPTION || "").trim();
             var credit = String(meta.CREDIT || "").trim();
             if (description && credit && description.indexOf(credit) === -1) description += " · " + credit;
+            var isfVersion = String(meta.ISFVSN || "").trim();
+            var categories = Array.isArray(meta.CATEGORIES) ? meta.CATEGORIES.filter(function (value) { return !!value; }) : [];
+            var eyebrow = "ISF" + (isfVersion ? " v" + isfVersion : "") +
+                (categories.length ? " · " + categories.slice(0, 2).join(" / ") : "");
             return {
                 format: "pupitre-ui", version: 1, host: "docsify-isf",
                 panels: [{id: "isf-workbench", title: title, embedded: true, pages: [{
@@ -7312,7 +7325,7 @@
                         // The title bar carries the shader name and its ISF
                         // description. Collapsing it hides only the heading;
                         // Menu, Source, Parameters and Playback stay reachable.
-                        titlebar: {collapsible: true},
+                        titlebar: {collapsible: true, eyebrow: eyebrow},
                         header_menu: {
                             label: "Menu", title: title + " actions", icon: "☰",
                             blocks: [{kind: "actions", id: "isf-actions", items: [
@@ -7328,10 +7341,10 @@
                         // Source is the left pane; Parameters the right pane.
                         // Their pane toggles are the show/hide buttons in the
                         // title toolbar. View and Log are tabs of Parameters.
-                        left: {title: "Source", width: {initial: 300, min: 260, max: 520}, collapsible: true},
+                        left: {title: "Source", icon: "</>", width: {initial: 300, min: 260, max: 520}, collapsible: true},
                         stage: {title: "Preview", fit: "contain", min_width: 280},
-                        right: {title: "Parameters", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"]},
-                        bottom: {title: "Playback", height: 96, collapsible: false}
+                        right: {title: "Parameters", icon: "⚙", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"]},
+                        bottom: {title: "Playback", icon: "▶", height: 96, collapsible: false}
                     },
                     sections: [
                         {
