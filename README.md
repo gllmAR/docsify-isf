@@ -251,7 +251,7 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.9.2 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.10.0 **collapsible title
 bar**. Pane toggles carry host glyphs plus labels (`</> Source`, `⚙
 Parameters`, `▶ Playback`); phones keep the glyphs and drop the labels to
 preserve a one-line controls row. Collapsing
@@ -274,8 +274,8 @@ one Parameters pane is open across viewers at a time, so panels never stack;
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.9.2** snapshot (commit
-`d3a2d1e`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.10.0** snapshot (commit
+`74c8443`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -393,7 +393,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.9.2) hides the description and keeps a compact
+  Its collapse control (PUI 1.10.0) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -409,6 +409,9 @@ persist with the layout and can be overridden from the URL (`isf-res`,
 - The Source pane title carries a compact compile-status dot and `Ln x, Col y`
   when the editor chrome is folded at narrow widths; the full editor status
   remains aria-live.
+- Larger input sets get PUI's `Filter parameters` field. The titlebar tools are
+  a roving `role="toolbar"`, and Menu → **Focus preview** collapses Source,
+  Parameters and Playback in one action.
 - The right pane's tab bar is its heading, and the stage's "Preview" label is
   redundant: both pane titles are visually hidden while their accessible
   names remain. The Source editor head is folded into the Source pane
@@ -428,6 +431,12 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `aria-pressed` as appropriate, and status regions are `aria-live`.
 - `prefers-reduced-motion: reduce` starts viewers paused and removes the
   loading animation; coarse-pointer devices get larger touch targets.
+
+## UI ergonomics audit
+
+The investigation, screenshots, library research and remaining tradeoffs are
+in [`docs/UI_ERGONOMICS.md`](docs/UI_ERGONOMICS.md). Reproduce the committed
+captures with `node tools/ui-audit.mjs`.
 
 ## Supported ISF features
 

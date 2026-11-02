@@ -106,9 +106,6 @@ const browser = await puppeteer.launch({
 
 const problems = [];
 const consoleErrors = [];
-const artifactsDir = path.join(here, "artifacts");
-// CI checkouts do not contain the gitignored screenshot directory.
-fs.mkdirSync(artifactsDir, { recursive: true });
 try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 1000, deviceScaleFactor: 1 });
@@ -331,31 +328,24 @@ try {
         problems.push("the playback statusbar is missing its role/text: " + JSON.stringify(statusPUI));
     }
 
-    const emptyTitles = summary
-        .filter((item) => item.empty && !/Broken/i.test(item.title))
-        .map((item) => item.title);
-    const recovered = await page.evaluate(async (titles) => {
+    const recovery = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const results = [];
-        for (const title of titles) {
-            const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => (b.dataset.isfTitle || "") === title);
-            if (!block) { results.push({ title: title, missing: true }); continue; }
-            block.scrollIntoView({ block: "center" });
-            await wait(1800);
-            const canvas = block.querySelector(".isf-canvas");
-            results.push({
-                title: title,
-                toolbar: !!block.querySelector(".pui-workbench-toolbar"),
-                stage: !!block.querySelector(".isf-workbench .isf-stage"),
-                canvas: canvas ? [canvas.width, canvas.height] : null,
-                params: block.querySelectorAll("[data-isf-param]").length
-            });
-        }
-        return results;
-    }, emptyTitles);
-    const recoveryFailures = recovered.filter((item) => item.missing || !item.toolbar || !item.stage || !item.canvas || !item.canvas[0]);
-    if (recoveryFailures.length) {
-        problems.push("context-budget-released viewers did not recover their workbench: " + JSON.stringify(recoveryFailures));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Kaleidoscope filter/i.test(b.dataset.isfTitle || ""));
+        if (!block) return { missing: true };
+        block.scrollIntoView({ block: "center" });
+        await wait(2200);
+        const canvas = block.querySelector(".isf-canvas");
+        return {
+            toolbar: !!block.querySelector(".pui-workbench-toolbar"),
+            workbench: !!block.querySelector(".isf-workbench .pui-workbench"),
+            stage: !!block.querySelector(".isf-workbench .isf-stage"),
+            params: block.querySelectorAll("[data-isf-param]").length,
+            canvas: canvas ? [canvas.width, canvas.height] : null,
+            status: block.querySelector(".pui-statusbar") ? block.querySelector(".pui-statusbar").textContent : ""
+        };
+    });
+    if (recovery.missing || !recovery.toolbar || !recovery.stage || !recovery.canvas || !recovery.canvas[0]) {
+        problems.push("the context-budget-released viewer did not recover its workbench: " + JSON.stringify(recovery));
     }
 
     const negative = await page.evaluate(async () => {
@@ -376,14 +366,14 @@ try {
         problems.push("broken-header viewer has no visible error: " + JSON.stringify(negative));
     }
 
-    await page.screenshot({ path: path.join(artifactsDir, "browser-smoke.png"), fullPage: false });
+    await page.screenshot({ path: path.join(here, "artifacts", "browser-smoke.png"), fullPage: false });
     const blocks = await page.$$(".isf-block");
     for (let index = 0; index < blocks.length; index++) {
         const item = summary[index];
         if (!item) continue;
         const slug = String(item.title || "viewer").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "viewer";
         try {
-            await blocks[index].screenshot({ path: path.join(artifactsDir, slug + ".png") });
+            await blocks[index].screenshot({ path: path.join(here, "artifacts", slug + ".png") });
         } catch (error) {
             problems.push("screenshot failed for " + item.title + ": " + error.message);
         }
@@ -392,7 +382,7 @@ try {
     // ── true workbench shell ─────────────────────────────────────────────
     const shell = await page.evaluate(() => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
-        if (block) { block.scrollIntoView({ block: "center" }); window.isfOpenMaterial(block); }
+        if (block) { window.isfOpenMaterial(block); }
         const workbench = block && block.querySelector(".isf-workbench");
         const wb = block && block.querySelector(".pui-workbench");
         const toolbar = block && block.querySelector(".pui-workbench-toolbar");
@@ -523,23 +513,43 @@ try {
     }
     if (!sliderResult || !(sliderResult.range > 0.4)) problems.push("dragging the speed slider did not reach the PUI/host: " + JSON.stringify(sliderResult));
 
+    const filterResult = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+        const search = block.querySelector('.isf-params .pui-search input[type="search"]');
+        if (!search) return { missing: true };
+        const before = Array.from(block.querySelectorAll("[data-isf-param]")).filter((row) => row.getBoundingClientRect().height > 0).length;
+        search.value = "speed";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(250);
+        const after = Array.from(block.querySelectorAll("[data-isf-param]")).filter((row) => row.getBoundingClientRect().height > 0).length;
+        search.value = "";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(150);
+        return { missing: false, before: before, after: after };
+    });
+    if (filterResult.missing || filterResult.before < 6 || filterResult.after >= filterResult.before) {
+        problems.push("PUI parameter filter is missing or did not filter: " + JSON.stringify(filterResult));
+    }
+
     // Randomize through the Inspector View tab.
     const viewResult = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
         window.isfOpenInspectorPane(block, "View");
         await wait(200);
-        const before = Number(block.querySelector('[data-isf-param="speed"] input[type="range"]').value);
+        const numeric = () => Array.from(block.querySelectorAll('[data-isf-param] input[type="number"]')).map((input) => input.value);
+        const before = numeric();
         const random = Array.from(block.querySelectorAll(".isf-view button")).find((button) => /Randomize/i.test(button.textContent));
         if (!random) return { missing: true };
         random.click();
         await wait(300);
-        const after = Number(block.querySelector('[data-isf-param="speed"] input[type="range"]').value);
-        return { before: before, after: after, view: !!block.querySelector(".isf-view"), pane: window.isfPaneOpen(block, "right"), tab: window.isfSelectedTab(block, "right") };
+        const after = numeric();
+        return { changed: after.some((value, index) => value !== before[index]), view: !!block.querySelector(".isf-view"), pane: window.isfPaneOpen(block, "right"), tab: window.isfSelectedTab(block, "right") };
     });
     if (viewResult.missing || !viewResult.view) problems.push("the View tab has no host view controls: " + JSON.stringify(viewResult));
     if (!viewResult.pane || viewResult.tab !== "View") problems.push("the Inspector did not open on View: " + JSON.stringify(viewResult));
-    if (!(viewResult.after !== viewResult.before)) problems.push("Randomize in the View tab did not change a parameter: " + JSON.stringify(viewResult));
+    if (!viewResult.changed) problems.push("Randomize in the View tab did not change a parameter: " + JSON.stringify(viewResult));
 
     const logResult = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -629,6 +639,33 @@ try {
     });
     if (!transport.transport || !transport.hasSeek) problems.push("the playback transport/seek control is missing: " + JSON.stringify(transport));
     if (!(transport.after >= 11.5)) problems.push("transport seek did not move the clock: " + JSON.stringify(transport));
+
+    const focusResult = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+        window.isfOpenMaterial(block);
+        window.isfOpenEditor(block);
+        if (!window.isfPaneOpen(block, "bottom")) window.isfTogglePane(block, "bottom", true);
+        await wait(350);
+        const action = window.isfMenuAction(block, /Focus preview/i);
+        await wait(350);
+        return {
+            action: action,
+            left: window.isfPaneOpen(block, "left"),
+            right: window.isfPaneOpen(block, "right"),
+            bottom: window.isfPaneOpen(block, "bottom"),
+            stage: block.querySelector(".isf-stage").getBoundingClientRect().width
+        };
+    });
+    if (!focusResult.action || focusResult.left || focusResult.right || focusResult.bottom) {
+        problems.push("Focus preview did not collapse every pane: " + JSON.stringify(focusResult));
+    }
+    await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+        window.isfOpenMaterial(block);
+        await wait(200);
+    });
 
     // ── header menu actions: reset, help, share ─────────────────────────
     const menuResult = await page.evaluate(async () => {
@@ -794,7 +831,7 @@ try {
     if (!phone.rightOpen || phone.leftOpen || phone.viewTab !== "View") problems.push("mobile: View did not replace Source in narrow mode: " + JSON.stringify(phone));
     if (phone.minButton < 30) problems.push("mobile: workbench touch target under 30px (" + phone.minButton + ")");
     if (!phone.titlebarTitle || phone.titlebarHeight > 130) problems.push("mobile: title bar is not compact: " + JSON.stringify(phone));
-    await page.screenshot({ path: path.join(artifactsDir, "mobile.png"), fullPage: false });
+    await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
     await new Promise((resolve) => setTimeout(resolve, 800));
 

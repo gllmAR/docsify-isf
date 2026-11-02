@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.36.0
+ * docsify-isf v1.37.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.36.0";
+    var VERSION = "1.37.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3925,6 +3925,8 @@
             "@media (max-width:600px){.isf-workbench .pui-workbench-toggle-label{display:none!important}.isf-workbench .pui-workbench-toggle{padding:4px 7px!important}.isf-workbench .pui-workbench-toggle-icon{font-size:15px;opacity:1}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px!important}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{display:flex;align-items:center;gap:6px}",
             ".isf-source-meta{display:none;margin-inline-start:auto;align-items:center;gap:5px;text-transform:none;letter-spacing:0;font-size:.66rem;color:var(--isf-muted);white-space:nowrap}",
+            ".isf-editor-actions .isf-apply{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast);font-weight:600}",
+            ".isf-editor-actions .isf-apply:hover{background:color-mix(in srgb,var(--isf-accent) 84%,#fff)}",
             ".isf-source-dot{width:7px;height:7px;border-radius:50%;background:var(--isf-muted);flex:0 0 auto}",
             ".isf-source-dot.is-ok{background:#3fb950}",
             ".isf-source-dot.is-error{background:var(--isf-danger)}",
@@ -4482,6 +4484,9 @@
         var ui = PupitreUI.create({
             mount: mount,
             density: "compact",
+            // Larger materials get the PUI filter bar; small ones keep the
+            // extra control row out of the way.
+            search: inputs.length >= 6,
             // The pass/quality/time/export row is docsify chrome, not an ISF
             // input. It runs as a host block inside the normal PUI flow, so
             // the whole drawer is one renderer without inventing a portable
@@ -4643,7 +4648,7 @@
         var status = h("span", "isf-editor-status", { text: "Ready", "aria-live": "polite" });
         var posLabel = h("span", "isf-editor-pos", { text: "Ln 1, Col 1" });
         var actions = h("span", "isf-editor-actions");
-        var applyButton = h("button", "isf-btn", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
+        var applyButton = h("button", "isf-btn isf-apply", { type: "button", text: "Apply", title: "Apply (Ctrl/Cmd+Enter)" });
         var revertButton = h("button", "isf-btn", { type: "button", text: "Revert", title: "Revert to the original file" });
         var copyButton = h("button", "isf-btn", { type: "button", text: "Copy", title: "Copy source" });
         var importButton = h("button", "isf-btn", { type: "button", text: "Import", title: "Import from Shadertoy / GLSL Sandbox" });
@@ -6325,7 +6330,9 @@
         function focusInspector() {
             requestAnimationFrame(function () {
                 if (!viewer.isInspectorOpen()) return;
-                var target = paramsPanel.querySelector('[data-pui-bind], button, input');
+                var target = paramsPanel.querySelector('[data-pui-bind]') ||
+                    paramsPanel.querySelector('.pui-search input') ||
+                    paramsPanel.querySelector('button, input');
                 if (target && target.focus) target.focus();
             });
         }
@@ -6566,6 +6573,18 @@
             if (viewer.isEditorOpen()) viewer.setEditorOpen(false);
             else viewer.setEditorOpen(true);
         };
+        viewer.focusPreview = function () {
+            // Content-first escape hatch: one click hides every pane while the
+            // titlebar keeps the section buttons available to restore them.
+            viewer.drawerTouched = true;
+            if (viewer.isEditorOpen()) viewer.setEditorOpen(false);
+            if (viewer.isInspectorOpen()) closeInspector();
+            viewer.setWorkbenchPaneOpen("bottom", false);
+            viewer.applyPUIWorkbench();
+            if (viewer.dom.canvas && viewer.dom.canvas.focus) {
+                try { viewer.dom.canvas.focus({ preventScroll: true }); } catch (error) { /* ignore */ }
+            }
+        };
         viewer.togglePlay = function () {
             var runtime = viewer.runtime;
             if (!runtime) return;
@@ -6594,6 +6613,9 @@
             if (!request) { viewer.warn("Fullscreen is not supported by this browser"); return; }
             var promise = request.call(block);
             if (promise && promise.catch) promise.catch(function () { });
+            // Some headless/WebKit implementations resolve the request without
+            // delivering fullscreenchange promptly. Reconcile after success.
+            if (promise && promise.then) promise.then(function () { setTimeout(function () { if (!viewer.disposed) viewer.syncFullscreen(); }, 0); }, function () { });
         };
         viewer.syncFullscreen = function () {
             var active = isFullscreenActive();
@@ -7342,6 +7364,7 @@
                                 {id: "export", label: "Export PNG", call: "isf.export"},
                                 {id: "share", label: "Copy OBS link", call: "isf.share"},
                                 {id: "fullscreen", label_bind: "/isf/ui/fullscreenLabel", call: "isf.fullscreen"},
+                                {id: "focus", label: "Focus preview", call: "isf.focus"},
                                 {id: "help", label: "Keyboard shortcuts", call: "isf.help"},
                                 {id: "source", label: "Open source file", call: "isf.source"}
                             ]}]
@@ -7443,6 +7466,7 @@
                     if (name === "isf.export") { viewer.exportPng(); return true; }
                     if (name === "isf.share") { viewer.copyLink(); return true; }
                     if (name === "isf.fullscreen") { viewer.toggleFullscreen(); return true; }
+                    if (name === "isf.focus") { viewer.focusPreview(); return true; }
                     if (name === "isf.help") { viewer.showShortcuts(); return true; }
                     if (name === "isf.source") { if (viewer.url) window.open(viewer.url, "_blank", "noopener"); return true; }
                     if (name === "isf.inspector") { if (viewer.isInspectorOpen()) closeInspector(); else openInspector("params"); return true; }

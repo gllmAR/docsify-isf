@@ -406,7 +406,7 @@ The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
 keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.9.2's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.10.0's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -439,6 +439,9 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
+- Input sets of six or more get the PUI parameter filter. The workbench tools
+  use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
+  collapses Source, Parameters and Playback for a content-first stage.
 - The Source editor head is hidden in the workbench (the Source pane title and
   title bar carry identity/close); the editor toolbar starts directly under the
   pane title.
