@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.12.1
+**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.14.1
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -18,10 +18,13 @@ checked against established editor/workbench implementations.
 | Desktop, View tab | ![desktop view](ui-audit/desktop-view-tab.png) |
 | Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
 | Desktop, title bar compact | ![desktop compact](ui-audit/desktop-compact.png) |
+| Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |
 | Phone, Parameters | ![mobile parameters](ui-audit/mobile-parameters.png) |
 | Phone, Source | ![mobile source](ui-audit/mobile-source.png) |
+| Phone, shortcuts help | ![mobile help](ui-audit/mobile-help.png) |
+| Phone, command palette | ![mobile palette](ui-audit/mobile-palette.png) |
 
 The captures are block-level so the workbench chrome, not the Docsify sidebar,
 is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
@@ -87,6 +90,12 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 
 - Workbench title bar keeps a compact title when collapsed; eyebrow/description
   hide first.
+- Phone side drawers use the full workbench width below 520 px; host
+  `open_bind` updates obey the same one-drawer-at-a-time rule as the toggles.
+- The selected Parameters/View/Log tab has an accent underline instead of
+  blending into the inactive tabs.
+- Command palette: visible `Commands` title, keyboard hint, only real favorites
+  get a star, and filtering to zero results is safe.
 - Pane toggles accept decorative icons and visible labels; accessible name is
   `Toggle <pane>`.
 - Active pane toggles use the accent state.
@@ -112,23 +121,63 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 - **Menu → Focus preview** closes Source, Parameters and Playback in one step.
 - Only one Parameters pane is open across viewers; Source and Parameters have
   explicit show/hide state.
+- Shortcuts help is a workbench-level modal (always visible on phone), and the
+  editor More menu opens inside the Source pane instead of off its left edge.
+- The Menu and More tests scope their item queries to the current workbench;
+  selecting an item closes the Menu and executes that viewer's action.
+- Fullscreen keeps the compatibility status; auto-open never resets a selected
+  tab or steals from an already-open Source pane; pending pane focus is
+  cancelled when another pane opens.
 
 ### Measured result
 
-- Desktop title bar: **111 px** expanded, compact afterwards; section/action
-  controls are 32 px high and icon-only.
+- Desktop title bar: **~80 px** expanded with a one-line description, **~48 px**
+  compact; section/action controls are 32 px high and icon-only.
 - Phone title bar: **~121 px** with identity + one icon row (previously ~192 px
   with stacked text controls).
-- Phone stage: **~415 px** tall with Parameters open (previously ~286 px).
-- Source at 300 px keeps a `Ln x, Col y` and compile-status indicator without
-  spending a full status row.
-- Playback strip: **~80 px** including the statusbar, with no dead controls;
-  editor toolbar is **one row** with Apply + More. The titlebar description is
-  one ellipsized line (full text in its tooltip/expandable heading).
+- Phone side pane: **full workbench width** in a one-drawer layout; the stage
+  is no longer reduced to a ~30 px sliver. With drawers closed the stage owns
+  the workbench body (~457 px at 390×844).
+- Source at 280–300 px keeps a `Ln x, Col y` and compile-status indicator
+  without spending a full status row.
+- Playback strip: **~80 px** desktop / **112 px** phone including the two-line
+  statusbar. The Source toolbar stacks a compact tab/fold row over Apply +
+  More. The titlebar description is one ellipsized line (full tooltip).
 
 ---
 
-## 4.1 Runtime cost controls
+## 4.1 Screenshot audit findings (1.41.0)
+
+The second full capture review found and fixed:
+
+1. **Phone panes left a stage sliver** — side panes were 84vw drawers; at 390
+   px the remaining stage was ~30 px. PUI now uses 100% width on phones and
+   enforces one side drawer for host-driven `open_bind` changes too.
+2. **The Playback strip could disappear** — mobile taps were not reliably
+   landing and the pane state was not asserted. The touch trace now scrolls
+   each toggle into view, taps it, and checks pane width, exclusivity, the
+   bottom strip and its `aria-expanded`.
+3. **The Focus capture never focused** — the audit clicked a non-existent
+   header-menu item. It now invokes the direct titlebar focus action.
+4. **The editor More menu ran off the left edge** — its popup was right-aligned
+   to a 30 px trigger; it now opens into the pane, scoped and measured.
+5. **Help was trapped in the stage** — the shortcut grid was clipped in a
+   270 px stage. Help is now a scrollable workbench modal at both widths.
+6. **The menu test clicked another viewer's items** — global `.pui-actions`
+   queries were replaced with block-scoped queries; help opens and the menu
+   closes after the action.
+7. **Selected pane tabs were nearly invisible** — PUI now draws an accent
+   underline and stronger weight on the active tab.
+8. **Fullscreen showed a blank `Status` label** — the compatibility status is
+   retained.
+9. **Focus could be stolen by a pane closing as a side effect** — pending
+   toggle focus is cancelled when the newly opened pane takes focus.
+10. **Auto-open could reset a user-selected tab** — it now no-ops when the
+    inspector or Source is already open.
+11. **Stale drawer/inspector/template CSS** was removed after the workbench
+    migration.
+
+## 4.2 Runtime cost controls
 
 - Workbench state changes are **coalesced to one PUI apply per animation frame**;
   the badge and transport no longer trigger separate applies.
@@ -144,12 +193,6 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 
 ## 5. Remaining opportunities
 
-- **Pane open-state persistence** is now host-bound through PUI
-  `layout.*.open_bind`; docsify keeps the one-Parameters rule at the host
-  layer while the binding mirrors open/closed state without click listeners.
-- **Command palette**: PUI has one, but docsify's Ctrl+K already toggles
-  Parameters. A deliberate shortcut migration would make the palette the
-  primary command surface; the full interaction trace is the regression net.
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.

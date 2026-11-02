@@ -404,10 +404,11 @@ The viewer is a PUI workbench page with named regions:
 
 The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 (plus credit when present), a labeled collapse chevron and the function
-buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
-keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
+buttons. Pane toggles carry decorative host glyphs with accessible names and
+tooltips; labels stay visually hidden at every width. Collapsing hides the
+eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.13.2's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.14.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -435,8 +436,10 @@ persists pane widths/collapse state and the titlebar collapse state.
 | View/Log | Parameters pane tabs | — | PUI localStorage |
 
 The Menu actions call back into the viewer. Only one Parameters pane is open
-across viewers. The host pane-toggle listener mirrors PUI's state so host
-shortcuts/fullscreen and PUI clicks agree. The right pane's View/Log tabs keep
+across viewers. Pane state is host-bound through `open_bind`; PUI writes
+toggles/auto-collapse back and the host applies without mirroring click state.
+Pending toggle focus is cancelled when another pane opens, so a side effect
+never steals focus from the newly opened surface. The right pane's View/Log tabs keep
 the render settings and diagnostics out of the primary parameter flow.
 
 Density decisions:
@@ -448,8 +451,9 @@ Density decisions:
   use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
   collapses Source, Parameters and Playback for a content-first stage.
 - The Source editor head is hidden in the workbench (the Source pane title and
-  title bar carry identity/close); the editor toolbar is one row with Apply +
-  More. More holds Revert/Copy/Import, keyboard help and snippets/templates.
+  title bar carry identity/close); the Source toolbar stacks its compact
+  tab/fold row over an Apply + More action row. More holds Revert/Copy/Import,
+  keyboard help and snippets/templates.
 - The Playback strip hides the transport heading and any loop/rate controls the
   host reports as unsupported, then keeps the statusbar visible in ~80 px. The
   titlebar Playback toggle can collapse the whole strip; fullscreen/focus/
@@ -466,8 +470,14 @@ Density decisions:
   the Menu becomes the ☰ icon with its text retained for the accessible name.
   The titlebar is compact (under 130 px), the editor head/status are hidden and
   the Playback transport is reduced to play/stop + seek with the statusbar.
-- Active pane toggles use the PUI accent border; the titlebar collapse keeps a
-  compact title and removes the description only.
+- Active pane toggles use the PUI accent border and the selected Parameters/
+  View/Log tab uses an accent underline; the titlebar collapse keeps a compact
+  title and removes the description only.
+- Keyboard help is a workbench modal, the editor More menu is anchored inside
+  the Source pane, and the command palette has a visible title/hint. On phones
+  both help and palette are checked at 390 px for horizontal clipping.
+- Auto-open never replaces an already-open pane or resets a user-selected tab;
+  it also skips while Source is open.
 
 ### 7.2.1 PUI responsibilities
 

@@ -251,10 +251,11 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.13.2 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.14.1 **collapsible title
 bar**. Pane toggles and direct actions are icon-only (`</>`, `⚙`, `▶`,
-fullscreen, focus, reset, share, menu) with accessible names/tooltips, keeping
-one compact controls row at every width. Collapsing
+fullscreen, focus, reset, share, menu) with accessible names/tooltips; active
+panes use the accent state. The description is one ellipsized line by default,
+so the identity row stays compact. Collapsing
 hides the description and compacts the title to one ellipsized line: the
 Menu, **Source**, **Parameters** and **Playback** buttons stay available, so
 the host can reclaim vertical space without losing controls or the shader
@@ -269,13 +270,14 @@ bottom **Playback** row carries the native PUI transport and a PUI statusbar.
 The source editor keeps the host editor/import chrome in the left pane.
 
 On a wide workbench both side panes can be open at once, with the shader
-between them; narrow screens turn them into mutually exclusive overlays. Only
-one Parameters pane is open across viewers at a time, so panels never stack;
+between them; narrow screens turn them into mutually exclusive full-width
+drawers on phones, leaving the stage intact behind them rather than a sliver.
+Only one Parameters pane is open across viewers at a time, so panels never stack;
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.13.2** snapshot (commit
-`3b4df46`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.14.1** snapshot (commit
+`aadf1bd`; upstream tag `v1.14.1`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -394,7 +396,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.13.2) hides the description and keeps a compact
+  Its collapse control (PUI 1.14.1) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -413,9 +415,9 @@ persist with the layout and can be overridden from the URL (`isf-res`,
 - Larger input sets get PUI's `Filter parameters` field. The titlebar tools are
   a roving `role="toolbar"`, and Menu → **Focus preview** collapses Source,
   Parameters and Playback in one action.
-- The right pane's tab bar is its heading, and the stage's "Preview" label is
-  redundant: both pane titles are visually hidden while their accessible
-  names remain. The Source editor head is folded into the Source pane
+- The right pane's active tab gets an accent underline; its tab bar is the
+  heading. The stage's "Preview" label is redundant, so both pane titles are
+  visually hidden while their accessible names remain. The Source editor head is folded into the Source pane
   title/titlebar; the narrow Source pane hides the caret/status readouts
   visually while keeping the status aria-live. Active
   Source/Parameters/Playback toggles use the accent border and host glyphs; the
@@ -426,7 +428,13 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   when the host cannot honour them, the transport heading is removed, direct
   titlebar fullscreen/reset/share actions are always in the same bar, and the
   statusbar remains visible below it. The Playback toggle in the title bar can
-  collapse the whole strip.
+  collapse the whole strip. Fullscreen keeps the compatibility status in the
+  statusbar instead of leaving a blank `Status` label.
+- Keyboard help is a workbench-level modal (scrollable on phones) rather than a
+  popover trapped inside the stage; the editor More menu opens inside the
+  Source pane and no longer runs off its left edge.
+- The command palette has a visible `Commands` title, keyboard hint and no
+  hollow favorite glyphs; it is available from Menu or Ctrl/Cmd+Shift+P.
 - Controls stay at least 32–36 px tall on touch devices; panes, transport and
   form fields respect safe areas and coarse-pointer sizing. The preview is
   keyboard focusable: **Enter/Space** or a double-click toggles fullscreen.

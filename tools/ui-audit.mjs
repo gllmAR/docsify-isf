@@ -104,7 +104,12 @@ await sleep(300);
 await shot("desktop-both-panes");
 
 await clickTab("View");
-await sleep(250);
+await page.waitForFunction(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const selected = block && block.querySelector('.pui-workbench-pane.is-right .pui-pane-tab[aria-selected="true"]');
+    return selected && selected.textContent === "View";
+}, { timeout: 2000 });
+await sleep(200);
 await shot("desktop-view-tab");
 
 await page.evaluate(() => {
@@ -121,18 +126,34 @@ await page.evaluate(() => {
 });
 await sleep(250);
 
-// Focus preview through the Header menu.
+// Shortcuts overlay: a workbench-level modal, readable over the whole editor.
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
-    const trigger = block.querySelector(".pui-header-menu-trigger");
+    const trigger = block && block.querySelector(".pui-header-menu-trigger");
     if (trigger) trigger.click();
 });
-await sleep(200);
+await sleep(150);
 await page.evaluate(() => {
-    const item = Array.from(document.querySelectorAll(".pui-actions button")).find((b) => /Focus preview/i.test(b.textContent));
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const item = block && Array.from(block.querySelectorAll(".pui-actions button")).find((b) => /Keyboard shortcuts/i.test(b.textContent));
     if (item) item.click();
 });
 await sleep(300);
+await shot("desktop-help");
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const close = block && block.querySelector('.isf-overlay [data-isf-overlay="close"]');
+    if (close) close.click();
+});
+await sleep(150);
+
+// Focus preview is a direct titlebar action, not a Header-menu item.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const action = block.querySelector('.pui-workbench-action[data-pui-action="focus"]');
+    if (action) action.click();
+});
+await sleep(400);
 await shot("desktop-focus");
 
 // Responsive captures load at phone width so narrow mode and auto-open are
@@ -142,10 +163,42 @@ await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
 await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").length >= 12, { timeout: 30000 });
 await blockInfo();
 await sleep(1500);
+await clickRegion("right");
+await sleep(300);
 await shot("mobile-parameters");
 await clickRegion("left");
 await sleep(400);
 await shot("mobile-source");
+
+// Help and palette at phone width: both must fit without horizontal clipping.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const trigger = block && block.querySelector(".pui-header-menu-trigger");
+    if (trigger) trigger.click();
+});
+await sleep(150);
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const item = block && Array.from(block.querySelectorAll(".pui-actions button")).find((b) => /Keyboard shortcuts/i.test(b.textContent));
+    if (item) item.click();
+});
+await sleep(300);
+await page.screenshot({ path: path.join(out, "mobile-help.png") });
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const close = block && block.querySelector('.isf-overlay [data-isf-overlay="close"]');
+    if (close) close.click();
+});
+await sleep(150);
+await page.keyboard.down("Control");
+await page.keyboard.down("Shift");
+await page.keyboard.press("P");
+await page.keyboard.up("Shift");
+await page.keyboard.up("Control");
+await sleep(350);
+await page.screenshot({ path: path.join(out, "mobile-palette.png") });
+await page.keyboard.press("Escape");
+await sleep(150);
 
 await page.setViewport({ width: 1280, height: 1000, deviceScaleFactor: 1 });
 await page.reload({ waitUntil: "networkidle0", timeout: 60000 });

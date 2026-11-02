@@ -37,6 +37,17 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   applies. Space defaults: one-line description, compact playback strip.
 - **Adaptive by default.** The same workbench must work with mouse, keyboard and
   touch at desktop and phone widths. Workbench/controls need 32px+ targets.
+  Phones use **one full-width side drawer at a time**; never leave the stage as
+  a thin sliver or stack both side drawers. The selected pane tab must be
+  visibly selected.
+- **Overlays stay in their surface.** Keyboard help is a workbench-level modal,
+  not a stage popover; the editor More menu must anchor inside the Source pane.
+  Menu/More test queries are scoped to the current workbench, never global
+  `.pui-actions` lookups on a multi-viewer docsify page.
+- **Focus follows the opened surface.** When opening one pane closes another,
+  cancel the closed pane's deferred toggle focus. Auto-open never resets a
+  user-selected tab and never steals from an already-open Source/Parameters
+  pane.
 - **Verify the whole use.** `npm test` for the contract, `npm run test:smoke`
   for mounting/features, and `npm run test:interaction` for the full click/touch
   trace plus screenshots. `node tools/ui-audit.mjs` refreshes the committed

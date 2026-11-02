@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const artifacts = path.join(here, "artifacts", "interaction");
+fs.rmSync(artifacts, { recursive: true, force: true });
 fs.mkdirSync(artifacts, { recursive: true });
 const MIME = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -92,7 +93,8 @@ const openMenu = () => blockEval((block) => {
 const menuAction = (label) => blockEval((block, [re]) => {
     const trigger = block.querySelector(".pui-header-menu-trigger");
     if (trigger && trigger.getAttribute("aria-expanded") !== "true") trigger.click();
-    const item = Array.from(document.querySelectorAll(".pui-actions button")).find((b) => new RegExp(re).test(b.textContent));
+    // Scope to this workbench: a docsify page mounts many header menus.
+    const item = Array.from(block.querySelectorAll(".pui-actions button")).find((b) => new RegExp(re).test(b.textContent));
     if (item) item.click();
     return !!item;
 }, label);
@@ -130,6 +132,11 @@ await capture("02-parameters");
 for (const label of ["View", "Log", "Parameters"]) {
     await selectTab(label);
     await sleep(200);
+    const selectedTab = await blockEval((block) => {
+        const selected = block.querySelector('.pui-workbench-pane.is-right .pui-pane-tab[aria-selected="true"]');
+        return selected ? selected.textContent : "";
+    });
+    check("tab " + label + " is selected", selectedTab === label, selectedTab);
     await capture("03-tab-" + label.toLowerCase());
 }
 await blockEval((block) => {
@@ -158,6 +165,16 @@ await openMenu();
 await capture("06-menu-open");
 await menuAction("Keyboard shortcuts");
 await sleep(250);
+const helpOpen = await blockEval((block) => {
+    const overlay = block.querySelector(".isf-overlay");
+    return !!overlay && overlay.style.display !== "none" && /Keyboard shortcuts/.test(overlay.textContent);
+});
+check("Keyboard shortcuts opens the help overlay", helpOpen);
+const menuClosed = await blockEval((block) => {
+    const trigger = block.querySelector(".pui-header-menu-trigger");
+    return !!trigger && trigger.getAttribute("aria-expanded") === "false";
+});
+check("header menu closes after an action", menuClosed);
 await capture("07-help-overlay");
 await closeOverlay();
 await menuAction("Randomize parameters");
@@ -390,6 +407,14 @@ const templateOpen = await blockEval((block) => {
 });
 if (templateOpen) {
     await sleep(220);
+    const moreBounds = await blockEval((block) => {
+        const popup = block.querySelector(".isf-editor-more .pui-menu-popup");
+        const source = block.querySelector(".pui-workbench-pane.is-left");
+        if (!popup || !source) return null;
+        const p = popup.getBoundingClientRect(), s = source.getBoundingClientRect();
+        return {left: Math.round(p.left - s.left), right: Math.round(p.right - s.right)};
+    });
+    check("editor More menu stays inside the Source pane", !!moreBounds && moreBounds.left >= -1 && moreBounds.right <= 6, moreBounds);
     await capture("21-templates");
     await editorMenu("float input");
     await sleep(300);
@@ -470,22 +495,44 @@ await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "ce
 await sleep(1500);
 await capture("26-mobile-initial");
 const tapRegion = async (region) => {
-    const point = await page.evaluate((s, name) => {
-        const toggle = document.querySelector(s + ' .pui-workbench-toggle[data-pui-region="' + name + '"]');
-        if (!toggle) return null;
-        const rect = toggle.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    }, selector, region);
-    if (point) await page.touchscreen.tap(point.x, point.y);
-    await sleep(350);
+    const target = `${selector} .pui-workbench-toggle[data-pui-region="${region}"]`;
+    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), target);
+    await sleep(120);
+    await page.tap(target);
+    await sleep(400);
 };
-await tapRegion("right");
-await capture("27-mobile-parameters");
+const mobileLayout = () => blockEval((block) => {
+    const left = block.querySelector(".pui-workbench-pane.is-left");
+    const right = block.querySelector(".pui-workbench-pane.is-right");
+    const bottom = block.querySelector(".pui-workbench-pane.is-bottom");
+    const body = block.querySelector(".pui-workbench-body");
+    const box = (node) => node ? node.getBoundingClientRect() : { width: 0, height: 0 };
+    return {
+        left: !!left && !left.classList.contains("is-collapsed"),
+        right: !!right && !right.classList.contains("is-collapsed"),
+        bottom: !!bottom && getComputedStyle(bottom).display !== "none",
+        leftWidth: Math.round(box(left).width),
+        rightWidth: Math.round(box(right).width),
+        bodyWidth: Math.round(box(body).width),
+        bottomHeight: Math.round(box(bottom).height)
+    };
+});
 await tapRegion("left");
-await capture("28-mobile-source");
+await capture("27-mobile-source");
+let phone = await mobileLayout();
+check("phone Source drawer is full-width and exclusive", phone.left && !phone.right && phone.leftWidth >= phone.bodyWidth - 2, phone);
 await tapRegion("right");
+await capture("28-mobile-parameters");
+phone = await mobileLayout();
+check("phone Parameters drawer is full-width and exclusive", phone.right && !phone.left && phone.rightWidth >= phone.bodyWidth - 2, phone);
 await tapRegion("bottom");
-await capture("29-mobile-playback");
+await capture("29-mobile-playback-closed");
+phone = await mobileLayout();
+check("phone Playback toggle closes the strip", !phone.bottom, phone);
+await tapRegion("bottom");
+await capture("29b-mobile-playback-open");
+phone = await mobileLayout();
+check("phone Playback strip stays visible", phone.bottom && phone.bottomHeight >= 60, phone);
 await page.screenshot({ path: path.join(artifacts, "30-mobile-page.png") });
 
 check("no console errors", errors.length === 0, errors.slice(0, 5));
