@@ -1023,6 +1023,9 @@
 .pui-graph-color-chip { position: relative; display: inline-block; flex: 0 0 22px; width: 22px; height: 14px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--pui-text) 35%, transparent); border-radius: 2px; background-image: conic-gradient(#888 25%, #ddd 0 50%, #888 0 75%, #ddd 0); background-size: 8px 8px; }
 .pui-graph-color-chip::after { content: ""; position: absolute; inset: 0; background: var(--pui-graph-color, transparent); }
 .pui-graph-color-code { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--pui-type-base) * 0.56); }
+.pui-graph-inspector .pui-graph-param-value.is-color { width: 100%; max-width: 100%; justify-content: flex-start; }
+.pui-graph-inspector .pui-graph-color-code { display: inline; }
+.pui-graph-param-value.is-color.is-mixed .pui-graph-color-chip { box-shadow: inset 0 0 0 1px var(--pui-warning); }
 .pui-graph-color-popover { position: absolute; z-index: 30; display: flex; flex-direction: column; gap: 5px; width: 236px; max-width: calc(100% - 16px); padding: 7px; border: 1px solid var(--pui-accent); border-radius: 6px; background: var(--pui-surface); color: var(--pui-text); box-shadow: 0 8px 28px rgb(0 0 0 / 0.42); }
 .pui-graph-color-popover-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .pui-graph-color-popover-head strong { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(var(--pui-type-base) * 0.7); }

@@ -3903,9 +3903,20 @@
       return select;
     }
     if (type === "color") {
-      var color = el("input", {type: "color"});
-      color.value = mixed ? "#ffffff" : String(value || "#ffffff").slice(0, 7);
-      color.addEventListener("change", function () { commit(color.value); });
+      var color = el("button", {type: "button", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": "color"});
+      var chip = el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"});
+      color.appendChild(chip);
+      color.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
+      self.graphColorPaint(color, param, mixed ? "#ffffff" : (value || "#ffffff"));
+      if (mixed) color.classList.add("is-mixed");
+      color.addEventListener("click", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphOpenColorPicker(rec, {id: ""}, param, color, {
+          value: mixed ? "#ffffff" : (value || "#ffffff"),
+          onLive: function (hex) { self.graphColorPaint(color, param, hex); },
+          onCommit: function (hex) { commit(hex); }
+        });
+      });
       return color;
     }
     if (type === "vec2" || type === "vec3" || type === "vec4") {
@@ -14350,7 +14361,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.13.2",
+    version: "1.13.3",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
