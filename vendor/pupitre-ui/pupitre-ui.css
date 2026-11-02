@@ -437,9 +437,16 @@
 .pui-graph-node:hover { background: color-mix(in srgb, var(--pui-accent) 5%, var(--pui-surface-2)); }
 .pui-graph-node.is-selected { border-color: var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 10%, var(--pui-surface-2)); box-shadow: 0 0 0 2px var(--pui-accent), 0 2px 8px rgb(0 0 0 / 0.18); }
 .pui-graph-node.is-disabled { opacity: 0.55; }
-.pui-graph-node-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; min-height: 26px; padding: 0 28px 0 8px; border-bottom: 1px solid var(--pui-border); background: color-mix(in srgb, var(--pui-accent) 8%, var(--pui-surface-2)); }
+.pui-graph-node-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; min-height: 26px; padding: 0 8px; border-bottom: 1px solid var(--pui-border); background: color-mix(in srgb, var(--pui-accent) 8%, var(--pui-surface-2)); }
 .pui-graph-node-title { flex: 1 1 auto; min-width: 0; font-size: calc(var(--pui-type-base) * 0.72); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pui-graph-node-type { flex: 0 1 auto; max-width: 45%; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.6); text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-graph-node.is-subgraph .pui-graph-node-head { padding-right: 28px; }
+.pui-graph-node.has-collapse .pui-graph-node-head { padding-right: 28px; }
+.pui-graph-node.has-collapse.is-subgraph .pui-graph-node-head { padding-right: 46px; }
+.pui-graph-node-collapse { position: absolute; top: 2px; right: 4px; width: 20px; min-width: 20px; min-height: 20px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--pui-muted); font: inherit; line-height: 1; cursor: pointer; }
+.pui-graph-node.is-subgraph .pui-graph-node-collapse { right: 26px; }
+.pui-graph-node-collapse:hover, .pui-graph-node-collapse:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
+.pui-graph-node.is-body-collapsed .pui-graph-params, .pui-graph-node.is-body-collapsed .pui-graph-node-body, .pui-graph-node.is-body-collapsed .pui-graph-node-bodies, .pui-graph-node.is-body-collapsed .pui-graph-gop, .pui-graph-node.is-body-collapsed .pui-graph-value-texture { display: none; }
 .pui-graph-open-subgraph { position: absolute; top: 2px; right: 4px; flex: 0 0 auto; min-width: 20px; min-height: 20px; margin: 0; padding: 0 3px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--pui-accent); font: inherit; line-height: 1; cursor: pointer; }
 .pui-graph-open-subgraph:hover, .pui-graph-open-subgraph:focus-visible { border-color: var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 12%, transparent); outline: none; }
 .pui-graph-ports { position: static; padding: 0 8px; }

@@ -1850,6 +1850,12 @@
     if (!Graph) return {x: Number(node && node.x) || 0, y: Number(node && node.y) || 0, w: 156, h: 58};
     type = type || (rec.typeMap && rec.typeMap[String(node.type)]);
     var rect = Graph.nodeRect(node, type, rec.metrics);
+    if (rec.collapsedBodies && rec.collapsedBodies[String(node.id)]) {
+      var inputs = Graph.activeInputs(node, type).length;
+      var outputs = type && isArray(type.outputs) ? type.outputs.length : 0;
+      rect.h = rec.metrics.headerHeight + Math.max(inputs, outputs) * rec.metrics.portRowHeight + rec.metrics.pad;
+      return rect;
+    }
     var extra = Number(rec.nodeExtraHeights && rec.nodeExtraHeights[String(node.id)]) || 0;
     if (extra > 0) rect.h += extra;
     return rect;
@@ -2216,6 +2222,29 @@
       var nodeHead = nodeEl.querySelector ? nodeEl.querySelector(".pui-graph-node-head") : null;
       if (nodeHead) nodeHead.appendChild(openSubgraph); else nodeEl.appendChild(openSubgraph);
     }
+    if (paramDefs.length || rec.bodyEls[id]) {
+      nodeEl.classList.add("has-collapse");
+      var bodyCollapsed = !!(rec.collapsedBodies && rec.collapsedBodies[id]);
+      nodeEl.classList.toggle("is-body-collapsed", bodyCollapsed);
+      var collapseBody = el("button", {type: "button", class: "pui-graph-node-collapse", text: bodyCollapsed ? "▸" : "▾", "aria-label": (bodyCollapsed ? "Expand" : "Collapse") + " body of " + nodeLabel, "aria-expanded": bodyCollapsed ? "false" : "true"});
+      collapseBody.title = bodyCollapsed ? "Expand node body" : "Collapse node body";
+      collapseBody.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+      collapseBody.addEventListener("click", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        rec.collapsedBodies = rec.collapsedBodies || {};
+        var next = !rec.collapsedBodies[id];
+        rec.collapsedBodies[id] = next;
+        nodeEl.classList.toggle("is-body-collapsed", next);
+        collapseBody.textContent = next ? "▸" : "▾";
+        collapseBody.setAttribute("aria-expanded", next ? "false" : "true");
+        collapseBody.setAttribute("aria-label", (next ? "Expand" : "Collapse") + " body of " + nodeLabel);
+        collapseBody.title = next ? "Expand node body" : "Collapse node body";
+        self.updateGraphDom(rec, [id]);
+        if (!next) self.graphMeasureNodeBody(rec, id);
+      });
+      var bodyHead = nodeEl.querySelector ? nodeEl.querySelector(".pui-graph-node-head") : null;
+      if (bodyHead) bodyHead.appendChild(collapseBody); else nodeEl.appendChild(collapseBody);
+    }
     return true;
   };
 
@@ -2318,7 +2347,7 @@
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      collapsedNodes: {}, collapsedGops: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
+      collapsedNodes: {}, collapsedBodies: {}, collapsedGops: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -14391,7 +14420,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.14.1",
+    version: "1.14.2",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
