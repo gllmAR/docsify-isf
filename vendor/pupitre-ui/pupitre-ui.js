@@ -410,6 +410,8 @@
     }
     this.menuRecords = [];
     this.destroySlots();
+    var graphPick = this.graphRecords || [];
+    for (var gp = 0; gp < graphPick.length; gp++) { this.graphCloseColorPicker(graphPick[gp], true); this.graphUnbindEscape(graphPick[gp]); }
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
@@ -1828,9 +1830,9 @@
       metrics.headerHeight = 20;
       metrics.portRowHeight = 16;
       metrics.pad = 4;
-      metrics.paramRowHeight = 16;
+      metrics.paramRowHeight = 22;
     } else {
-      metrics.paramRowHeight = 18;
+      metrics.paramRowHeight = 26;
     }
     return metrics;
   };
@@ -1852,9 +1854,27 @@
     var id = String(nodeId);
     var body = rec.bodyEls && rec.bodyEls[id];
     if (!body) return;
+    var node = rec.nodeById && rec.nodeById[id];
+    var nodeEl = rec.nodeEls && rec.nodeEls[id];
+    var Graph = global.PupitreGraph;
+    if (!node || !nodeEl || !Graph) return;
     var height = Number(body.offsetHeight);
     if (!isFinite(height) || height < 0) height = 0;
-    var extra = height > 0 ? height + 4 : 0;
+    var marginBottom = 0;
+    try {
+      var bodyStyle = global.getComputedStyle ? global.getComputedStyle(body) : null;
+      marginBottom = bodyStyle ? Number(parseFloat(bodyStyle.marginBottom)) || 0 : 0;
+    } catch (error) { /* non-browser shim */ }
+    // Use the body's real offset inside the node instead of guessing from its
+    // height alone. Margins, the ports block and graph-on-parent preview all
+    // contribute to the required card height.
+    var offsetTop = 0;
+    for (var walk = body; walk && walk !== nodeEl; walk = walk.offsetParent) {
+      offsetTop += Number(walk.offsetTop) || 0;
+      if (!walk.offsetParent) break;
+    }
+    var base = Graph.nodeRect(node, rec.typeMap[String(node.type)], rec.metrics).h;
+    var extra = height > 0 ? (offsetTop > 0 ? Math.max(0, offsetTop + height + marginBottom + 12 - base) : height + 4) : 0;
     if (rec.nodeExtraHeights[id] === extra) return;
     rec.nodeExtraHeights[id] = extra;
     this.updateGraphDom(rec, [id]);
@@ -2077,12 +2097,14 @@
               self.graphSetNodeParam(rec, node.id, param.id, next);
             });
           } else {
-            simpleControl = el("input", {type: "color", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id)});
-            simpleControl.value = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(shown)) ? String(shown).slice(0, 7) : "#ffffff";
-            simpleControl.addEventListener("change", function () {
-              var current = isObject(node.params) ? node.params[param.id] : undefined;
-              var alpha = /^#([0-9a-f]{8})$/i.test(String(current)) ? String(current).slice(7) : "";
-              self.graphSetNodeParam(rec, node.id, param.id, simpleControl.value + alpha);
+            simpleControl = el("button", {type: "button", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id)});
+            var chip = el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"});
+            simpleControl.appendChild(chip);
+            simpleControl.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
+            self.graphColorPaint(simpleControl, param, shown);
+            simpleControl.addEventListener("click", function (event) {
+              if (event.stopPropagation) event.stopPropagation();
+              self.graphOpenColorPicker(rec, node, param, simpleControl);
             });
           }
           line.appendChild(simpleControl);
@@ -2177,14 +2199,16 @@
       nodeEl.classList.add("is-subgraph");
       nodeEl.setAttribute("data-subgraph", subgraphPath);
       nodeEl.title = "Double-click to enter subgraph";
-      var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "Open subgraph"});
+      var openSubgraph = el("button", {type: "button", class: "pui-graph-open-subgraph", text: "↗"});
       openSubgraph.setAttribute("aria-label", "Open subgraph " + nodeLabel);
+      openSubgraph.title = "Open subgraph (double-click or Enter)";
       openSubgraph.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
       openSubgraph.addEventListener("click", function (event) {
         if (event.stopPropagation) event.stopPropagation();
         self.graphOpenSubgraph(rec, node);
       });
-      nodeEl.appendChild(openSubgraph);
+      var nodeHead = nodeEl.querySelector ? nodeEl.querySelector(".pui-graph-node-head") : null;
+      if (nodeHead) nodeHead.appendChild(openSubgraph); else nodeEl.appendChild(openSubgraph);
     }
     return true;
   };
@@ -2257,7 +2281,9 @@
       }
     }
     if (nav.length > 1) {
-      var upButton = el("button", {type: "button", class: "pui-button pui-graph-add-button pui-graph-up", text: "Up"});
+      var upButton = el("button", {type: "button", class: "pui-button pui-graph-add-button pui-graph-up", text: "← Up"});
+      upButton.title = "Back to the parent graph (Escape)";
+      upButton.setAttribute("aria-label", "Back to the parent graph");
       upButton.addEventListener("click", function () { self.graphNavigate(rec, nav.length - 2); });
       head.appendChild(upButton);
     }
@@ -2273,7 +2299,7 @@
       }));
     }
     root.appendChild(head);
-    var viewport = el("div", {class: "pui-graph-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas", "aria-keyshortcuts": "Enter u Alt+ArrowUp"});
+    var viewport = el("div", {class: "pui-graph-viewport", tabindex: "0", role: "group", "aria-label": (a11y.name || label) + " canvas", "aria-keyshortcuts": "Enter u Alt+ArrowUp Escape"});
     var content = el("div", {class: "pui-graph-content"});
     var svg = svgEl("svg", {class: "pui-graph-cables", "aria-hidden": "true"});
     var cableGroup = svgEl("g");
@@ -2872,7 +2898,31 @@
     if (block.selection_bind) this.selectionRecords.push({owner: rec, refresh: function () { self.graphSelectionRefresh(rec); }});
     this.graphCaptureState(rec);
     this.renderGraphInspector(rec);
+    this.graphBindEscape(rec);
     return root;
+  };
+
+  Renderer.prototype.graphBindEscape = function (rec) {
+    var self = this;
+    if (!rec || rec.escapeHandler || !global.document || !global.document.addEventListener) return;
+    rec.escapeHandler = function (event) {
+      if (String(event.key || "") !== "Escape" || event.defaultPrevented || !rec.root || !rec.root.isConnected) return;
+      if (!rec.navStack || rec.navStack.length < 2 || rec.colorPicker) return;
+      var target = event.target;
+      var inRoot = !!(target && rec.root.contains && rec.root.contains(target));
+      var focusInRoot = !!(target && (target === global.document || target === global.document.body)
+        && global.document.activeElement && rec.root.contains && rec.root.contains(global.document.activeElement));
+      if (!inRoot && !focusInRoot) return;
+      if (target && target.closest && target.closest("input, select, textarea, [contenteditable]")) return;
+      event.preventDefault();
+      self.graphNavigate(rec, rec.navStack.length - 2);
+    };
+    global.document.addEventListener("keydown", rec.escapeHandler, true);
+  };
+
+  Renderer.prototype.graphUnbindEscape = function (rec) {
+    if (rec && rec.escapeHandler && global.document && global.document.removeEventListener) global.document.removeEventListener("keydown", rec.escapeHandler, true);
+    if (rec) rec.escapeHandler = null;
   };
 
   Renderer.prototype.graphClearGuides = function (rec) {
@@ -3380,10 +3430,20 @@
           select.addEventListener("change", function () { commit(select.value); });
           row.appendChild(select);
         } else if (String(param.type) === "color") {
-          var color = el("input", {type: "color", class: "pui-graph-gop-color", "aria-label": String(entry.label || param.label || entry.param)});
-          color.value = String(value || "#ffffff").slice(0, 7);
-          color.addEventListener("input", function () { commit(color.value); });
-          row.appendChild(color);
+          var colorValue = String(value || "#ffffff");
+          var colorButton = el("button", {type: "button", class: "pui-graph-gop-color-button", "aria-label": String(entry.label || param.label || entry.param)});
+          var colorChip = el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"});
+          colorButton.appendChild(colorChip);
+          colorButton.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
+          self.graphColorPaint(colorButton, param, colorValue);
+          colorButton.addEventListener("click", function () {
+            self.graphOpenColorPicker(rec, node, param, colorButton, {
+              value: colorValue,
+              onLive: function (hex) { colorValue = hex; self.graphColorPaint(colorButton, param, hex); },
+              onCommit: function (hex) { colorValue = hex; self.graphColorPaint(colorButton, param, hex); commit(hex); }
+            });
+          });
+          row.appendChild(colorButton);
         } else {
           row.appendChild(el("output", {class: "pui-graph-gop-value", text: String(value === undefined ? "—" : value)}));
         }
@@ -4190,6 +4250,41 @@
     });
   };
 
+  Renderer.prototype.graphColorParts = function (value) {
+    var text = String(value === undefined || value === null ? "" : value).trim();
+    var hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(text);
+    if (hex) {
+      var n = parseInt(hex[1], 16);
+      return {r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: hex[2] ? parseInt(hex[2], 16) : 255};
+    }
+    var rgba = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/i.exec(text);
+    if (rgba) return {r: Math.min(255, Number(rgba[1])), g: Math.min(255, Number(rgba[2])), b: Math.min(255, Number(rgba[3])), a: Math.round(Math.max(0, Math.min(1, rgba[4] === undefined ? 1 : Number(rgba[4]))) * 255)};
+    return {r: 255, g: 255, b: 255, a: 255};
+  };
+
+  Renderer.prototype.graphColorHex = function (parts, forceAlpha) {
+    var pair = function (n) { return Math.max(0, Math.min(255, Math.round(Number(n) || 0))).toString(16).padStart(2, "0"); };
+    var alpha = Number(parts && parts.a);
+    if (!isFinite(alpha)) alpha = 255;
+    return "#" + pair(parts && parts.r) + pair(parts && parts.g) + pair(parts && parts.b) + (forceAlpha || alpha < 255 ? pair(alpha) : "");
+  };
+
+  Renderer.prototype.graphColorCss = function (parts) {
+    var c = this.graphColorParts(this.graphColorHex(parts, true));
+    return "rgba(" + c.r + "," + c.g + "," + c.b + "," + (c.a / 255).toFixed(3) + ")";
+  };
+
+  Renderer.prototype.graphColorPaint = function (button, param, value) {
+    if (!button || !button.querySelector) return;
+    var parts = this.graphColorParts(value);
+    var chip = button.querySelector(".pui-graph-color-chip");
+    var code = button.querySelector(".pui-graph-color-code");
+    if (chip && chip.style) chip.style.setProperty("--pui-graph-color", this.graphColorCss(parts));
+    if (code) code.textContent = this.graphColorHex(parts);
+    button.setAttribute("data-value", this.graphColorHex(parts));
+    button.setAttribute("aria-label", String(param && (param.label || param.id) || "colour") + " value " + this.graphColorHex(parts));
+  };
+
   Renderer.prototype.graphParamFill = function (param, value) {
     var min = Number(param && param.min);
     var max = Number(param && param.max);
@@ -4366,6 +4461,164 @@
     this.graphSetNodeParam(rec, node.id, param.id, value);
   };
 
+  Renderer.prototype.graphCloseColorPicker = function (rec, cancel) {
+    var picker = rec && rec.colorPicker;
+    if (!picker) return false;
+    if (picker.panel && picker.panel.parentNode) picker.panel.parentNode.removeChild(picker.panel);
+    if (picker.outside) global.document.removeEventListener("pointerdown", picker.outside, true);
+    if (picker.keyHandler) global.document.removeEventListener("keydown", picker.keyHandler, true);
+    rec.colorPicker = null;
+    if (picker.custom) {
+      if (cancel) { if (picker.custom.onCancel) picker.custom.onCancel(); }
+      else if (String(picker.currentValue) !== String(picker.startValue) && picker.custom.onCommit) picker.custom.onCommit(picker.currentValue);
+      return true;
+    }
+    var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(picker.nodeId); });
+    if (!node) return true;
+    node.params = isObject(node.params) ? node.params : {};
+    if (cancel) {
+      node.params[picker.paramId] = picker.startValue;
+      this.updateGraphDom(rec, [picker.nodeId]);
+      return true;
+    }
+    if (String(node.params[picker.paramId]) !== String(picker.startValue)) {
+      this.graphPushUndo(rec, picker.startGraph);
+      this.writeGraph(rec, {op: "node.param", ids: [String(picker.nodeId)], param: String(picker.paramId), value: node.params[picker.paramId]});
+    }
+    return true;
+  };
+
+  /** Contextual RGBA editor. Editing is live but becomes one undo step when
+   * the popover closes; the preview deliberately opens the platform picker. */
+  Renderer.prototype.graphOpenColorPicker = function (rec, node, param, anchor, custom) {
+    if (!rec || !node || !param || !anchor) return false;
+    if (rec.colorPicker) this.graphCloseColorPicker(rec, false);
+    var self = this;
+    var paramId = String(param.id);
+    var customMode = isObject(custom);
+    var startValue = customMode ? (custom.value === undefined ? "#ffffff" : custom.value) : (isObject(node.params) && node.params[paramId] !== undefined ? node.params[paramId] : (param.default === undefined ? "#ffffff" : param.default));
+    var currentValue = startValue;
+    var parts = this.graphColorParts(startValue);
+    var panel = el("div", {class: "pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
+    panel.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+    panel.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+
+    var head = el("div", {class: "pui-graph-color-popover-head"});
+    head.appendChild(el("strong", {text: String(param.label || param.id)}));
+    head.appendChild(el("span", {class: "pui-graph-color-popover-hint", text: "RGBA"}));
+    var close = el("button", {type: "button", class: "pui-graph-color-popover-close", text: "×", "aria-label": "Close colour picker"});
+    close.addEventListener("click", function () { self.graphCloseColorPicker(rec, false); });
+    head.appendChild(close);
+    panel.appendChild(head);
+
+    var preview = el("button", {type: "button", class: "pui-graph-color-preview", "aria-label": "Open system colour picker"});
+    preview.title = "Open the system colour picker";
+    var previewChip = el("span", {class: "pui-graph-color-chip"});
+    preview.appendChild(previewChip);
+    var previewText = el("span", {class: "pui-graph-color-preview-text"});
+    preview.appendChild(previewText);
+    panel.appendChild(preview);
+
+    var native = el("input", {type: "color", class: "pui-graph-color-native", tabindex: "-1", "aria-hidden": "true"});
+    native.value = this.graphColorHex(parts).slice(0, 7);
+    panel.appendChild(native);
+
+    var controls = {};
+    [["r", "R"], ["g", "G"], ["b", "B"], ["a", "A"]].forEach(function (entry) {
+      var key = entry[0], label = entry[1];
+      var row = el("label", {class: "pui-graph-color-row", "data-channel": key});
+      row.appendChild(el("span", {class: "pui-graph-color-label", text: label}));
+      var range = el("input", {type: "range", min: "0", max: "255", step: "1", class: "pui-graph-color-range", "aria-label": label + (key === "a" ? " alpha" : " channel")});
+      range.value = String(parts[key]);
+      row.appendChild(range);
+      var number = el("input", {type: "number", min: "0", max: "255", step: "1", class: "pui-graph-color-number", "aria-label": label + (key === "a" ? " alpha value" : " value")});
+      number.value = String(parts[key]);
+      row.appendChild(number);
+      controls[key] = {range: range, number: number};
+      var apply = function (raw) {
+        parts[key] = Math.max(0, Math.min(255, Math.round(Number(raw) || 0)));
+        controls[key].range.value = String(parts[key]);
+        controls[key].number.value = String(parts[key]);
+        paint();
+      };
+      range.addEventListener("input", function () { apply(range.value); });
+      number.addEventListener("input", function () { apply(number.value); });
+      number.addEventListener("wheel", function (event) {
+        if (event.preventDefault) event.preventDefault();
+        apply(Number(number.value) + (event.deltaY < 0 ? 1 : -1));
+      }, {passive: false});
+      panel.appendChild(row);
+    });
+
+    var paint = function () {
+      var hex = self.graphColorHex(parts, true);
+      var css = self.graphColorCss(parts);
+      var chip = preview.querySelector(".pui-graph-color-chip");
+      if (chip && chip.style) chip.style.setProperty("--pui-graph-color", css);
+      previewText.textContent = hex;
+      native.value = hex.slice(0, 7);
+      currentValue = self.graphColorHex(parts);
+      if (rec.colorPicker) rec.colorPicker.currentValue = currentValue;
+      if (customMode) {
+        if (custom.onLive) custom.onLive(currentValue);
+      } else {
+        node.params = isObject(node.params) ? node.params : {};
+        node.params[paramId] = currentValue;
+        self.updateGraphDom(rec, [String(node.id)]);
+      }
+    };
+    // The closure above runs before `paint` is initialized only if an event
+    // fires synchronously, which cannot happen during construction.
+    paint();
+
+    preview.addEventListener("click", function () {
+      if (native.showPicker) { try { native.showPicker(); return; } catch (error) { /* fall through */ } }
+      native.click();
+    });
+    native.addEventListener("input", function () {
+      var next = self.graphColorParts(native.value);
+      parts.r = next.r; parts.g = next.g; parts.b = next.b;
+      controls.r.range.value = String(parts.r); controls.r.number.value = String(parts.r);
+      controls.g.range.value = String(parts.g); controls.g.number.value = String(parts.g);
+      controls.b.range.value = String(parts.b); controls.b.number.value = String(parts.b);
+      paint();
+    });
+
+    rec.viewport.appendChild(panel);
+    panel.style.left = "8px"; panel.style.top = "8px";
+    var viewportRect = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0, width: 0, height: 0};
+    var anchorRect = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : {left: 0, top: 0, bottom: 0};
+    var panelRect = panel.getBoundingClientRect ? panel.getBoundingClientRect() : {width: 236, height: 250};
+    var left = anchorRect.left - viewportRect.left;
+    var top = anchorRect.bottom - viewportRect.top + 4;
+    if (viewportRect.width && panelRect.width && left + panelRect.width > viewportRect.width - 8) left = Math.max(8, viewportRect.width - panelRect.width - 8);
+    if (viewportRect.height && panelRect.height && top + panelRect.height > viewportRect.height - 8) top = Math.max(8, anchorRect.top - viewportRect.top - panelRect.height - 4);
+    panel.style.left = Math.max(8, left) + "px";
+    panel.style.top = Math.max(8, top) + "px";
+
+    var picker = {panel: panel, nodeId: String(node.id), paramId: paramId, startValue: startValue, currentValue: currentValue, startGraph: customMode ? null : deepClone(rec.graph), custom: customMode ? custom : null, outside: null, keyHandler: null};
+    rec.colorPicker = picker;
+    var outside = function (event) {
+      if (!rec.colorPicker) return;
+      if (panel.contains(event.target) || anchor.contains(event.target)) return;
+      self.graphCloseColorPicker(rec, false);
+    };
+    var keyHandler = function (event) {
+      if (String(event.key || "") !== "Escape") return;
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      self.graphCloseColorPicker(rec, false);
+      if (anchor.focus) anchor.focus();
+    };
+    picker.outside = outside;
+    picker.keyHandler = keyHandler;
+    global.document.addEventListener("pointerdown", outside, true);
+    global.document.addEventListener("keydown", keyHandler, true);
+    var first = panel.querySelector(".pui-graph-color-range");
+    if (first && first.focus) { try { first.focus({preventScroll: true}); } catch (error) { first.focus(); } }
+    return true;
+  };
+
   Renderer.prototype.graphSetNodeParam = function (rec, nodeId, paramId, value) {
     var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
     if (!node) return false;
@@ -4423,6 +4676,36 @@
     return true;
   };
 
+  Renderer.prototype.graphFreeNodePosition = function (rec, node, type, preferred) {
+    var Graph = global.PupitreGraph;
+    if (!Graph || !isObject(preferred)) return preferred || {x: 0, y: 0};
+    var metrics = rec.metrics || this.graphMetrics();
+    var rect = Graph.nodeRect(Object.assign({}, node, {x: preferred.x, y: preferred.y}), type, metrics);
+    var occupied = (rec.graph.nodes || []).filter(function (entry) { return entry && String(entry.id) !== String(node.id); }).map(function (entry) {
+      var existing = Graph.nodeRect(entry, rec.typeMap[String(entry.type)], metrics);
+      return existing;
+    });
+    var gap = 18;
+    var stepY = Math.max(40, rect.h + gap);
+    var stepX = Math.max(80, rect.w + gap * 2);
+    var candidate = {x: preferred.x, y: preferred.y};
+    var bounds = rec.viewport && rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : null;
+    var bottomLimit = preferred.y + Math.max(360, (bounds && bounds.height) || 500);
+    for (var attempt = 0; attempt < 80; attempt++) {
+      var hit = occupied.some(function (other) {
+        return candidate.x < other.x + other.w + gap && candidate.x + rect.w + gap > other.x
+          && candidate.y < other.y + other.h + gap && candidate.y + rect.h + gap > other.y;
+      });
+      if (!hit) return candidate;
+      candidate.y += stepY;
+      if (candidate.y > bottomLimit) {
+        candidate.y = preferred.y;
+        candidate.x += stepX;
+      }
+    }
+    return candidate;
+  };
+
   Renderer.prototype.graphAddNode = function (rec, type) {
     if (!type || rec.block.readonly) return null;
     var Graph = global.PupitreGraph;
@@ -4435,7 +4718,9 @@
     var y = Math.round(((viewportRect.height || 500) / 2 - (view.panY || 0)) / (view.zoom || 1) - 40);
     var params = {};
     (type.params || []).forEach(function (param) { if (param.default !== undefined) params[param.id] = deepClone(param.default); });
-    var node = {id: "n" + index, type: String(type.id), x: x, y: y, label: String(type.label || type.id), enabled: true, params: params};
+    var draft = {id: "n" + index, type: String(type.id), x: x, y: y, label: String(type.label || type.id), enabled: true, params: params};
+    var free = this.graphFreeNodePosition(rec, draft, type, {x: x, y: y});
+    var node = {id: "n" + index, type: String(type.id), x: free.x, y: free.y, label: String(type.label || type.id), enabled: true, params: params};
     var start = deepClone(rec.graph);
     rec.graph.nodes = nodes.concat([node]);
     this.graphPushUndo(rec, start);
@@ -4592,10 +4877,8 @@
             } else if (paramEl.tagName === "SELECT") {
               paramEl.value = String(shown);
               paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
-            } else if (paramEl.tagName === "INPUT" && paramEl.type === "color") {
-              var colorValue = String(shown || "#ffffff");
-              paramEl.value = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(colorValue) ? colorValue.slice(0, 7) : "#ffffff";
-              paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + colorValue);
+            } else if (paramEl.classList && paramEl.classList.contains("is-color")) {
+              self.graphColorPaint(paramEl, param, shown);
             } else {
               var numberEl = paramEl.querySelector ? paramEl.querySelector(".pui-graph-param-number") : null;
               if (numberEl) numberEl.textContent = displayValue;
@@ -4760,6 +5043,8 @@
 
   Renderer.prototype.rebuildGraph = function (rec, focusId, navStack, reveal) {
     if (!rec.root || !rec.root.parentNode) return;
+    this.graphCloseColorPicker(rec, false);
+    this.graphUnbindEscape(rec);
     var parent = rec.root.parentNode;
     var index = this.graphRecords.indexOf(rec);
     this.graphUnobserveGraphBodies(rec);
@@ -12318,6 +12603,8 @@
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
+    var graphPickers = this.graphRecords || [];
+    for (var gp = 0; gp < graphPickers.length; gp++) { this.graphCloseColorPicker(graphPickers[gp], true); this.graphUnbindEscape(graphPickers[gp]); }
     this.disconnectGraphBodies();
     this.unbindShortcuts();
     this.unbindPaletteShortcut();
@@ -14063,7 +14350,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.13.1",
+    version: "1.13.2",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
