@@ -1591,7 +1591,7 @@
 
   Renderer.prototype.graphFrameState = function (frame) {
     if (!isObject(frame)) return "";
-    return JSON.stringify([Number(frame.x) || 0, Number(frame.y) || 0, Number(frame.w) || 0, Number(frame.h) || 0, String(frame.title || "")]);
+    return JSON.stringify([Number(frame.x) || 0, Number(frame.y) || 0, Number(frame.w) || 0, Number(frame.h) || 0, String(frame.title || ""), String(frame.text || ""), frame.collapsed === true]);
   };
 
   /** Structural key: changes require a rebuild; state changes are patched. */
@@ -1699,6 +1699,7 @@
     rec.nodeById = {};
     (next.nodes || []).forEach(function (node) { if (isObject(node)) rec.nodeById[String(node.id || "")] = node; });
     if (changed) this.updateGraphDom(rec, {nodes: dirtyNodes, frames: dirtyFrames});
+    if (Object.keys(dirtyFrames).length) { this.graphRefreshCollapsed(rec); this.graphCull(rec); }
     this.graphRefreshIssues(rec);
     this.graphUpdateCount(rec);
     if (oldPresets !== nextPresets) this.graphRenderPresets(rec);
@@ -2130,7 +2131,7 @@
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      materializedNodes: {}, countEl: countEl,
+      collapsedNodes: {}, materializedNodes: {}, countEl: countEl,
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -2149,13 +2150,21 @@
     frames.forEach(function (frame) {
       if (!isObject(frame)) return;
       var frameEl = el("div", {
-        class: "pui-graph-frame" + (isArray(frame.members) ? " is-group" : ""),
+        class: "pui-graph-frame" + (isArray(frame.members) ? " is-group" : "") + (frame.text ? " is-note" : "") + (frame.collapsed === true ? " is-collapsed" : ""),
         "data-frame-id": String(frame.id || ""),
+        role: frame.text ? "note" : "group",
         style: "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;"
       });
       frameEl.appendChild(el("span", {class: "pui-graph-frame-title", text: String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "")}));
+      if (frame.text) frameEl.appendChild(el("p", {class: "pui-graph-frame-text", text: String(frame.text)}));
+      if (!block.readonly) {
+        var frameToggle = el("button", {type: "button", class: "pui-graph-frame-toggle", text: frame.collapsed === true ? "+" : "−", "aria-label": (frame.collapsed === true ? "Expand" : "Collapse") + " frame " + String(frame.title || frame.id || ""), "aria-expanded": frame.collapsed === true ? "false" : "true"});
+        frameToggle.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+        frameToggle.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.graphToggleFrame(rec, frame); });
+        frameEl.appendChild(frameToggle);
+      }
       frameEl.addEventListener("pointerdown", function (event) {
-        if (event.target && event.target.closest && event.target.closest(".pui-graph-frame-resize")) return;
+        if (event.target && event.target.closest && event.target.closest(".pui-graph-frame-resize, .pui-graph-frame-toggle")) return;
         if (event.button !== undefined && event.button !== 0) return;
         event.stopPropagation();
         self.graphSelectFrame(rec, frame);
@@ -2254,7 +2263,14 @@
         self.graphSelectCable(rec, cable);
       });
       cableGroup.appendChild(path);
-      var cableRef = {el: path, cable: cable};
+      var labelEl = null;
+      if (cable.label !== undefined && cable.label !== null && String(cable.label) !== "") {
+        var mid = Graph.bezierPoint(p, 0.5);
+        labelEl = svgEl("text", {class: "pui-graph-cable-label", x: mid.x, y: mid.y - 5, "text-anchor": "middle", "data-cable-label": String(cable.label)});
+        labelEl.textContent = String(cable.label);
+        cableGroup.appendChild(labelEl);
+      }
+      var cableRef = {el: path, labelEl: labelEl, cable: cable};
       rec.cableRefs.push(cableRef);
       if (!rec.cableRefsByNode[from.node]) rec.cableRefsByNode[from.node] = [];
       rec.cableRefsByNode[from.node].push(cableRef);
@@ -2263,6 +2279,7 @@
         rec.cableRefsByNode[to.node].push(cableRef);
       }
     });
+    self.graphRefreshCollapsed(rec);
     rec.guideLayer = el("div", {class: "pui-graph-guides"});
     content.appendChild(rec.guideLayer);
     viewport.appendChild(content);
@@ -2648,7 +2665,7 @@
     });
     cables.forEach(function (cable) {
       if (!isObject(cable)) return;
-      list.appendChild(el("li", {class: "pui-graph-outline-cable", text: String(cable.from) + " → " + String(cable.to)}));
+      list.appendChild(el("li", {class: "pui-graph-outline-cable", text: String(cable.from) + " → " + String(cable.to) + (cable.label ? " · " + String(cable.label) : "")}));
     });
     if (!nodes.length) list.appendChild(el("li", {text: "No nodes."}));
     outline.appendChild(list);
@@ -2771,6 +2788,50 @@
     this.updateGraphDom(rec, {frames: frameDirty});
     this.writeGraph(rec, {op: "frame." + field, id: rec.selectedFrame.id, value: value});
     return true;
+  };
+
+  Renderer.prototype.graphToggleFrame = function (rec, frame) {
+    if (rec.block.readonly || !frame) return false;
+    var start = deepClone(rec.graph);
+    frame.collapsed = !(frame.collapsed === true);
+    this.graphPushUndo(rec, start);
+    this.graphRefreshCollapsed(rec);
+    var frameDirty = {};
+    frameDirty[String(frame.id || "")] = true;
+    this.updateGraphDom(rec, {frames: frameDirty});
+    this.graphCull(rec);
+    this.writeGraph(rec, {op: "frame.collapse", id: frame.id, collapsed: frame.collapsed === true});
+    return true;
+  };
+
+  /** Nodes hidden because a collapsed frame contains them. */
+  Renderer.prototype.graphRefreshCollapsed = function (rec) {
+    if (!rec) return;
+    var collapsed = {};
+    (rec.graph.frames || []).forEach(function (frame) {
+      if (!isObject(frame) || frame.collapsed !== true) return;
+      this.graphFrameNodes(rec, frame).forEach(function (node) { collapsed[String(node.id)] = true; });
+    }, this);
+    rec.collapsedNodes = collapsed;
+  };
+
+  Renderer.prototype.graphApplyCollapsed = function (rec, culling) {
+    if (!rec || !rec.nodeEls) return;
+    Object.keys(rec.nodeEls).forEach(function (id) {
+      var el = rec.nodeEls[id];
+      if (!el || !el.style) return;
+      if (rec.collapsedNodes && rec.collapsedNodes[id]) el.style.display = "none";
+      else if (!culling) el.style.display = "";
+    });
+    if (!culling) {
+      (rec.cableRefs || []).forEach(function (entry) {
+        var from = entry.cable && global.PupitreGraph ? global.PupitreGraph.parseRef(entry.cable.from) : null;
+        var to = entry.cable && global.PupitreGraph ? global.PupitreGraph.parseRef(entry.cable.to) : null;
+        var hidden = (from && rec.collapsedNodes[from.node]) || (to && rec.collapsedNodes[to.node]);
+        if (entry.el) entry.el.style.display = hidden ? "none" : "";
+        if (entry.labelEl) entry.labelEl.style.display = hidden ? "none" : "";
+      });
+    }
   };
 
   Renderer.prototype.graphFitFrame = function (rec) {
@@ -3231,7 +3292,10 @@
    * selection, focus and the host model are unchanged. Opt in with
    * `graph_options.culling:true`; `cull_margin` defaults to 240 graph units. */
   Renderer.prototype.graphCull = function (rec) {
-    if (!rec || !rec.graphOptions || rec.graphOptions.culling !== true || !rec.viewport) return;
+    if (!rec || !rec.graphOptions || rec.graphOptions.culling !== true || !rec.viewport) {
+      this.graphApplyCollapsed(rec, false);
+      return;
+    }
     var self = this;
     var Graph = global.PupitreGraph;
     if (!Graph) return;
@@ -3247,7 +3311,8 @@
       var on = rect.x + rect.w >= x1 && rect.x <= x2 && rect.y + rect.h >= y1 && rect.y <= y2;
       visible[id] = on;
       var el = rec.nodeEls[id];
-      if (el) el.style.display = on || rec.selected[id] ? "" : "none";
+      var collapsed = rec.collapsedNodes && rec.collapsedNodes[id];
+      if (el) el.style.display = collapsed ? "none" : (on || rec.selected[id] ? "" : "none");
     });
     (rec.graph.frames || []).forEach(function (frame) {
       if (!isObject(frame)) return;
@@ -3261,7 +3326,9 @@
       if (!entry || !entry.el || !entry.cable) return;
       var from = Graph.parseRef(entry.cable.from), to = Graph.parseRef(entry.cable.to);
       var on = (from && visible[from.node] !== false) || (to && visible[to.node] !== false);
-      entry.el.style.display = on ? "" : "none";
+      var collapsedCable = (from && rec.collapsedNodes[from.node]) || (to && rec.collapsedNodes[to.node]);
+      entry.el.style.display = on && !collapsedCable ? "" : "none";
+      if (entry.labelEl) entry.labelEl.style.display = on && !collapsedCable ? "" : "none";
     });
   };
 
@@ -4295,6 +4362,18 @@
       if (frameEl && frameEl.setAttribute) frameEl.setAttribute("style", "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;");
       var frameTitle = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-title") : null;
       if (frameTitle) frameTitle.textContent = String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "");
+      if (frameEl && frameEl.classList) {
+        frameEl.classList.toggle("is-note", !!frame.text);
+        frameEl.classList.toggle("is-collapsed", frame.collapsed === true);
+      }
+      var frameText = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-text") : null;
+      if (frameText) frameText.textContent = String(frame.text || "");
+      var frameToggle = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-toggle") : null;
+      if (frameToggle) {
+        frameToggle.textContent = frame.collapsed === true ? "+" : "−";
+        frameToggle.setAttribute("aria-expanded", frame.collapsed === true ? "false" : "true");
+        frameToggle.setAttribute("aria-label", (frame.collapsed === true ? "Expand" : "Collapse") + " frame " + String(frame.title || frame.id || ""));
+      }
     });
     var cableRefs = rec.cableRefs || [];
     if (!updateAll && dirtyNodes) {
@@ -4322,6 +4401,12 @@
       if (!a || !b) return;
       var p = Graph.cablePath(a, b);
       ref.el.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
+      if (ref.labelEl) {
+        var mid = Graph.bezierPoint(p, 0.5);
+        ref.labelEl.setAttribute("x", mid.x);
+        ref.labelEl.setAttribute("y", mid.y - 5);
+        ref.labelEl.textContent = String(ref.cable.label || "");
+      }
     });
     if (materialized) this.graphLayoutGraphBodies(rec);
     if (rec.renderMinimap) rec.renderMinimap(updateAll ? undefined : {nodes: dirtyNodes, frames: dirtyFrames});
