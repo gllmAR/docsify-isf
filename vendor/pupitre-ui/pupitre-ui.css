@@ -444,6 +444,7 @@
 .pui-graph-port-dot.value { background: var(--pui-warning); }
 .pui-graph-port-dot.trigger { background: var(--pui-danger); }
 .pui-graph-port-dot.control { background: var(--pui-accent); }
+.pui-graph-port-dot.param { width: 9px; height: 9px; background: var(--pui-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pui-warning) 30%, transparent); z-index: 3; }
 .pui-graph-port-dot.vstream { background: #c792ea; }
 .pui-graph-params { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-variant-numeric: tabular-nums; }
 .pui-graph-outline { margin-top: 2px; font-size: calc(var(--pui-type-base) * 0.75); }

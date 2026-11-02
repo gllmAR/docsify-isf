@@ -1144,7 +1144,7 @@
       toolbar.insertBefore(titlebarButton, heading);
       setTitlebarCollapsed(titlebarCollapsed, false);
     }
-    var tools = el("div", {class: "pui-workbench-tools"});
+    var tools = el("div", {class: "pui-workbench-tools", role: "toolbar", "aria-label": "Workbench controls"});
     if (isObject(layout.header_menu)) tools.appendChild(this.buildHeaderMenu(layout.header_menu));
     toolbar.appendChild(tools);
     var toolbarBlocks = el("div", {class: "pui-workbench-toolbar-blocks"});
@@ -1278,6 +1278,38 @@
     if (leftInfo) toggle("left", leftInfo, "Control+Alt+L");
     if (rightInfo) toggle("right", rightInfo, "Control+Alt+R");
     if (bottomInfo) toggle("bottom", bottomInfo, "Control+Alt+B");
+
+    // Ark/Radi-style roving toolbar: one tab stop, arrows/Home/End move
+    // between the Header menu trigger and the pane toggles.
+    var toolButtons = [];
+    Array.prototype.slice.call(tools.children).forEach(function (child) {
+      if (child.classList.contains("pui-workbench-toggle")) toolButtons.push(child);
+      if (child.classList.contains("pui-header-menu")) {
+        var trigger = child.querySelector(".pui-header-menu-trigger");
+        if (trigger) toolButtons.push(trigger);
+      }
+    });
+    if (toolButtons.length) {
+      var focusTool = function (index) {
+        toolButtons.forEach(function (button, buttonIndex) {
+          button.tabIndex = buttonIndex === index ? 0 : -1;
+        });
+        if (toolButtons[index] && toolButtons[index].focus) toolButtons[index].focus();
+      };
+      focusTool(0);
+      toolButtons.forEach(function (button, index) {
+        button.addEventListener("focus", function () { focusTool(index); });
+      });
+      tools.addEventListener("keydown", function (event) {
+        if (["ArrowRight", "ArrowLeft", "Home", "End"].indexOf(event.key) < 0) return;
+        var current = toolButtons.indexOf(event.target);
+        if (current < 0) return;
+        event.preventDefault();
+        var next = event.key === "Home" ? 0 : event.key === "End" ? toolButtons.length - 1 :
+          (current + (event.key === "ArrowRight" ? 1 : -1) + toolButtons.length) % toolButtons.length;
+        focusTool(next);
+      });
+    }
 
     var stored = function (region, key, fallback) {
       try {
@@ -1977,6 +2009,23 @@
         line.appendChild(valueButton);
         paramsEl.appendChild(line);
         paramEls.push(valueButton);
+        (Graph.paramPorts(type) || []).forEach(function (paramPort) {
+          if (paramPort.param !== String(param.id)) return;
+          var position = Graph.paramPortPosition(node, type, paramPort.id, rec.metrics);
+          var top = position ? position.y - (Number(node.y) || 0) - 5 : 0;
+          var portDot = el("span", {class: "pui-graph-port-dot param " + String(paramPort.type || "control"), style: "left:0;top:" + top + "px;", "data-node-id": id, "data-port-id": String(paramPort.id), "data-port-kind": "param", "data-param-id": String(param.id), "data-port-type": String(paramPort.type || "control"), tabindex: "0", role: "button"});
+          portDot.setAttribute("aria-label", "Parameter " + String(paramPort.label || param.id) + " input on " + nodeLabel + ", type " + String(paramPort.type || "control"));
+          portDot.title = "Parameter · " + String(paramPort.label || param.id) + " · " + String(paramPort.type || "control");
+          rec.portEls[id + ":param:" + String(paramPort.id)] = {el: portDot, type: String(paramPort.type || "control"), isInput: true, param: paramPort};
+          portDot.addEventListener("pointerdown", function (event) {
+            if (event.stopPropagation) event.stopPropagation();
+            self.graphStartWire(rec, id, paramPort.id, true, event);
+          });
+          portDot.addEventListener("pointerup", function (event) {
+            if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, paramPort.id, event); }
+          });
+          nodeEl.appendChild(portDot);
+        });
       });
       nodeEl.appendChild(paramsEl);
       rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
@@ -2661,6 +2710,9 @@
       });
       item.appendChild(button);
       if (type) item.appendChild(el("span", {class: "pui-graph-outline-type", text: String(type.label || type.id)}));
+      (Graph.paramPorts(type) || []).forEach(function (paramPort) {
+        item.appendChild(el("span", {class: "pui-graph-outline-port", text: " ↳ " + String(paramPort.label || paramPort.param) + " (" + String(paramPort.type || "control") + ")"}));
+      });
       list.appendChild(item);
     });
     cables.forEach(function (cable) {
@@ -13782,7 +13834,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.9.2",
+    version: "1.10.0",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
