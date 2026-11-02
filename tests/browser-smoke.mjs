@@ -331,24 +331,31 @@ try {
         problems.push("the playback statusbar is missing its role/text: " + JSON.stringify(statusPUI));
     }
 
-    const recovery = await page.evaluate(async () => {
+    const emptyTitles = summary
+        .filter((item) => item.empty && !/Broken/i.test(item.title))
+        .map((item) => item.title);
+    const recovered = await page.evaluate(async (titles) => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Kaleidoscope filter/i.test(b.dataset.isfTitle || ""));
-        if (!block) return { missing: true };
-        block.scrollIntoView({ block: "center" });
-        await wait(2200);
-        const canvas = block.querySelector(".isf-canvas");
-        return {
-            toolbar: !!block.querySelector(".pui-workbench-toolbar"),
-            workbench: !!block.querySelector(".isf-workbench .pui-workbench"),
-            stage: !!block.querySelector(".isf-workbench .isf-stage"),
-            params: block.querySelectorAll("[data-isf-param]").length,
-            canvas: canvas ? [canvas.width, canvas.height] : null,
-            status: block.querySelector(".pui-statusbar") ? block.querySelector(".pui-statusbar").textContent : ""
-        };
-    });
-    if (recovery.missing || !recovery.toolbar || !recovery.stage || !recovery.canvas || !recovery.canvas[0]) {
-        problems.push("the context-budget-released viewer did not recover its workbench: " + JSON.stringify(recovery));
+        const results = [];
+        for (const title of titles) {
+            const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => (b.dataset.isfTitle || "") === title);
+            if (!block) { results.push({ title: title, missing: true }); continue; }
+            block.scrollIntoView({ block: "center" });
+            await wait(1800);
+            const canvas = block.querySelector(".isf-canvas");
+            results.push({
+                title: title,
+                toolbar: !!block.querySelector(".pui-workbench-toolbar"),
+                stage: !!block.querySelector(".isf-workbench .isf-stage"),
+                canvas: canvas ? [canvas.width, canvas.height] : null,
+                params: block.querySelectorAll("[data-isf-param]").length
+            });
+        }
+        return results;
+    }, emptyTitles);
+    const recoveryFailures = recovered.filter((item) => item.missing || !item.toolbar || !item.stage || !item.canvas || !item.canvas[0]);
+    if (recoveryFailures.length) {
+        problems.push("context-budget-released viewers did not recover their workbench: " + JSON.stringify(recoveryFailures));
     }
 
     const negative = await page.evaluate(async () => {
@@ -385,7 +392,7 @@ try {
     // ── true workbench shell ─────────────────────────────────────────────
     const shell = await page.evaluate(() => {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
-        if (block) { window.isfOpenMaterial(block); }
+        if (block) { block.scrollIntoView({ block: "center" }); window.isfOpenMaterial(block); }
         const workbench = block && block.querySelector(".isf-workbench");
         const wb = block && block.querySelector(".pui-workbench");
         const toolbar = block && block.querySelector(".pui-workbench-toolbar");
