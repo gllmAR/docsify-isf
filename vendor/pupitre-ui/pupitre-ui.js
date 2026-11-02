@@ -5105,6 +5105,36 @@
     return true;
   };
 
+  Renderer.prototype.graphRefreshFolds = function (rec) {
+    if (!rec || !rec.nodeEls) return;
+    Object.keys(rec.collapsedBodies || {}).forEach(function (id) {
+      var nodeEl = rec.nodeEls[id];
+      if (!nodeEl) return;
+      var collapsed = !!rec.collapsedBodies[id];
+      nodeEl.classList.toggle("is-body-collapsed", collapsed);
+      var button = nodeEl.querySelector ? nodeEl.querySelector(".pui-graph-node-collapse") : null;
+      if (!button) return;
+      button.textContent = collapsed ? "▸" : "▾";
+      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      button.setAttribute("aria-label", (collapsed ? "Expand" : "Collapse") + " body of " + String((rec.nodeById[id] && rec.nodeById[id].label) || id));
+      button.title = collapsed ? "Expand node body" : "Collapse node body";
+    });
+    Object.keys(rec.collapsedGops || {}).forEach(function (id) {
+      var nodeEl = rec.nodeEls[id];
+      if (!nodeEl) return;
+      var preview = nodeEl.querySelector ? nodeEl.querySelector(".pui-graph-gop") : null;
+      if (!preview) return;
+      var collapsed = !!rec.collapsedGops[id];
+      preview.classList.toggle("is-collapsed", collapsed);
+      var button = preview.querySelector ? preview.querySelector(".pui-graph-gop-collapse") : null;
+      if (!button) return;
+      button.textContent = collapsed ? "+" : "−";
+      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      button.setAttribute("aria-label", (collapsed ? "Expand" : "Collapse") + " graph-on-parent preview");
+      button.title = collapsed ? "Expand preview" : "Collapse preview";
+    });
+  };
+
   Renderer.prototype.rebuildGraph = function (rec, focusId, navStack, reveal) {
     if (!rec.root || !rec.root.parentNode) return;
     this.graphCloseColorPicker(rec, false);
@@ -5126,6 +5156,9 @@
         newRec.selectedFrame = rec.selectedFrame;
         newRec.recentTypes = rec.recentTypes;
         newRec.favoriteTypes = rec.favoriteTypes;
+        newRec.collapsedBodies = Object.assign({}, rec.collapsedBodies);
+        newRec.collapsedGops = Object.assign({}, rec.collapsedGops);
+        this.graphRefreshFolds(newRec);
         if (rec.view && newRec.view) {
           newRec.view.zoom = rec.view.zoom;
           newRec.view.panX = rec.view.panX;
@@ -5136,7 +5169,10 @@
       }
     }
     parent.replaceChild(newRoot, rec.root);
-    if (newRec) this.graphLayoutGraphBodies(newRec);
+    if (newRec) {
+      this.updateGraphDom(newRec);
+      this.graphLayoutGraphBodies(newRec);
+    }
     if (index >= 0) this.graphRecords.splice(index, 1);
     if (newRec && reveal) {
       this.graphReveal(newRec, reveal);
@@ -14420,7 +14456,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.14.2",
+    version: "1.14.3",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
