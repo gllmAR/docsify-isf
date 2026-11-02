@@ -1975,6 +1975,49 @@
         var line = el("div", {class: "pui-graph-param-line"});
         line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
         var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
+        var paramType = String(param.type || "float");
+        var displayValue = self.graphParamText(param, shown);
+        if (!numeric && (paramType === "bool" || paramType === "enum" || paramType === "color")) {
+          var simpleControl = null;
+          if (paramType === "bool") {
+            simpleControl = el("button", {type: "button", class: "pui-graph-param-value is-bool", "data-param-id": String(param.id), "data-param-type": paramType, role: "switch", "aria-checked": shown === true ? "true" : "false", "aria-label": String(param.label || param.id) + " value " + (shown === true ? "on" : "off"), text: shown === true ? "On" : "Off"});
+            simpleControl.addEventListener("click", function () { self.graphSetNodeParam(rec, node.id, param.id, !(shown === true)); });
+          } else if (paramType === "enum") {
+            simpleControl = el("select", {class: "pui-graph-param-value is-enum", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id)});
+            (isArray(param.values) ? param.values : []).forEach(function (entry, index) {
+              var value = isObject(entry) ? entry.value : entry;
+              var label = isObject(entry) ? (entry.label !== undefined ? entry.label : value) : entry;
+              var option = el("option", {value: String(value), text: String(label)});
+              if (String(value) === String(shown)) option.selected = true;
+              simpleControl.appendChild(option);
+            });
+            simpleControl.addEventListener("change", function () {
+              var raw = simpleControl.value;
+              var next = raw;
+              if (isArray(param.values)) {
+                for (var vi = 0; vi < param.values.length; vi++) {
+                  var item = param.values[vi];
+                  var value = isObject(item) ? item.value : item;
+                  if (String(value) === raw) { next = value; break; }
+                }
+              }
+              self.graphSetNodeParam(rec, node.id, param.id, next);
+            });
+          } else {
+            simpleControl = el("input", {type: "color", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id)});
+            simpleControl.value = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(shown)) ? String(shown).slice(0, 7) : "#ffffff";
+            simpleControl.addEventListener("change", function () {
+              var current = isObject(node.params) ? node.params[param.id] : undefined;
+              var alpha = /^#([0-9a-f]{8})$/i.test(String(current)) ? String(current).slice(7) : "";
+              self.graphSetNodeParam(rec, node.id, param.id, simpleControl.value + alpha);
+            });
+          }
+          line.appendChild(simpleControl);
+          paramsEl.appendChild(line);
+          paramEls.push(simpleControl);
+          self.graphAttachParamPorts(rec, nodeEl, node, type, param, id, nodeLabel);
+          return;
+        }
         var bounded = numeric && param.min !== undefined && param.max !== undefined && Number(param.max) > Number(param.min);
         var valueButton = el("button", {type: "button", class: "pui-graph-param-value" + (numeric ? " is-numeric" : "") + (bounded ? " is-bounded" : ""), "data-param-id": String(param.id), "data-param-type": String(param.type || "float")});
         if (bounded) {
@@ -1985,7 +2028,6 @@
           track.appendChild(el("span", {class: "pui-graph-param-thumb", "aria-hidden": "true"}));
           valueButton.appendChild(track);
         }
-        var displayValue = self.graphParamText(param, shown);
         valueButton.appendChild(el("span", {class: "pui-graph-param-number", text: displayValue}));
         valueButton.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
         if (numeric) {
@@ -2009,23 +2051,7 @@
         line.appendChild(valueButton);
         paramsEl.appendChild(line);
         paramEls.push(valueButton);
-        (Graph.paramPorts(type) || []).forEach(function (paramPort) {
-          if (paramPort.param !== String(param.id)) return;
-          var position = Graph.paramPortPosition(node, type, paramPort.id, rec.metrics);
-          var top = position ? position.y - (Number(node.y) || 0) - 5 : 0;
-          var portDot = el("span", {class: "pui-graph-port-dot param " + String(paramPort.type || "control"), style: "left:0;top:" + top + "px;", "data-node-id": id, "data-port-id": String(paramPort.id), "data-port-kind": "param", "data-param-id": String(param.id), "data-port-type": String(paramPort.type || "control"), tabindex: "0", role: "button"});
-          portDot.setAttribute("aria-label", "Parameter " + String(paramPort.label || param.id) + " input on " + nodeLabel + ", type " + String(paramPort.type || "control"));
-          portDot.title = "Parameter · " + String(paramPort.label || param.id) + " · " + String(paramPort.type || "control");
-          rec.portEls[id + ":param:" + String(paramPort.id)] = {el: portDot, type: String(paramPort.type || "control"), isInput: true, param: paramPort};
-          portDot.addEventListener("pointerdown", function (event) {
-            if (event.stopPropagation) event.stopPropagation();
-            self.graphStartWire(rec, id, paramPort.id, true, event);
-          });
-          portDot.addEventListener("pointerup", function (event) {
-            if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, paramPort.id, event); }
-          });
-          nodeEl.appendChild(portDot);
-        });
+        self.graphAttachParamPorts(rec, nodeEl, node, type, param, id, nodeLabel);
       });
       nodeEl.appendChild(paramsEl);
       rec.paramEls[id] = {defs: paramDefs, elements: paramEls};
@@ -4011,6 +4037,28 @@
     });
   };
 
+  Renderer.prototype.graphAttachParamPorts = function (rec, nodeEl, node, type, param, id, nodeLabel) {
+    var Graph = global.PupitreGraph;
+    var self = this;
+    (Graph.paramPorts(type) || []).forEach(function (paramPort) {
+      if (paramPort.param !== String(param.id)) return;
+      var position = Graph.paramPortPosition(node, type, paramPort.id, rec.metrics);
+      var top = position ? position.y - (Number(node.y) || 0) - 5 : 0;
+      var portDot = el("span", {class: "pui-graph-port-dot param " + String(paramPort.type || "control"), style: "left:0;top:" + top + "px;", "data-node-id": id, "data-port-id": String(paramPort.id), "data-port-kind": "param", "data-param-id": String(param.id), "data-port-type": String(paramPort.type || "control"), tabindex: "0", role: "button"});
+      portDot.setAttribute("aria-label", "Parameter " + String(paramPort.label || param.id) + " input on " + nodeLabel + ", type " + String(paramPort.type || "control"));
+      portDot.title = "Parameter · " + String(paramPort.label || param.id) + " · " + String(paramPort.type || "control");
+      rec.portEls[id + ":param:" + String(paramPort.id)] = {el: portDot, type: String(paramPort.type || "control"), isInput: true, param: paramPort};
+      portDot.addEventListener("pointerdown", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphStartWire(rec, id, paramPort.id, true, event);
+      });
+      portDot.addEventListener("pointerup", function (event) {
+        if (rec.wiring) { if (event.stopPropagation) event.stopPropagation(); self.graphFinishWire(rec, id, paramPort.id, event); }
+      });
+      nodeEl.appendChild(portDot);
+    });
+  };
+
   Renderer.prototype.graphParamFill = function (param, value) {
     var min = Number(param && param.min);
     var max = Number(param && param.max);
@@ -4396,12 +4444,25 @@
           if (paramInfo.elements[index]) {
             var paramEl = paramInfo.elements[index];
             var displayValue = self.graphParamText(param, shown);
-            var numberEl = paramEl.querySelector ? paramEl.querySelector(".pui-graph-param-number") : null;
-            if (numberEl) numberEl.textContent = displayValue;
-            else paramEl.textContent = displayValue;
-            if (paramEl.classList && paramEl.classList.contains("is-numeric")) paramEl.setAttribute("aria-valuenow", String(Number(shown) || 0));
-            paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
-            self.graphParamPaint(paramEl, param, shown);
+            if (paramEl.tagName === "BUTTON" && paramEl.classList && paramEl.classList.contains("is-bool")) {
+              paramEl.textContent = shown === true ? "On" : "Off";
+              paramEl.setAttribute("aria-checked", shown === true ? "true" : "false");
+              paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + (shown === true ? "on" : "off"));
+            } else if (paramEl.tagName === "SELECT") {
+              paramEl.value = String(shown);
+              paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + String(shown));
+            } else if (paramEl.tagName === "INPUT" && paramEl.type === "color") {
+              var colorValue = String(shown || "#ffffff");
+              paramEl.value = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(colorValue) ? colorValue.slice(0, 7) : "#ffffff";
+              paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + colorValue);
+            } else {
+              var numberEl = paramEl.querySelector ? paramEl.querySelector(".pui-graph-param-number") : null;
+              if (numberEl) numberEl.textContent = displayValue;
+              else paramEl.textContent = displayValue;
+              if (paramEl.classList && paramEl.classList.contains("is-numeric")) paramEl.setAttribute("aria-valuenow", String(Number(shown) || 0));
+              paramEl.setAttribute("aria-label", String(param.label || param.id) + " value " + displayValue);
+              self.graphParamPaint(paramEl, param, shown);
+            }
           }
         });
       }
