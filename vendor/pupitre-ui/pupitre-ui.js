@@ -356,6 +356,7 @@
     this.dir = "ltr";
     this.searchEnabled = !!options.search;
     this.paletteEnabled = !!options.palette;
+    this.paletteShortcut = String(options.paletteShortcut || "Ctrl+K");
     this.searchQuery = "";
     this.searchInput = null;
     this._palette = null;
@@ -1673,7 +1674,7 @@
         node.hidden_inputs, node.hidden_outputs, node.hidden_params, node.value_texture]);
     });
     (graph.cables || []).forEach(function (cable) {
-      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to, cable.via || null, cable.flow || null]);
+      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to, cable.via || null, cable.flow || null, cable.order === undefined ? null : cable.order]);
     });
     (graph.frames || []).forEach(function (frame) {
       if (isObject(frame)) frames.push([String(frame.id || ""), frame.members]);
@@ -2431,7 +2432,15 @@
         labelEl.textContent = String(cable.label);
         cableGroup.appendChild(labelEl);
       }
-      var cableRef = {el: path, labelEl: labelEl, cable: cable};
+      var orderEl = null;
+      var orderValue = Graph.cableOrder(cable);
+      if (orderValue !== null && (cableFlow === "exec" || cableFlow === "event")) {
+        var omid = Graph.routeLabelPoint(route) || Graph.bezierPoint(p, 0.5);
+        orderEl = svgEl("text", {class: "pui-graph-cable-order", x: omid.x, y: omid.y + (labelEl ? 12 : -5), "text-anchor": "middle", "data-cable-order": String(orderValue)});
+        orderEl.textContent = "#" + String(orderValue);
+        cableGroup.appendChild(orderEl);
+      }
+      var cableRef = {el: path, labelEl: labelEl, orderEl: orderEl, cable: cable};
       rec.cableRefs.push(cableRef);
       if (!rec.cableRefsByNode[from.node]) rec.cableRefsByNode[from.node] = [];
       rec.cableRefsByNode[from.node].push(cableRef);
@@ -3518,6 +3527,7 @@
       var collapsedCable = (from && rec.collapsedNodes[from.node]) || (to && rec.collapsedNodes[to.node]);
       entry.el.style.display = on && !collapsedCable ? "" : "none";
       if (entry.labelEl) entry.labelEl.style.display = on && !collapsedCable ? "" : "none";
+      if (entry.orderEl) entry.orderEl.style.display = on && !collapsedCable ? "" : "none";
     });
     (rec.graph.reroutes || []).forEach(function (point) {
       if (!isObject(point)) return;
@@ -13494,6 +13504,20 @@
       var actionId = String(rec.block.id || rec.block.label || rec.block.call || rec.block.bind || "action");
       out.push({kind: "action", id: "action:" + actionId, label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
     });
+    (this.workbenches || []).forEach(function (rec) {
+      var layout = rec.layout || {};
+      ["left", "right", "bottom"].forEach(function (region) {
+        if (!rec.buttons[region]) return;
+        var paneTitle = String((layout[region] && layout[region].title) || region);
+        var isOpen = !rec.collapsed[region];
+        out.push({kind: "pane", id: "pane:" + rec.pageId + ":" + region, label: (isOpen ? "Hide " : "Show ") + paneTitle, path: "pane:" + region, run: function () { self.workbenchToggle(rec, region); }});
+      });
+      var titlebarActions = isObject(layout.titlebar) && isArray(layout.titlebar.actions) ? layout.titlebar.actions : [];
+      titlebarActions.forEach(function (action) {
+        if (!isObject(action) || !action.call) return;
+        out.push({kind: "action", id: "titlebar:" + String(action.id || action.call), label: String(action.label || action.title || action.id || "Action"), path: "action:" + String(action.id || action.call), run: function () { self.adapter.callAction(String(action.call), isObject(action.args) ? action.args : {}); }});
+      });
+    });
     if (typeof this.adapter.undo === "function") {
       out.push({kind: "history", id: "history:undo", label: this.historyLabel("undo"), path: "history:undo", disabled: !this.canUndo(), run: function () { self.undo(); }});
     }
@@ -13584,11 +13608,18 @@
   Renderer.prototype.bindPaletteShortcut = function () {
     if (!this.paletteEnabled || this._paletteKeyHandler) return;
     var self = this;
+    var parts = String(this.paletteShortcut || "Ctrl+K").split("+").map(function (part) { return part.trim().toLowerCase(); });
+    var key = parts.pop() || "k";
+    var wantCtrl = parts.indexOf("ctrl") >= 0 || parts.indexOf("cmd") >= 0 || parts.indexOf("meta") >= 0;
+    var wantShift = parts.indexOf("shift") >= 0;
+    var wantAlt = parts.indexOf("alt") >= 0;
     this._paletteKeyHandler = function (event) {
-      if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === "k") {
-        event.preventDefault();
-        self.openPalette();
-      }
+      if (wantCtrl !== !!(event.ctrlKey || event.metaKey)) return;
+      if (wantShift !== !!event.shiftKey) return;
+      if (wantAlt !== !!event.altKey) return;
+      if (String(event.key).toLowerCase() !== key) return;
+      event.preventDefault();
+      self.openPalette();
     };
     document.addEventListener("keydown", this._paletteKeyHandler);
   };
@@ -14032,7 +14063,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.12.1",
+    version: "1.13.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

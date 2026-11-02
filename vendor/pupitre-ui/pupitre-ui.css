@@ -1040,6 +1040,7 @@
 .pui-graph-reroute.has-label { width: 12px; height: 12px; }
 .pui-graph-reroute-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); padding: 1px 3px; border-radius: 2px; background: color-mix(in srgb, var(--pui-surface) 88%, transparent); color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.55); white-space: nowrap; }
 .pui-graph-cable-label { fill: var(--pui-text); font: 600 calc(var(--pui-type-base) * 0.58) ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; paint-order: stroke; stroke: var(--pui-surface); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; opacity: 0.9; }
+.pui-graph-cable-order { fill: var(--pui-accent); font: 700 calc(var(--pui-type-base) * 0.55) ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; paint-order: stroke; stroke: var(--pui-surface); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 
 /* Portable P0 surfaces: connection, preview, schema form. */
 .pui-connection { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); }
