@@ -455,6 +455,8 @@ try {
         const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
         const toolbar = block.querySelector(".pui-workbench-toolbar");
         const heading = block.querySelector(".pui-workbench-heading");
+        const title = block.querySelector(".pui-workbench-title");
+        const description = block.querySelector(".pui-workbench-description");
         const toggle = block.querySelector(".pui-workbench-titlebar-toggle");
         const before = toolbar.getBoundingClientRect().height;
         const toolsBefore = toolbar.querySelectorAll(".pui-workbench-toggle").length;
@@ -463,13 +465,15 @@ try {
         const collapsed = toolbar.classList.contains("is-titlebar-collapsed");
         const after = toolbar.getBoundingClientRect().height;
         const toolsAfter = toolbar.querySelectorAll(".pui-workbench-toggle").length;
-        const headingDisplay = getComputedStyle(heading).display;
+        const titleAfter = title ? title.textContent : "";
+        const titleDisplay = title ? getComputedStyle(title).display : "";
+        const descriptionDisplay = description ? getComputedStyle(description).display : "";
         toggle.click();
         await wait(180);
-        return { collapsed: collapsed, before: before, after: after, toolsBefore: toolsBefore, toolsAfter: toolsAfter, headingDisplay: headingDisplay, expanded: toggle.getAttribute("aria-expanded"), label: toggle.getAttribute("aria-label") };
+        return { collapsed: collapsed, before: before, after: after, toolsBefore: toolsBefore, toolsAfter: toolsAfter, title: titleAfter, titleDisplay: titleDisplay, descriptionDisplay: descriptionDisplay, expanded: toggle.getAttribute("aria-expanded"), label: toggle.getAttribute("aria-label") };
     });
     if (!titlebar.collapsed || titlebar.after >= titlebar.before) problems.push("collapsing the title bar did not reclaim space: " + JSON.stringify(titlebar));
-    if (titlebar.headingDisplay !== "none" || titlebar.toolsAfter < 3) problems.push("collapsing removed content or function buttons: " + JSON.stringify(titlebar));
+    if (!/Plasma/i.test(titlebar.title) || titlebar.titleDisplay === "none" || titlebar.descriptionDisplay !== "none" || titlebar.toolsAfter < 3) problems.push("collapsing removed the title or function buttons: " + JSON.stringify(titlebar));
     if (titlebar.expanded !== "true" || !/Collapse/.test(titlebar.label || "")) problems.push("title bar collapse state is not announced: " + JSON.stringify(titlebar));
 
     // ── parameters: a real slider drag reaches the host ─────────────────
@@ -755,6 +759,8 @@ try {
             rightOpen: rightOpen,
             leftOpen: leftOpen,
             viewTab: viewTab,
+            titlebarHeight: Math.round(block.querySelector(".pui-workbench-toolbar").getBoundingClientRect().height),
+            titlebarTitle: !!block.querySelector(".pui-workbench-title"),
             stageWidth: Math.round(stageRect.width),
             stageHeight: Math.round(stageRect.height),
             minButton: minButton
@@ -766,6 +772,7 @@ try {
     if (!phone.sourceOpen || phone.paramsAfterSource || !phone.editor || phone.editorHeight < 120) problems.push("mobile: Source did not replace Parameters / editor lost space: " + JSON.stringify(phone));
     if (!phone.rightOpen || phone.leftOpen || phone.viewTab !== "View") problems.push("mobile: View did not replace Source in narrow mode: " + JSON.stringify(phone));
     if (phone.minButton < 30) problems.push("mobile: workbench touch target under 30px (" + phone.minButton + ")");
+    if (!phone.titlebarTitle || phone.titlebarHeight > 130) problems.push("mobile: title bar is not compact: " + JSON.stringify(phone));
     await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
     await new Promise((resolve) => setTimeout(resolve, 800));

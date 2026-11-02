@@ -251,10 +251,11 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with its **title** and ISF
-**description**, and adds a PUI 1.9.0 **collapsible title bar**. Collapsing
-hides only the heading: the Menu, **Source**, **Parameters** and **Playback**
-buttons stay available, so the host can reclaim vertical space without losing
-controls. The Menu carries fullscreen, reset, randomize, export, share, help
+**description**, and adds a PUI 1.9.1 **collapsible title bar**. Collapsing
+hides the description and compacts the title to one ellipsized line: the
+Menu, **Source**, **Parameters** and **Playback** buttons stay available, so
+the host can reclaim vertical space without losing controls or the shader
+identity. The Menu carries fullscreen, reset, randomize, export, share, help
 and “Open source file”.
 
 **Source** is the left pane and **Parameters** the right pane; their title-bar
@@ -270,8 +271,8 @@ one Parameters pane is open across viewers at a time, so panels never stack;
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.9.0** snapshot (commit
-`aa4e366`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.9.1** snapshot (commit
+`5df2690`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -389,8 +390,8 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.9.0) hides the heading but keeps the function
-  buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
+  Its collapse control (PUI 1.9.1) hides the description and keeps a compact
+  title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
   from the titlebar. Parameters also carries **View** and **Log** tabs. On
@@ -399,7 +400,16 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   width. Only one Parameters pane is open across viewers.
 - Playback is a native PUI transport at the bottom, followed by a PUI
   statusbar with status and render readouts. Feedback uses a dismissible PUI
-  toast stack.
+  toast stack. On phones the transport collapses to play/stop + seek, keeps the
+  statusbar, and the titlebar uses two compact rows: identity/description then
+  the function buttons (the Menu becomes the ☰ icon).
+- The right pane's tab bar is its heading, so the redundant pane title is
+  visually hidden (the pane keeps its accessible name). The Source editor head
+  is folded into the Source pane title/titlebar; the narrow Source pane hides
+  the caret/status readouts visually while keeping the status aria-live.
+  Active Source/Parameters/Playback toggles use the accent border, and the
+  collapsed titlebar keeps the shader title while removing only the
+  description.
 - Controls stay at least 32–36 px tall on touch devices; panes, transport and
   form fields respect safe areas and coarse-pointer sizing. The preview is
   keyboard focusable: **Enter/Space** or a double-click toggles fullscreen.

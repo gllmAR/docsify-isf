@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.33.0
+ * docsify-isf v1.34.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.33.0";
+    var VERSION = "1.34.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5787,7 +5787,13 @@
             ".isf-pui .pui-switch input[type=checkbox]::before{content:'';position:absolute;inline-size:14px;block-size:14px;border-radius:50%;background:var(--isf-muted);inset-block-start:2px;inset-inline-start:2px;transition:transform .15s ease,background .15s ease}",
             ".isf-pui .pui-switch input[type=checkbox]:checked{background:var(--isf-accent);border-color:var(--isf-accent)}",
             ".isf-pui .pui-switch input[type=checkbox]:checked::before{transform:translateX(16px);background:var(--isf-accent-contrast)}",
-            "@media (pointer:coarse){.isf-pui .pui input,.isf-pui .pui select,.isf-pui .pui button{font-size:16px}}"
+            "@media (pointer:coarse){.isf-pui .pui input,.isf-pui .pui select,.isf-pui .pui button{font-size:16px}}",
+            // Workbench density: the tab bar already labels the right pane;
+            // the editor head duplicates the Source pane/titlebar labels.
+            ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-title{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
+            ".isf-workbench .isf-editor-head{display:none!important}",
+            "@container (max-width:360px){.isf-workbench .isf-editor-status{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}.isf-workbench .isf-editor-pos{display:none!important}}",
+            "@media (max-width:600px){.isf-workbench-mode .isf-stage{height:100%!important;aspect-ratio:auto!important}.isf-workbench .pui-workbench-toolbar{flex-wrap:wrap;gap:.28rem;padding:.12rem .18rem}.isf-workbench .pui-workbench-heading{flex:1 1 0;min-width:0}.isf-workbench .pui-workbench-title{font-size:1rem;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.isf-workbench .pui-workbench-description{display:block;font-size:.66rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}.isf-workbench .pui-workbench-tools{width:100%!important;margin-inline-start:0!important;flex-wrap:wrap;justify-content:flex-start}.isf-workbench .pui-header-menu-trigger{font-size:0!important;padding:4px 8px}.isf-workbench .pui-header-menu-icon{font-size:16px!important;line-height:1}.isf-workbench .pui-workbench-toggle{min-height:32px;padding:4px 4px;font-size:.66rem}.isf-workbench .pui-workbench-titlebar-toggle{min-width:32px;min-height:32px;font-size:13px}.isf-workbench .pui-workbench-pane.is-bottom{max-height:118px}.isf-workbench .pui-transport{padding:4px 6px;border:0;background:transparent;gap:2px}.isf-workbench .pui-transport-head h4{display:none}.isf-workbench .pui-transport-head{gap:6px}.isf-workbench .pui-transport-loop,.isf-workbench .pui-transport select{display:none}.isf-workbench .pui-transport-controls{gap:5px}.isf-workbench .pui-transport-controls input[type=range]{flex:1 1 90px}.isf-workbench .pui-statusbar{font-size:.68rem}}"
         ].join("\n");
         document.head.appendChild(style);
     }

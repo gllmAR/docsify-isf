@@ -403,8 +403,8 @@ The viewer is a PUI workbench page with named regions:
 
 The titlebar carries the shader title and ISF `DESCRIPTION` (plus credit when
 present), a labeled collapse chevron and the function buttons. Collapsing
-hides only the heading/title/description; the Menu, Source, Parameters and
-Playback buttons remain. This is PUI 1.9.0's `layout.titlebar` contract; the
+hides the description and keeps a compact one-line title; the Menu, Source,
+Parameters and Playback buttons remain. This is PUI 1.9.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -431,6 +431,22 @@ The Menu actions call back into the viewer. Only one Parameters pane is open
 across viewers. The host pane-toggle listener mirrors PUI's state so host
 shortcuts/fullscreen and PUI clicks agree. The right pane's View/Log tabs keep
 the render settings and diagnostics out of the primary parameter flow.
+
+Density decisions:
+
+- The right pane's tab bar is its heading; its redundant pane title is visually
+  hidden but kept for the region's accessible name.
+- The Source editor head is hidden in the workbench (the Source pane title and
+  title bar carry identity/close); the editor toolbar starts directly under the
+  pane title.
+- At a Source pane width below 360 px the caret/status readouts are visually
+  hidden; the status stays an aria-live/visually-hidden region.
+- On phones the titlebar wraps identity/description and controls onto two rows;
+  the Menu becomes the ☰ icon with its text retained for the accessible name.
+  The titlebar is compact (under 130 px), the editor head/status are hidden and
+  the Playback transport is reduced to play/stop + seek with the statusbar.
+- Active pane toggles use the PUI accent border; the titlebar collapse keeps a
+  compact title and removes the description only.
 
 ### 7.2.1 PUI responsibilities
 
