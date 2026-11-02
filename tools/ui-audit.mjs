@@ -89,6 +89,15 @@ await sleep(1000);
 await clickRegion("right");
 await sleep(300);
 await shot("desktop-default");
+await page.keyboard.down("Control");
+await page.keyboard.down("Shift");
+await page.keyboard.press("P");
+await page.keyboard.up("Shift");
+await page.keyboard.up("Control");
+await sleep(350);
+await page.screenshot({ path: path.join(out, "desktop-palette.png") });
+await page.keyboard.press("Escape");
+await sleep(150);
 
 await clickRegion("left");
 await sleep(300);

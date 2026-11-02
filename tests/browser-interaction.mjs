@@ -399,6 +399,30 @@ const sourceClose = await blockEval((block) => {
 await sleep(250);
 await capture("23-source-closed");
 
+// ── command palette (shared host shortcut, active viewer)
+await page.keyboard.down("Control");
+await page.keyboard.down("Shift");
+await page.keyboard.press("P");
+await page.keyboard.up("Shift");
+await page.keyboard.up("Control");
+await sleep(350);
+const palettePresent = await page.$(".pui-palette");
+if (palettePresent) {
+    await page.screenshot({ path: path.join(artifacts, "23b-command-palette.png") });
+    const paletteLabels = await page.$$eval(".pui-palette-option", (options) => options.map((option) => option.textContent));
+    check("command palette lists workbench actions", paletteLabels.some((label) => /Reset parameters/.test(label)) && paletteLabels.some((label) => /Source/.test(label)), paletteLabels.slice(0, 12));
+    const resetOption = await page.$$eval(".pui-palette-option", (options) => {
+        const index = options.findIndex((option) => /Reset parameters/.test(option.textContent));
+        return index;
+    });
+    const optionHandles = await page.$$(".pui-palette-option");
+    if (optionHandles[resetOption]) await optionHandles[resetOption].click();
+    await sleep(300);
+    check("command palette executes and closes", !(await page.$(".pui-palette")));
+} else {
+    check("command palette opens with Ctrl+Shift+P", false);
+}
+
 // ── focus preview (direct titlebar action)
 await blockEval((block) => {
     const action = block.querySelector('.pui-workbench-action[data-pui-action="focus"]');
