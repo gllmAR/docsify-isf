@@ -1491,6 +1491,12 @@
       var value;
       try { value = self.adapter.getValue(rec.openBinds[region]); } catch (error) { value = undefined; }
       if (typeof value !== "boolean") return;
+      // A narrow workbench is one drawer at a time: host-driven open_bind
+      // updates must obey the same rule as the visible pane toggles.
+      if (value && rec.narrow && (region === "left" || region === "right")) {
+        var other = region === "left" ? "right" : "left";
+        if (rec.panes[other] && !rec.collapsed[other]) self.workbenchSetCollapsed(rec, other, true, true);
+      }
       if ((!value) !== !!rec.collapsed[region]) self.workbenchSetCollapsed(rec, region, !value, false);
     });
   };
@@ -2312,7 +2318,7 @@
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      collapsedNodes: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
+      collapsedNodes: {}, collapsedGops: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -3347,6 +3353,24 @@
       self.graphOpenSubgraph(rec, node);
     });
     head.appendChild(enter);
+    var collapsed = !!(rec.collapsedGops && rec.collapsedGops[String(node.id)]);
+    var collapse = el("button", {type: "button", class: "pui-graph-gop-collapse", text: collapsed ? "+" : "−", "aria-label": (collapsed ? "Expand" : "Collapse") + " graph-on-parent preview", "aria-expanded": collapsed ? "false" : "true"});
+    collapse.title = collapsed ? "Expand preview" : "Collapse preview";
+    collapse.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+    collapse.addEventListener("click", function (event) {
+      if (event.stopPropagation) event.stopPropagation();
+      rec.collapsedGops = rec.collapsedGops || {};
+      var next = !rec.collapsedGops[String(node.id)];
+      rec.collapsedGops[String(node.id)] = next;
+      preview.classList.toggle("is-collapsed", next);
+      collapse.textContent = next ? "+" : "−";
+      collapse.setAttribute("aria-expanded", next ? "false" : "true");
+      collapse.setAttribute("aria-label", (next ? "Expand" : "Collapse") + " graph-on-parent preview");
+      collapse.title = next ? "Expand preview" : "Collapse preview";
+      self.graphMeasureNodeBody(rec, node.id);
+    });
+    head.appendChild(collapse);
+    if (collapsed) preview.classList.add("is-collapsed");
     preview.appendChild(head);
     if (!isObject(nested)) {
       preview.appendChild(el("p", {class: "pui-graph-gop-missing", text: "(subgraph missing)"}));
@@ -13830,10 +13854,15 @@
     if (this._palette) { this._palette.close(); return 0; }
     var dialog = el("dialog", {class: "pui-dialog pui-palette", "aria-label": this.t("palette.title", "Commands")});
     var form = el("form", {method: "dialog"});
+    var head = el("div", {class: "pui-palette-head"});
+    head.appendChild(el("strong", {text: this.t("palette.title", "Commands")}));
     var input = el("input", {type: "search", "aria-label": this.t("palette.title", "Commands"), placeholder: this.t("palette.filter", "Filter commands")});
     var list = el("div", {class: "pui-palette-list", role: "listbox", "aria-label": this.t("palette.title", "Commands")});
+    var hint = el("p", {class: "pui-palette-hint", text: this.t("palette.hint", "↑↓ move · Enter run · Esc close")});
+    form.appendChild(head);
     form.appendChild(input);
     form.appendChild(list);
+    form.appendChild(hint);
     dialog.appendChild(form);
     this.loadPreferences();
     var commands = this.orderedCommands();
@@ -13861,8 +13890,9 @@
       }).slice(0, 80).forEach(function (command, index) {
         var option = el("button", {type: "button", role: "option", class: "pui-palette-option", id: self.id("command")});
         var favorite = self.isFavorite(command.id);
-        var star = el("span", {class: "pui-palette-star", "aria-hidden": "true", text: favorite ? "★" : "☆"});
-        option.appendChild(star);
+        // Hollow stars on every row read as rating controls; only mark real
+        // favorites. The kind suffix already explains the command.
+        if (favorite) option.appendChild(el("span", {class: "pui-palette-star", "aria-hidden": "true", text: "★"}));
         option.appendChild(el("span", {class: "pui-palette-label", text: command.label + " · " + command.kind}));
         option.setAttribute("data-pui-command", command.id);
         option.setAttribute("data-favorite", favorite ? "true" : "false");
@@ -13877,7 +13907,7 @@
         list.appendChild(option);
         rows.push({button: option, command: command});
       });
-      if (!rows.length) list.appendChild(el("p", {class: "pui-palette-empty", text: this.t("palette.empty", "No matching commands.")}));
+      if (!rows.length) list.appendChild(el("p", {class: "pui-palette-empty", text: self.t("palette.empty", "No matching commands.")}));
       if (rows[active]) input.setAttribute("aria-activedescendant", rows[active].button.id);
       else input.removeAttribute("aria-activedescendant");
     }
@@ -14361,7 +14391,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.13.3",
+    version: "1.14.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

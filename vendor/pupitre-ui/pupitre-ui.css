@@ -35,6 +35,9 @@
 .pui *, .pui *::before, .pui *::after { box-sizing: border-box; }
 .pui-search { display: flex; gap: 6px; align-items: center; margin-bottom: var(--pui-gap); }
 .pui-search input { flex: 1 1 auto; width: 100%; min-height: var(--pui-touch); padding: 3px 6px; }
+.pui-palette-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 6px; }
+.pui-palette-head strong { font-size: calc(var(--pui-type-base) * 0.9); }
+.pui-palette-hint { margin: 6px 0 0; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); }
 .pui-palette-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
 .pui-palette-option { text-align: start; min-height: var(--pui-touch); padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .pui-palette-option { display: flex; align-items: center; gap: 8px; }
@@ -544,6 +547,10 @@
 .pui-graph-gop-count { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.5); white-space: nowrap; }
 .pui-graph-gop-enter { border: 1px solid var(--pui-accent); border-radius: 3px; padding: 0 5px; background: transparent; color: var(--pui-accent); font: inherit; font-size: calc(var(--pui-type-base) * 0.58); cursor: pointer; }
 .pui-graph-gop-enter:hover { background: var(--pui-accent); color: var(--pui-bg); }
+.pui-graph-gop-collapse { flex: 0 0 auto; width: 20px; min-width: 20px; min-height: 20px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--pui-muted); font: inherit; line-height: 1; cursor: pointer; }
+.pui-graph-gop-collapse:hover, .pui-graph-gop-collapse:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
+.pui-graph-gop.is-collapsed .pui-graph-gop-map, .pui-graph-gop.is-collapsed .pui-graph-gop-exposed, .pui-graph-gop.is-collapsed .pui-graph-gop-missing { display: none; }
+.pui-graph-gop.is-collapsed { margin-bottom: 5px; }
 .pui-graph-gop-map { position: relative; height: 92px; background-image: linear-gradient(90deg, transparent 49%, color-mix(in srgb, var(--pui-border) 50%, transparent) 50%, transparent 51%), linear-gradient(0deg, transparent 49%, color-mix(in srgb, var(--pui-border) 50%, transparent) 50%, transparent 51%); background-size: 16px 16px; }
 .pui-graph-gop-svg { display: block; width: 100%; height: 100%; }
 .pui-graph-gop-frame { fill: color-mix(in srgb, var(--pui-accent) 7%, transparent); stroke: color-mix(in srgb, var(--pui-accent) 30%, var(--pui-border)); stroke-width: 1; }
@@ -713,6 +720,11 @@
 .pui-workbench.is-narrow .pui-workbench-pane.is-collapsed { display: none; }
 .pui-workbench.is-narrow .pui-workbench-resizer { display: none; }
 .pui-workbench.is-narrow .pui-workbench-pane.is-stage { min-height: 420px; }
+/* Phones get the whole pane; an 84vw drawer leaves a useless stage sliver. */
+@media (max-width: 520px) {
+  .pui-workbench.is-narrow .pui-workbench-pane.is-left,
+  .pui-workbench.is-narrow .pui-workbench-pane.is-right { width: 100%; box-shadow: none; }
+}
 @media (max-width: 600px) { .pui-workbench-tools { width: 100%; margin-inline-start: 0; } }
 .pui-field.is-modified { box-shadow: inset 2px 0 var(--pui-accent); }
 .pui-field.is-modified .pui-caption { color: var(--pui-accent); }
@@ -1038,8 +1050,8 @@
 .pui-graph-color-preview-text { flex: 0 0 auto; color: var(--pui-muted); font: calc(var(--pui-type-base) * 0.56) ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pui-graph-color-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 44px; align-items: center; gap: 4px; min-width: 0; }
 .pui-graph-color-label { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-weight: 700; }
-.pui-graph-color-range { width: 100%; min-width: 0; }
-.pui-graph-color-number { width: 44px; min-width: 0; padding: 1px 3px; border: 1px solid var(--pui-border); border-radius: 3px; background: var(--pui-surface-2); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.6); text-align: end; appearance: textfield; -moz-appearance: textfield; }
+.pui input.pui-graph-color-range { width: 100%; min-width: 0; min-height: 18px; height: 18px; accent-color: var(--pui-accent); }
+.pui input.pui-graph-color-number { width: 44px; min-width: 0; min-height: 20px; height: 20px; padding: 1px 3px; border: 1px solid var(--pui-border); border-radius: 3px; background: var(--pui-surface-2); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.6); text-align: end; appearance: textfield; -moz-appearance: textfield; }
 .pui-graph-color-number::-webkit-inner-spin-button, .pui-graph-color-number::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
 .pui-graph-color-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .pui-graph-param-track { --pui-graph-zero: 50%; position: relative; display: block; height: 7px; border-radius: 3px; background: color-mix(in srgb, var(--pui-border) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pui-border) 70%, transparent); }
@@ -1290,7 +1302,7 @@
    `section.tab` and the region lists its tabs in `layout.<region>.tabs`. */
 .pui-pane-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 0 6px; border-bottom: 1px solid var(--pui-border); margin-bottom: 6px; }
 .pui-pane-tab { appearance: none; border: 1px solid transparent; border-bottom: 0; border-radius: var(--pui-radius) var(--pui-radius) 0 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 0.72); padding: 4px 8px; min-height: var(--pui-touch); cursor: pointer; }
-.pui-pane-tab[aria-selected="true"] { color: var(--pui-text); background: var(--pui-surface-2); border-color: var(--pui-border); }
+.pui-pane-tab[aria-selected="true"] { color: var(--pui-text); background: var(--pui-surface-2); border-color: var(--pui-border); box-shadow: inset 0 -2px 0 var(--pui-accent); font-weight: 600; }
 .pui-pane-tab:focus-visible { outline: 2px solid var(--pui-accent); outline-offset: -2px; }
 .pui-pane-tabpanel { min-height: 0; }
 
