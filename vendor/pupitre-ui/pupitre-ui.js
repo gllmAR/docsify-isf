@@ -302,6 +302,7 @@
     };
     this.uid = "pui" + (++NEXT_ID);
     this.records = [];
+    this.blockRecords = [];
     this.actions = [];
     this.pageRecords = [];
     this.panelRecords = [];
@@ -418,6 +419,7 @@
     this.dir = String(doc.dir || (global.PupitreI18n ? global.PupitreI18n.direction(this.lang) : "ltr"));
     this.signature = structureKey(doc);
     this.records = [];
+    this.blockRecords = [];
     this.actions = [];
     this.pageRecords = [];
     this.panelRecords = [];
@@ -1482,6 +1484,15 @@
       var block = section.blocks[i];
       var blockEl = this.buildBlock(block, {section: section});
       if (blockEl && blockEl.setAttribute && block && typeof block.kind === "string") blockEl.setAttribute("data-pui-kind", block.kind);
+      if (blockEl && blockEl.setAttribute && block && block.id) blockEl.setAttribute("data-pui-block-id", String(block.id));
+      if (blockEl && block && (block.visible_when || block.enabled_when)) {
+        this.blockRecords.push({
+          element: blockEl, block: block,
+          pageRecordIndex: this._pageRecordIndex,
+          sectionRecordIndex: this._sectionRecordIndex
+        });
+        if (blockEl.setAttribute) blockEl.setAttribute("data-pui-conditional", "1");
+      }
       body.appendChild(blockEl);
     }
     (sectionBody || sectionEl).appendChild(body);
@@ -12962,6 +12973,21 @@
       } else {
         custom.container.setAttribute("inert", "");
         custom.container.setAttribute("aria-disabled", "true");
+      }
+    }
+    for (var bi = 0; bi < this.blockRecords.length; bi++) {
+      var blockRec = this.blockRecords[bi];
+      var blockVisible = this.conditionOk(blockRec.block.visible_when);
+      var blockEnabled = this.conditionOk(blockRec.block.enabled_when) &&
+        groupEnabled(this.pageRecords, blockRec.pageRecordIndex) &&
+        groupEnabled(this.sectionRecords, blockRec.sectionRecordIndex);
+      blockRec.element.hidden = !blockVisible;
+      if (blockEnabled) {
+        blockRec.element.removeAttribute("inert");
+        blockRec.element.removeAttribute("aria-disabled");
+      } else {
+        blockRec.element.setAttribute("inert", "");
+        blockRec.element.setAttribute("aria-disabled", "true");
       }
     }
     for (var pi = 0; pi < this.panelRecords.length; pi++) {
