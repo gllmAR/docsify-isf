@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.38.0
+ * docsify-isf v1.39.1
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.38.0";
+    var VERSION = "1.39.1";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5752,6 +5752,7 @@
         viewer.inspectorTab = "params";
         viewer.inspectorOpen = false;
         viewer.editorOpen = false;
+        viewer.bottomOpen = true;
         viewer.inspectorImport = false;
         // A viewer released by the context budget rebuilds its controls when it
         // resumes; the auto-open decision must not override a drawer the user
@@ -6167,15 +6168,13 @@
                 viewer.inspectorOpen = true;
                 viewer.inspectorTab = "params";
                 viewer.inspectorImport = false;
-                viewer.setWorkbenchPaneOpen("right", true);
-                viewer.selectWorkbenchTab("right", "Parameters");
                 setInspectorPanel();
                 viewer.applyPUIWorkbench();
+                viewer.selectWorkbenchTab("right", "Parameters");
                 focusInspector();
             } else {
                 if (window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
                 viewer.inspectorOpen = false;
-                viewer.setWorkbenchPaneOpen("right", false);
                 viewer.applyPUIWorkbench();
                 if (!isFullscreenActive()) focusInspectorTrigger();
             }
@@ -6192,7 +6191,6 @@
                 viewer.editorOpen = true;
                 viewer.inspectorImport = false;
                 setEditorPanel();
-                viewer.setWorkbenchPaneOpen("left", true);
                 viewer.applyPUIWorkbench();
                 focusEditor();
             } else {
@@ -6200,7 +6198,6 @@
                 viewer.editorOpen = false;
                 viewer.inspectorImport = false;
                 setEditorPanel();
-                viewer.setWorkbenchPaneOpen("left", false);
                 viewer.applyPUIWorkbench();
                 if (!isFullscreenActive()) focusEditorTrigger();
             }
@@ -6349,12 +6346,8 @@
             }
             viewer.setInspectorOpen(true);
         };
-        viewer.isInspectorOpen = function () {
-            return viewer.puiWorkbench ? viewer.isWorkbenchPaneOpen("right") : !!viewer.inspectorOpen;
-        };
-        viewer.isEditorOpen = function () {
-            return viewer.puiWorkbench ? viewer.isWorkbenchPaneOpen("left") : !!viewer.editorOpen;
-        };
+        viewer.isInspectorOpen = function () { return !!viewer.inspectorOpen; };
+        viewer.isEditorOpen = function () { return !!viewer.editorOpen; };
         viewer.setDrawer = function (drawer, open) { viewer.setInspectorOpen(!!open); };
         viewer.isDrawerOpen = function () { return viewer.isInspectorOpen(); };
         viewer.setPanel = function (panel, open) {
@@ -6383,7 +6376,7 @@
             viewer.drawerTouched = true;
             if (viewer.isEditorOpen()) viewer.setEditorOpen(false);
             if (viewer.isInspectorOpen()) closeInspector();
-            viewer.setWorkbenchPaneOpen("bottom", false);
+            viewer.bottomOpen = false;
             viewer.applyPUIWorkbench();
             if (viewer.dom.canvas && viewer.dom.canvas.focus) {
                 try { viewer.dom.canvas.focus({ preventScroll: true }); } catch (error) { /* ignore */ }
@@ -6580,6 +6573,10 @@
         viewer.resetParameters = function () {
             viewer.values = viewer.defaultValues();
             viewer.refreshParamControls();
+            // A pending value write from a slider drag must not restore the
+            // value the reset just discarded.
+            clearTimeout(viewer._storeTimer);
+            storeValues(viewer);
             if (viewer.runtime) viewer.runtime.needsRender = true;
         };
         viewer.triggerEvent = function (name) {
@@ -6831,10 +6828,10 @@
                         // Source is the left pane; Parameters the right pane.
                         // Their pane toggles are the show/hide buttons in the
                         // title toolbar. View and Log are tabs of Parameters.
-                        left: {title: "Source", icon: "</>", width: {initial: 300, min: 260, max: 520}, collapsible: true},
+                        left: {title: "Source", icon: "</>", width: {initial: 300, min: 260, max: 520}, collapsible: true, open_bind: "/isf/ui/editorOpen"},
                         stage: {title: "Preview", fit: "contain", min_width: 280},
-                        right: {title: "Parameters", icon: "⚙", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"]},
-                        bottom: {title: "Playback", icon: "▶", height: 96, collapsible: false}
+                        right: {title: "Parameters", icon: "⚙", width: {initial: 320, min: 280, max: 560}, collapsible: true, tabs: ["Parameters", "View", "Log"], open_bind: "/isf/ui/inspectorOpen"},
+                        bottom: {title: "Playback", icon: "▶", height: 96, collapsible: false, open_bind: "/isf/ui/playbackOpen"}
                     },
                     sections: [
                         {
@@ -6915,10 +6912,16 @@
                     if (path === "/isf/ui/fullscreenLabel") return isFullscreenActive() ? "Exit fullscreen" : "Fullscreen";
                     if (path === "/isf/ui/inspectorOpen") return !!viewer.isInspectorOpen();
                     if (path === "/isf/ui/editorOpen") return !!viewer.isEditorOpen();
+                    if (path === "/isf/ui/playbackOpen") return !!viewer.bottomOpen;
                     if (path === "/isf/transport") return viewer.transportValue();
                     return undefined;
                 },
-                setValue: function () { return false; },
+                setValue: function (path, value) {
+                    if (path === "/isf/ui/inspectorOpen") { viewer.setInspectorOpen(!!value); return true; }
+                    if (path === "/isf/ui/editorOpen") { viewer.setEditorOpen(!!value); return true; }
+                    if (path === "/isf/ui/playbackOpen") { viewer.bottomOpen = !!value; viewer.applyPUIWorkbench(); return true; }
+                    return false;
+                },
                 callAction: function (name) {
                     if (name === "isf.reset") { viewer.resetAll(); return true; }
                     if (name === "isf.randomize") { viewer.randomizeParameters(); return true; }
@@ -6975,12 +6978,10 @@
             viewer.puiWorkbench = {ui: ui, host: host};
             block.classList.add("isf-workbench-ready");
             if (fallback && fallback.parentNode) fallback.parentNode.removeChild(fallback);
-            // Panes are contextual: start closed (PUI remembers the last
-            // open state for its page id) and let the in-view auto-open pick
-            // Parameters. Source is one click away in the title bar.
-            viewer.setWorkbenchPaneOpen("left", false);
-            viewer.setWorkbenchPaneOpen("right", false);
-            viewer.bindWorkbenchState();
+            // Pane opening is host-bound through PUI open_bind; Source and
+            // Parameters start closed, Playback starts open, and the in-view
+            // auto-open decides whether Parameters is shown.
+            viewer.bindWorkbenchTabs();
             // Recompute narrow mode now that the workbench has been laid out;
             // PUI's first measurement happens while the mount is still empty.
             try { window.dispatchEvent(new Event("resize")); } catch (error) { /* ignore */ }
@@ -7069,47 +7070,9 @@
             return selected ? selected.textContent : "";
         };
 
-        viewer.bindWorkbenchState = function () {
-            var left = viewer.workbenchPane("left");
+        viewer.bindWorkbenchTabs = function () {
             var right = viewer.workbenchPane("right");
-            if (!left || !right) return;
-            var sync = function (openedRegion) {
-                var leftOpen = viewer.isWorkbenchPaneOpen("left");
-                var rightOpen = viewer.isWorkbenchPaneOpen("right");
-                viewer.editorOpen = leftOpen;
-                viewer.inspectorOpen = rightOpen;
-                if (!rightOpen && window.__isfActiveInspector === viewer) window.__isfActiveInspector = null;
-                if (!leftOpen && window.__isfActiveSourceEditor === viewer) window.__isfActiveSourceEditor = null;
-                if (rightOpen && openedRegion === "right") {
-                    if (window.__isfActiveInspector && window.__isfActiveInspector !== viewer) {
-                        var previous = window.__isfActiveInspector;
-                        window.__isfActiveInspector = null;
-                        try { previous.setInspectorOpen(false); } catch (error) { /* ignore */ }
-                    }
-                    window.__isfActiveInspector = viewer;
-                    var selected = viewer.selectedWorkbenchTab("right");
-                    viewer.inspectorTab = /^Log$/i.test(selected) ? "log" : /^View$/i.test(selected) ? "view" : "params";
-                }
-                if (leftOpen && openedRegion === "left") {
-                    if (window.__isfActiveSourceEditor && window.__isfActiveSourceEditor !== viewer) {
-                        var previousSource = window.__isfActiveSourceEditor;
-                        window.__isfActiveSourceEditor = null;
-                        try { previousSource.setEditorOpen(false); } catch (error) { /* ignore */ }
-                    }
-                    window.__isfActiveSourceEditor = viewer;
-                }
-            };
-            ["left", "right"].forEach(function (region) {
-                var toggle = viewer.workbenchToggleButton(region);
-                if (!toggle) return;
-                toggle.addEventListener("click", function () {
-                    // PUI's own click handler has already toggled the pane;
-                    // defer so isWorkbenchPaneOpen reads the final state.
-                    setTimeout(function () {
-                        if (!viewer.disposed) sync(region);
-                    }, 0);
-                });
-            });
+            if (!right) return;
             Array.from(right.querySelectorAll(".pui-pane-tab")).forEach(function (tab) {
                 tab.addEventListener("click", function () {
                     viewer.inspectorTab = String(tab.textContent || "").toLowerCase();
@@ -7237,7 +7200,10 @@
                 viewer.source = viewer.rawSource;
                 viewer.values = viewer.defaultValues();
                 var restoreInput = null;
-                var stored = loadStoredValues(viewer.url);
+                // Bare/OBS viewers opt out of persistence entirely; reading a
+                // previous page value there defeats the shader defaults and the
+                // self-contained isf-values URL.
+                var stored = viewer.config.persistValues === false ? null : loadStoredValues(viewer.url);
                 if (stored) {
                     for (var storedName in stored) {
                         restoreInput = null;

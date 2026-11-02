@@ -13077,7 +13077,9 @@
     if (value === undefined) return;
     var active = document.activeElement;
     if (rec.widget === "range") {
-      if (rec.dragging || active === rec.range || active === rec.number) return;
+      // External host changes must win even when the slider still owns focus
+      // (e.g. a toolbar reset or a remote preset); only an active drag wins.
+      if (rec.dragging) return;
       if (isMixedValue(value)) {
         rec.root.classList.add("is-mixed");
         rec.range.value = rec.range.min;
@@ -13988,7 +13990,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.12.0",
+    version: "1.12.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

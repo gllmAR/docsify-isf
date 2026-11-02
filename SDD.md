@@ -407,13 +407,16 @@ The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 buttons. Pane toggles carry host glyphs and labels; phones hide the labels and
 keep the glyphs/accessible names. Collapsing hides the eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.11.1's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.12.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
 Panes are contextual: both start closed; the in-view viewer auto-opens
 Parameters (`params:"auto|open|closed"`), never stealing another open
-Parameters pane. Source opens via its button or Ctrl/Cmd+B. On wide screens
+Parameters pane. Source opens via its button or Ctrl/Cmd+B. Pane open state is
+host-bound via PUI `layout.*.open_bind`; the host is authoritative and PUI
+writes toggles/auto-collapse back through the binding, so `apply()` reconciles
+external state without click-listener mirroring. On wide screens
 both side panes can coexist with the render between them; narrow screens turn
 them into mutually exclusive overlays and give the stage the full width. PUI
 persists pane widths/collapse state and the titlebar collapse state.

@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.11.1
+**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.12.1
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -128,9 +128,9 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 
 ## 5. Remaining opportunities
 
-- **Pane open-state persistence** is contextual by design: docsify closes the
-  side panes on mount to preserve the one-Parameters rule. A future PUI
-  `pane.open_bind` could persist per-viewer state without stacking Parameters.
+- **Pane open-state persistence** is now host-bound through PUI
+  `layout.*.open_bind`; docsify keeps the one-Parameters rule at the host
+  layer while the binding mirrors open/closed state without click listeners.
 - **Command palette**: PUI has one, but docsify's Ctrl+K already toggles
   Parameters. A deliberate shortcut migration would make the palette the
   primary command surface; the full interaction trace is the regression net.
