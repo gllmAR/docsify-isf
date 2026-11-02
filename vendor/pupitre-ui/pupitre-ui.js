@@ -1719,6 +1719,38 @@
     Object.keys(rec.nodeEls || {}).forEach(function (id) {
       if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.toggle("is-selected", !!rec.selected[id]);
     });
+    this.graphPaintPortalPeers(rec);
+  };
+
+  Renderer.prototype.graphPaintPortalPeers = function (rec) {
+    if (!rec || !global.PupitreGraph) return;
+    var Graph = global.PupitreGraph;
+    var peers = Graph.portalPeers(rec.graph, rec.types);
+    var active = {};
+    Object.keys(rec.selected || {}).forEach(function (id) {
+      var node = rec.nodeById && rec.nodeById[id];
+      var info = node && Graph.portalInfo(node, rec.typeMap[String(node.type)]);
+      if (info && info.name) active[info.name] = true;
+    });
+    Object.keys(rec.nodeEls || {}).forEach(function (id) {
+      var node = rec.nodeById && rec.nodeById[id];
+      var info = node && Graph.portalInfo(node, rec.typeMap[String(node.type)]);
+      var peer = !!(info && info.name && active[info.name] && !rec.selected[id]);
+      if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.toggle("is-portal-peer", peer);
+    });
+  };
+
+  Renderer.prototype.graphJumpPortal = function (rec, nodeId) {
+    var Graph = global.PupitreGraph;
+    var node = rec.nodeById && rec.nodeById[String(nodeId)];
+    var info = node && Graph.portalInfo(node, rec.typeMap[String(node.type)]);
+    if (!info || !info.name) return false;
+    var peers = Graph.portalPeers(rec.graph, rec.types)[info.name];
+    var target = (peers && (peers.send.concat(peers.receive)).filter(function (id) { return id !== String(nodeId); })[0]) || "";
+    if (!target) return false;
+    this.graphSetSelection(rec, [target]);
+    if (rec.nodeEls[target] && rec.nodeEls[target].focus) rec.nodeEls[target].focus();
+    return true;
   };
 
   /** Reconcile one graph record with the host value. Value/geometry changes
@@ -2802,7 +2834,14 @@
       item.appendChild(button);
       if (type) item.appendChild(el("span", {class: "pui-graph-outline-type", text: String(type.label || type.id)}));
       var outlinePortal = Graph.portalInfo(node, type);
-      if (outlinePortal) item.appendChild(el("span", {class: "pui-graph-outline-portal", text: " · " + outlinePortal.direction + " " + (outlinePortal.name || "(unnamed)")}));
+      if (outlinePortal) {
+        item.appendChild(el("span", {class: "pui-graph-outline-portal", text: " · " + outlinePortal.direction + " " + (outlinePortal.name || "(unnamed)")}));
+        if (outlinePortal.name) {
+          var peerButton = el("button", {type: "button", class: "pui-graph-outline-peer", text: "↔ peer", "aria-label": "Jump to the peer of portal " + outlinePortal.name});
+          peerButton.addEventListener("click", function () { self.graphJumpPortal(rec, node.id); });
+          item.appendChild(peerButton);
+        }
+      }
       (Graph.paramPorts(type) || []).forEach(function (paramPort) {
         item.appendChild(el("span", {class: "pui-graph-outline-port", text: " ↳ " + String(paramPort.label || paramPort.param) + " (" + String(paramPort.type || "control") + ")"}));
       });
@@ -4056,6 +4095,7 @@
       if (el && el.classList) el.classList.toggle("is-selected", !!rec.selected[nodeId]);
     });
     (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    this.graphPaintPortalPeers(rec);
     if (rec.block.selection_bind && rec.graphPath === String(rec.block.bind || "")) this.writeSelection(rec, {ids: Object.keys(rec.selected), active: key}, "node", "");
     if (rec.inspector) this.renderGraphInspector(rec);
   };
@@ -4071,6 +4111,7 @@
     (rec.cableRefs || []).forEach(function (ref) {
       if (ref.el.classList) ref.el.classList.toggle("is-selected", ref.cable === cable);
     });
+    this.graphPaintPortalPeers(rec);
     if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "cable", String(cable.id || ""));
     if (rec.inspector) this.renderGraphInspector(rec);
   };
@@ -4084,6 +4125,7 @@
       if (rec.nodeEls[id] && rec.nodeEls[id].classList) rec.nodeEls[id].classList.remove("is-selected");
     });
     (rec.cableRefs || []).forEach(function (ref) { if (ref.el.classList) ref.el.classList.remove("is-selected"); });
+    this.graphPaintPortalPeers(rec);
     if (rec.block.selection_bind) this.writeSelection(rec, {ids: [], active: ""}, "node", "");
     if (rec.inspector) this.renderGraphInspector(rec);
   };
