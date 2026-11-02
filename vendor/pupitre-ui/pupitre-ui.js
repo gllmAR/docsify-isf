@@ -1650,10 +1650,13 @@
         node.hidden_inputs, node.hidden_outputs, node.hidden_params, node.value_texture]);
     });
     (graph.cables || []).forEach(function (cable) {
-      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to]);
+      if (isObject(cable)) cables.push([String(cable.id || ""), cable.from, cable.to, cable.via || null]);
     });
     (graph.frames || []).forEach(function (frame) {
       if (isObject(frame)) frames.push([String(frame.id || ""), frame.members]);
+    });
+    (graph.reroutes || []).forEach(function (point) {
+      if (isObject(point)) frames.push(["reroute", String(point.id || ""), point.x, point.y, point.label]);
     });
     return JSON.stringify({types: types || [], interface: graph.interface, nodes: nodes, cables: cables, frames: frames});
   };
@@ -2227,7 +2230,7 @@
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
       wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
-      collapsedNodes: {}, materializedNodes: {}, countEl: countEl,
+      collapsedNodes: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
       viewport: viewport, content: content, cableGroup: cableGroup,
       metrics: self.graphMetrics(), nodeExtraHeights: {}, bodyEls: {}, bodyObservers: {}};
     this.graphRecords.push(rec);
@@ -2344,7 +2347,8 @@
       var a = Graph.portPosition(fromNode, typeMap[String(fromNode.type)], from.port, false, rec.metrics);
       var b = Graph.portPosition(toNode, typeMap[String(toNode.type)], to.port, true, rec.metrics);
       if (!a || !b) return;
-      var p = Graph.cablePath(a, b);
+      var route = Graph.cableRoute(a, b, rec.graph.reroutes, cable.via);
+      var p = route.path;
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
       var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
       var path = svgEl("path", {
@@ -2352,7 +2356,7 @@
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
         "data-cross-type": crossType,
-        d: "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2
+        d: Graph.routePathData(route)
       });
       path.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
@@ -2361,7 +2365,7 @@
       cableGroup.appendChild(path);
       var labelEl = null;
       if (cable.label !== undefined && cable.label !== null && String(cable.label) !== "") {
-        var mid = Graph.bezierPoint(p, 0.5);
+        var mid = Graph.routeLabelPoint(route) || Graph.bezierPoint(p, 0.5);
         labelEl = svgEl("text", {class: "pui-graph-cable-label", x: mid.x, y: mid.y - 5, "text-anchor": "middle", "data-cable-label": String(cable.label)});
         labelEl.textContent = String(cable.label);
         cableGroup.appendChild(labelEl);
@@ -2375,6 +2379,17 @@
         rec.cableRefsByNode[to.node].push(cableRef);
       }
     });
+    var rerouteLayer = el("div", {class: "pui-graph-reroutes", "aria-hidden": "true"});
+    (graph.reroutes || []).forEach(function (point) {
+      if (!isObject(point)) return;
+      var id = String(point.id || "");
+      var dot = el("span", {class: "pui-graph-reroute" + (point.label ? " has-label" : ""), style: "left:" + (Number(point.x) || 0) + "px;top:" + (Number(point.y) || 0) + "px;", "data-reroute-id": id});
+      dot.title = point.label ? "Reroute · " + String(point.label) : "Reroute";
+      if (point.label) dot.appendChild(el("span", {class: "pui-graph-reroute-label", text: String(point.label)}));
+      rec.rerouteEls[id] = dot;
+      rerouteLayer.appendChild(dot);
+    });
+    content.appendChild(rerouteLayer);
     self.graphRefreshCollapsed(rec);
     rec.guideLayer = el("div", {class: "pui-graph-guides"});
     content.appendChild(rec.guideLayer);
@@ -2762,9 +2777,13 @@
       });
       list.appendChild(item);
     });
+    (graph.reroutes || []).forEach(function (point) {
+      if (!isObject(point)) return;
+      list.appendChild(el("li", {class: "pui-graph-outline-reroute", text: "Reroute" + (point.label ? " · " + String(point.label) : "") + " · " + String(point.x || 0) + "," + String(point.y || 0)}));
+    });
     cables.forEach(function (cable) {
       if (!isObject(cable)) return;
-      list.appendChild(el("li", {class: "pui-graph-outline-cable", text: String(cable.from) + " → " + String(cable.to) + (cable.label ? " · " + String(cable.label) : "")}));
+      list.appendChild(el("li", {class: "pui-graph-outline-cable", text: String(cable.from) + " → " + String(cable.to) + (cable.label ? " · " + String(cable.label) : "") + (isArray(cable.via) && cable.via.length ? " · via " + cable.via.join(" → ") : "")}));
     });
     if (!nodes.length) list.appendChild(el("li", {text: "No nodes."}));
     outline.appendChild(list);
@@ -2923,6 +2942,7 @@
       else if (!culling) el.style.display = "";
     });
     if (!culling) {
+      Object.keys(rec.rerouteEls || {}).forEach(function (id) { rec.rerouteEls[id].style.display = ""; });
       (rec.cableRefs || []).forEach(function (entry) {
         var from = entry.cable && global.PupitreGraph ? global.PupitreGraph.parseRef(entry.cable.from) : null;
         var to = entry.cable && global.PupitreGraph ? global.PupitreGraph.parseRef(entry.cable.to) : null;
@@ -3428,6 +3448,13 @@
       var collapsedCable = (from && rec.collapsedNodes[from.node]) || (to && rec.collapsedNodes[to.node]);
       entry.el.style.display = on && !collapsedCable ? "" : "none";
       if (entry.labelEl) entry.labelEl.style.display = on && !collapsedCable ? "" : "none";
+    });
+    (rec.graph.reroutes || []).forEach(function (point) {
+      if (!isObject(point)) return;
+      var el = rec.rerouteEls[String(point.id || "")];
+      if (!el) return;
+      var x = Number(point.x) || 0, y = Number(point.y) || 0;
+      el.style.display = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? "" : "none";
     });
   };
 
@@ -4537,10 +4564,11 @@
       var a = Graph.portPosition(fromNode, rec.typeMap[String(fromNode.type)], from.port, false, rec.metrics);
       var b = Graph.portPosition(toNode, rec.typeMap[String(toNode.type)], to.port, true, rec.metrics);
       if (!a || !b) return;
-      var p = Graph.cablePath(a, b);
-      ref.el.setAttribute("d", "M " + p.x1 + " " + p.y1 + " C " + p.cx1 + " " + p.cy1 + " " + p.cx2 + " " + p.cy2 + " " + p.x2 + " " + p.y2);
+      var route = Graph.cableRoute(a, b, rec.graph.reroutes, ref.cable.via);
+      var p = route.path;
+      ref.el.setAttribute("d", Graph.routePathData(route));
       if (ref.labelEl) {
-        var mid = Graph.bezierPoint(p, 0.5);
+        var mid = Graph.routeLabelPoint(route) || Graph.bezierPoint(p, 0.5);
         ref.labelEl.setAttribute("x", mid.x);
         ref.labelEl.setAttribute("y", mid.y - 5);
         ref.labelEl.textContent = String(ref.cable.label || "");

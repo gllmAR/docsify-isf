@@ -1024,6 +1024,10 @@
 .pui-graph-visibility-row { display: flex; align-items: center; gap: 4px; color: var(--pui-muted); }
 .pui-graph-visibility-row input { min-height: 16px; }
 .pui-graph-cable.is-selected { stroke: var(--pui-accent) !important; stroke-width: 3; }
+.pui-graph-reroutes { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.pui-graph-reroute { position: absolute; width: 10px; height: 10px; box-sizing: border-box; transform: translate(-50%, -50%); border: 2px solid var(--pui-surface); border-radius: 50%; background: var(--pui-accent); box-shadow: 0 0 0 1px var(--pui-border); }
+.pui-graph-reroute.has-label { width: 12px; height: 12px; }
+.pui-graph-reroute-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); padding: 1px 3px; border-radius: 2px; background: color-mix(in srgb, var(--pui-surface) 88%, transparent); color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.55); white-space: nowrap; }
 .pui-graph-cable-label { fill: var(--pui-text); font: 600 calc(var(--pui-type-base) * 0.58) ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; paint-order: stroke; stroke: var(--pui-surface); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; opacity: 0.9; }
 
 /* Portable P0 surfaces: connection, preview, schema form. */
