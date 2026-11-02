@@ -1094,7 +1094,13 @@
     var leftSpec = widthSpec("left", 250);
     var rightSpec = widthSpec("right", 300);
     var stageMin = Number(stageLayout.min_width) || 360;
+    var openBinds = {};
+    ["left", "right", "bottom"].forEach(function (region) {
+      var bind = isObject(layout[region]) && typeof layout[region].open_bind === "string" ? layout[region].open_bind : "";
+      if (bind) openBinds[region] = bind;
+    });
     var rec = {pageId: pageId, layout: layout, element: wb, panes: {}, buttons: {}, collapsed: {},
+      openBinds: openBinds,
       widths: {left: leftSpec.initial, right: rightSpec.initial},
       widthLimits: {left: leftSpec, right: rightSpec}, stageMin: stageMin,
       narrow: false, resize: null};
@@ -1340,7 +1346,11 @@
       if (isFinite(storedWidth)) rec.widths[region] = Math.max(limits.min, Math.min(limits.max, storedWidth));
     });
     ["left", "right", "bottom"].forEach(function (region) {
-      var collapsed = stored(region, "collapsed", false);
+      var boundOpen;
+      if (rec.openBinds[region]) {
+        try { boundOpen = self.adapter.getValue(rec.openBinds[region]); } catch (error) { boundOpen = undefined; }
+      }
+      var collapsed = typeof boundOpen === "boolean" ? !boundOpen : stored(region, "collapsed", false);
       if (collapsed && rec.panes[region]) { rec.collapsed[region] = true; rec.panes[region].classList.add("is-collapsed"); if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", "false"); if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = "none"; }
     });
     this.workbenchApplyWidths(rec);
@@ -1406,10 +1416,7 @@
       if (enteringNarrow) {
         ["left", "right"].forEach(function (region) {
           if (!rec.panes[region] || rec.collapsed[region]) return;
-          rec.collapsed[region] = true;
-          rec.panes[region].classList.add("is-collapsed");
-          if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", "false");
-          if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = "none";
+          self.workbenchSetCollapsed(rec, region, true, true);
         });
       }
     };
@@ -1459,24 +1466,40 @@
     return {workbenches: out, overflow: out.some(function (entry) { return entry.stageOverflow; })};
   };
 
-  Renderer.prototype.workbenchToggle = function (rec, region) {
+  Renderer.prototype.workbenchSetCollapsed = function (rec, region, collapsed, notify) {
     if (!rec || !rec.panes[region]) return false;
-    var pane = rec.panes[region];
-    var collapsed = !rec.collapsed[region];
-    if (rec.narrow && !collapsed && (region === "left" || region === "right")) {
-      var other = region === "left" ? "right" : "left";
-      if (rec.collapsed[other] === false) {
-        rec.collapsed[other] = true;
-        rec.panes[other].classList.add("is-collapsed");
-        if (rec.buttons[other]) rec.buttons[other].setAttribute("aria-expanded", "false");
-      }
-    }
+    collapsed = !!collapsed;
     rec.collapsed[region] = collapsed;
-    pane.classList.toggle("is-collapsed", collapsed);
+    rec.panes[region].classList.toggle("is-collapsed", collapsed);
     if (rec.buttons[region]) rec.buttons[region].setAttribute("aria-expanded", collapsed ? "false" : "true");
     if (rec.resizers && rec.resizers[region]) rec.resizers[region].style.display = collapsed ? "none" : "";
     try { if (window.localStorage) window.localStorage.setItem("pui.workbench." + rec.pageId + "." + region + ".collapsed", collapsed ? "1" : "0"); } catch (error) {}
+    if (notify && rec.openBinds[region]) {
+      try { this.setPath(rec.openBinds[region], !collapsed); } catch (error) { /* host binding is advisory */ }
+    }
     return true;
+  };
+
+  Renderer.prototype.workbenchApplyOpen = function (rec) {
+    var self = this;
+    if (!rec || !rec.openBinds) return;
+    Object.keys(rec.openBinds).forEach(function (region) {
+      if (!rec.panes[region]) return;
+      var value;
+      try { value = self.adapter.getValue(rec.openBinds[region]); } catch (error) { value = undefined; }
+      if (typeof value !== "boolean") return;
+      if ((!value) !== !!rec.collapsed[region]) self.workbenchSetCollapsed(rec, region, !value, false);
+    });
+  };
+
+  Renderer.prototype.workbenchToggle = function (rec, region) {
+    if (!rec || !rec.panes[region]) return false;
+    var collapsed = !rec.collapsed[region];
+    if (rec.narrow && !collapsed && (region === "left" || region === "right")) {
+      var other = region === "left" ? "right" : "left";
+      if (rec.collapsed[other] === false) this.workbenchSetCollapsed(rec, other, true, true);
+    }
+    return this.workbenchSetCollapsed(rec, region, collapsed, true);
   };
 
   Renderer.prototype.buildSection = function (section, pageIndex, sectionIndex, options) {
@@ -10691,7 +10714,7 @@
     popup.addEventListener("keydown", function (event) { if (event.key === "Escape") { event.preventDefault(); closeMenu(); } });
     popup.addEventListener("click", function (event) {
       var target = event.target && event.target.closest ? event.target.closest(".pui-actions button, .pui-actions a") : null;
-      if (target) setTimeout(closeMenu, 0);
+      if (target) closeMenu();
     }, true);
     root.appendChild(trigger);
     root.appendChild(popup);
@@ -12984,6 +13007,7 @@
     this.layoutToolbars();
     this.paintRanges();
     if (this.debug) this.debugRefresh();
+    for (var wb = 0; wb < this.workbenches.length; wb++) this.workbenchApplyOpen(this.workbenches[wb]);
   };
 
   Renderer.prototype.paintRanges = function () {
@@ -13964,7 +13988,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.11.1",
+    version: "1.12.0",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
