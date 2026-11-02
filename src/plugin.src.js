@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.41.0
+ * docsify-isf v1.42.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.41.0";
+    var VERSION = "1.42.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3606,9 +3606,22 @@
             ".isf-btn.is-active{background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-count{font-variant-numeric:tabular-nums;font-size:.68rem;opacity:.75}",
             ".isf-body{position:relative;display:grid;grid-template-columns:minmax(0,1fr)}",
-            ".isf-stage{position:relative;background:#0b0c10;min-height:110px;overflow:hidden}",
+            ".isf-stage{position:relative;background:#0b0c10;min-height:110px;overflow:hidden;container-type:inline-size;container-name:isf-stage}",
             ".isf-canvas{display:block;width:100%;height:100%}",
             ".isf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;background:rgba(10,11,14,.72);color:#f5f6f8;font-size:.82rem;z-index:7}",
+            ".isf-stage-hud{position:absolute;inset-inline:0;inset-block-end:0;z-index:5;display:flex;align-items:center;gap:.4rem;padding:.3rem .45rem max(.3rem,env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(6,8,12,0),rgba(6,8,12,.66));color:#f5f6f8;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease,visibility .16s ease}",
+            ".isf-stage-hud.is-visible,.isf-stage:focus-within .isf-stage-hud{opacity:1;visibility:visible;pointer-events:auto}",
+            ".isf-stage-hud.isf-hud-unavailable{display:none}",
+            ".isf-hud-btn{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:3px;border:1px solid rgba(255,255,255,.24);border-radius:6px;background:rgba(12,14,18,.58);color:#f5f6f8;cursor:pointer;flex:0 0 auto}",
+            ".isf-hud-btn:hover{background:rgba(255,255,255,.16)}",
+            ".isf-hud-btn .isf-icon{width:16px;height:16px}",
+            ".isf-hud-time{font-size:.72rem;font-variant-numeric:tabular-nums;white-space:nowrap;color:#f5f6f8}",
+            ".isf-hud-stats{font-size:.68rem;color:rgba(245,246,248,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+            ".isf-hud-actions{display:flex;gap:.3rem;margin-inline-start:auto}",
+            "@container isf-stage (max-width:440px){.isf-hud-stats{display:none}}",
+            "@media (pointer:coarse){.isf-hud-btn{min-width:36px;min-height:36px}}",
+            "@media (prefers-reduced-motion:reduce){.isf-stage-hud{transition:none}}",
+            ".isf-bare:not(.isf-revealed) .isf-stage-hud{display:none!important}",
             ".isf-overlay-inner{max-width:34rem}",
             ".isf-overlay strong{display:block;margin-bottom:.3rem;font-size:.92rem}",
             ".isf-overlay code{background:rgba(255,255,255,.12);padding:.1rem .3rem;border-radius:4px;font-size:.78rem;word-break:break-all}",
@@ -3867,6 +3880,7 @@
         reset: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         fullscreen: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         source: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
+        download: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10m0 0 4-4m-4 4-4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
         share: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
         copy: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
         check: '<svg class="isf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>',
@@ -5872,6 +5886,111 @@
         stage.appendChild(canvas);
         stage.appendChild(overlay);
 
+        // Content-first stage HUD. It is available only while the Playback
+        // strip is closed (Focus preview closes it), so it never duplicates the
+        // full transport. It auto-hides while playing unless the stage or HUD
+        // has keyboard focus, and it is suppressed in the bare/OBS surface.
+        var hud = h("div", "isf-stage-hud", { role: "group", "aria-label": "Preview controls" });
+        var hudPlay = h("button", "isf-hud-btn", { type: "button", title: "Pause", "aria-label": "Pause" });
+        var hudTime = h("span", "isf-hud-time", { "aria-hidden": "true" });
+        var hudStats = h("span", "isf-hud-stats", { "aria-hidden": "true" });
+        var hudActions = h("div", "isf-hud-actions");
+        var hudCapture = h("button", "isf-hud-btn", { type: "button", title: "Export current frame as PNG", "aria-label": "Export current frame as PNG" });
+        var hudFull = h("button", "isf-hud-btn", { type: "button", title: "Fullscreen", "aria-label": "Fullscreen" });
+        hudPlay.innerHTML = ICONS.pause;
+        hudCapture.innerHTML = ICONS.download;
+        hudFull.innerHTML = ICONS.fullscreen;
+        hud.appendChild(hudPlay);
+        hud.appendChild(hudTime);
+        hud.appendChild(hudStats);
+        hudActions.appendChild(hudCapture);
+        hudActions.appendChild(hudFull);
+        hud.appendChild(hudActions);
+        stage.appendChild(hud);
+        var hudHideTimer = null;
+        var hudPeekTimer = null;
+        var hudFormatTime = function (seconds) {
+            var total = Math.max(0, Math.floor(Number(seconds) || 0));
+            var minutes = Math.floor(total / 60);
+            var secs = total % 60;
+            return minutes + ":" + (secs < 10 ? "0" : "") + secs;
+        };
+        var hudAvailable = function () {
+            if (viewer.bottomOpen || !viewer.runtime || viewer.state !== "live") return false;
+            return !(block.classList.contains("isf-bare") && !block.classList.contains("isf-revealed"));
+        };
+        var hudClearHide = function () {
+            if (hudHideTimer) { clearTimeout(hudHideTimer); hudHideTimer = null; }
+        };
+        var hudHide = function () {
+            // Keep a keyboard-accessible HUD while the preview or HUD itself
+            // has focus; pointer-only sessions still auto-hide.
+            if (stage.contains(document.activeElement) || (hud.matches && hud.matches(":hover"))) return;
+            hud.classList.remove("is-visible");
+            hudClearHide();
+        };
+        var hudScheduleHide = function () {
+            hudClearHide();
+            if (!viewer.runtime || !viewer.runtime.playing) return;
+            hudHideTimer = setTimeout(function () { hudHideTimer = null; hudHide(); }, 1900);
+        };
+        var hudShow = function () {
+            if (!hudAvailable()) return;
+            hud.classList.add("is-visible");
+            hudScheduleHide();
+        };
+        var hudPeek = function (ms) {
+            hudShow();
+            if (hudPeekTimer) clearTimeout(hudPeekTimer);
+            hudPeekTimer = setTimeout(function () { hudPeekTimer = null; hudHide(); }, ms || 1500);
+        };
+        viewer.stageHud = {
+            element: hud,
+            refresh: function () {
+                var runtime = viewer.runtime;
+                var playing = !!(runtime && runtime.playing);
+                hudPlay.innerHTML = playing ? ICONS.pause : ICONS.play;
+                hudPlay.title = playing ? "Pause" : "Play";
+                hudPlay.setAttribute("aria-label", playing ? "Pause" : "Play");
+                var transport = viewer.transportValue ? viewer.transportValue() : { position: 0, duration: 60 };
+                hudTime.textContent = hudFormatTime(transport.position) + " / " + hudFormatTime(transport.duration);
+                if (runtime && runtime.destWidth) {
+                    hudStats.textContent = runtime.destWidth + "×" + runtime.destHeight + (runtime.fps ? " · " + runtime.fps + " fps" : "");
+                } else {
+                    hudStats.textContent = "";
+                }
+                var full = isFullscreenActive();
+                hudFull.title = full ? "Exit fullscreen" : "Fullscreen";
+                hudFull.setAttribute("aria-label", hudFull.title);
+            },
+            sync: function () {
+                var available = hudAvailable();
+                hud.classList.toggle("isf-hud-unavailable", !available);
+                if (!available) {
+                    hud.classList.remove("is-visible");
+                    hudClearHide();
+                }
+            },
+            show: hudShow,
+            hide: hudHide,
+            peek: hudPeek
+        };
+        hudPlay.addEventListener("click", function (event) { event.stopPropagation(); viewer.togglePlay(); viewer.stageHud.refresh(); hudShow(); });
+        hudCapture.addEventListener("click", function (event) { event.stopPropagation(); viewer.exportPng(); hudShow(); });
+        hudFull.addEventListener("click", function (event) { event.stopPropagation(); viewer.toggleFullscreen(); hudShow(); });
+        hud.addEventListener("dblclick", function (event) { event.stopPropagation(); });
+        stage.addEventListener("pointermove", hudShow);
+        stage.addEventListener("pointerenter", hudShow);
+        stage.addEventListener("pointerdown", hudShow);
+        stage.addEventListener("pointerleave", hudHide);
+        stage.addEventListener("focusin", hudShow);
+        stage.addEventListener("focusout", function () { setTimeout(hudHide, 80); });
+        hud.addEventListener("focusin", hudShow);
+        hud.addEventListener("focusout", function () { setTimeout(hudHide, 80); });
+        hud.addEventListener("pointerenter", hudShow);
+        hud.addEventListener("pointerleave", hudScheduleHide);
+        viewer.stageHud.sync();
+
         var paramsPanel = h("div", "isf-panel isf-params", {
             id: uid + "-params", role: "tabpanel", "aria-label": "Parameters"
         });
@@ -5971,6 +6090,7 @@
             canvas: canvas,
             overlay: overlay,
             overlayInner: overlayInner,
+            stageHud: hud,
             badge: badge,
             body: body,
             paramsPanel: paramsPanel,
@@ -6117,6 +6237,7 @@
             viewer.setState(message, "warn");
         };
         viewer.updateBadge = function (text) {
+            if (viewer.stageHud) { viewer.stageHud.refresh(); viewer.stageHud.sync(); }
             if (!config.showStats) return;
             viewer.badgeText = text ? String(text) : "";
             badge.textContent = viewer.badgeText;
@@ -6413,6 +6534,10 @@
             if (viewer.isInspectorOpen()) closeInspector();
             viewer.bottomOpen = false;
             viewer.applyPUIWorkbench();
+            if (viewer.stageHud) {
+                viewer.stageHud.sync();
+                viewer.stageHud.peek(1700);
+            }
             cancelPaneFocus();
             if (viewer.dom.canvas && viewer.dom.canvas.focus) {
                 try { viewer.dom.canvas.focus({ preventScroll: true }); } catch (error) { /* ignore */ }
@@ -6925,7 +7050,9 @@
             if (!viewer.puiWorkbench || viewer._puiWorkbenchFrame) return;
             viewer._puiWorkbenchFrame = requestAnimationFrame(function () {
                 viewer._puiWorkbenchFrame = 0;
-                if (viewer.disposed || !viewer.puiWorkbench) return;
+                if (viewer.disposed) return;
+                if (viewer.stageHud) viewer.stageHud.sync();
+                if (!viewer.puiWorkbench) return;
                 try { viewer.puiWorkbench.ui.apply(); } catch (error) { /* ignore */ }
             });
         };
@@ -6958,7 +7085,7 @@
                 setValue: function (path, value) {
                     if (path === "/isf/ui/inspectorOpen") { viewer.setInspectorOpen(!!value); return true; }
                     if (path === "/isf/ui/editorOpen") { viewer.setEditorOpen(!!value); return true; }
-                    if (path === "/isf/ui/playbackOpen") { viewer.bottomOpen = !!value; viewer.applyPUIWorkbench(); return true; }
+                    if (path === "/isf/ui/playbackOpen") { viewer.bottomOpen = !!value; if (viewer.stageHud) viewer.stageHud.sync(); viewer.applyPUIWorkbench(); return true; }
                     return false;
                 },
                 callAction: function (name) {

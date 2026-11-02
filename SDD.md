@@ -408,7 +408,7 @@ buttons. Pane toggles carry decorative host glyphs with accessible names and
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.14.1's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.14.2's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -458,6 +458,12 @@ Density decisions:
   host reports as unsupported, then keeps the statusbar visible in ~80 px. The
   titlebar Playback toggle can collapse the whole strip; fullscreen/focus/
   reset/share are direct titlebar actions.
+- When Playback is closed the host stage HUD replaces it over the preview:
+  play/pause, time, resolution/fps, capture and fullscreen. It is host-owned,
+  appears only when the runtime is live, stays for keyboard focus/paused
+  previews, auto-hides during pointer playback, drops stats below 440 px of
+  stage width, and is suppressed in the OBS/bare surface. Focus preview closes
+  Playback and reveals this HUD immediately.
 - Workbench applies coalesce to one per animation frame; the editor More PUI is
   lazy-mounted on first Source open; pane state is host-bound instead of
   mirrored click state. The description is one ellipsized line with the full
@@ -476,6 +482,10 @@ Density decisions:
 - Keyboard help is a workbench modal, the editor More menu is anchored inside
   the Source pane, and the command palette has a visible title/hint. On phones
   both help and palette are checked at 390 px for horizontal clipping.
+- The stage HUD is a host overlay, not PUI pane chrome. It never duplicates the
+  Playback strip: it is only enabled while that strip is closed. Its buttons
+  stop stage double-click propagation, keep focus within the preview, and use
+  the same capture/fullscreen actions as the titlebar/menu.
 - Auto-open never replaces an already-open pane or resets a user-selected tab;
   it also skips while Source is open.
 

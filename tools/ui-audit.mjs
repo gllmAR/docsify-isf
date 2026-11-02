@@ -170,6 +170,27 @@ await clickRegion("left");
 await sleep(400);
 await shot("mobile-source");
 
+// Stage HUD at phone width: close Source and Playback, then tap the preview.
+// The HUD owns play/time/stats/capture/fullscreen without the bottom strip.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const left = block && block.querySelector('.pui-workbench-toggle[data-pui-region="left"]');
+    if (left && left.getAttribute("aria-expanded") === "true") left.click();
+    const bottom = block && block.querySelector('.pui-workbench-toggle[data-pui-region="bottom"]');
+    if (bottom && bottom.getAttribute("aria-expanded") === "true") bottom.click();
+});
+await sleep(350);
+const stagePoint = await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    block.scrollIntoView({ block: "center" });
+    const rect = block.querySelector(".isf-stage").getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+});
+await page.touchscreen.tap(stagePoint.x, stagePoint.y);
+await page.mouse.click(stagePoint.x, stagePoint.y);
+await sleep(350);
+await shot("mobile-stage");
+
 // Help and palette at phone width: both must fit without horizontal clipping.
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));

@@ -251,7 +251,7 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.14.1 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.14.2 **collapsible title
 bar**. Pane toggles and direct actions are icon-only (`</>`, `⚙`, `▶`,
 fullscreen, focus, reset, share, menu) with accessible names/tooltips; active
 panes use the accent state. The description is one ellipsized line by default,
@@ -267,7 +267,9 @@ buttons show/hide each section. The right pane has **Parameters / View / Log**
 tabs: parameters are primary, View owns pass/scale/resolution/randomize/export,
 and Log carries status, render/input/pass readouts and quick actions. The
 bottom **Playback** row carries the native PUI transport and a PUI statusbar.
-The source editor keeps the host editor/import chrome in the left pane.
+Closing that strip, including with **Focus preview**, reveals a host stage HUD
+with play/pause, time, resolution/fps, capture and fullscreen. The source
+editor keeps the host editor/import chrome in the left pane.
 
 On a wide workbench both side panes can be open at once, with the shader
 between them; narrow screens turn them into mutually exclusive full-width
@@ -276,8 +278,8 @@ Only one Parameters pane is open across viewers at a time, so panels never stack
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.14.1** snapshot (commit
-`aadf1bd`; upstream tag `v1.14.1`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.14.2** snapshot (commit
+`fbc45e9`; upstream tag `v1.14.2`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -396,7 +398,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.14.1) hides the description and keeps a compact
+  Its collapse control (PUI 1.14.2) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -405,7 +407,9 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   screens they become mutually exclusive overlays and the stage keeps the full
   width. Only one Parameters pane is open across viewers.
 - Playback is a native PUI transport at the bottom, followed by a PUI
-  statusbar with status and render readouts. Feedback uses a dismissible PUI
+  statusbar with status and render readouts. When the strip is closed, the
+  content-first stage HUD carries play/pause, time, resolution/fps, capture and
+  fullscreen over the preview. Feedback uses a dismissible PUI
   toast stack. On phones the transport collapses to play/stop + seek, keeps the
   statusbar, and the titlebar uses two compact rows: identity/description then
   the function buttons (the Menu becomes the ☰ icon).
@@ -430,6 +434,11 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   statusbar remains visible below it. The Playback toggle in the title bar can
   collapse the whole strip. Fullscreen keeps the compatibility status in the
   statusbar instead of leaving a blank `Status` label.
+- Closing Playback (including Focus preview) exposes a subtle **stage HUD**:
+  play/pause, time, resolution/fps, PNG capture and fullscreen over the
+  preview. It stays for keyboard focus and pauses, auto-hides during pointer
+  playback, hides the stats on stages ≤440 px, and is suppressed for
+  OBS/bare viewers.
 - Keyboard help is a workbench-level modal (scrollable on phones) rather than a
   popover trapped inside the stage; the editor More menu opens inside the
   Source pane and no longer runs off its left edge.

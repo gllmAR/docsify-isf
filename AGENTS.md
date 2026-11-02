@@ -48,6 +48,11 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   cancel the closed pane's deferred toggle focus. Auto-open never resets a
   user-selected tab and never steals from an already-open Source/Parameters
   pane.
+- **Stage HUD complements, never duplicates, Playback.** The HUD is available
+  only while the Playback strip is closed (including Focus preview); it carries
+  play/pause, time, stats, capture and fullscreen. Keep it keyboard reachable,
+  auto-hiding during pointer playback, stats-free below 440 px, and hidden in
+  OBS/bare mode. HUD buttons must stop stage double-click propagation.
 - **Verify the whole use.** `npm test` for the contract, `npm run test:smoke`
   for mounting/features, and `npm run test:interaction` for the full click/touch
   trace plus screenshots. `node tools/ui-audit.mjs` refreshes the committed
@@ -86,6 +91,7 @@ npm run build
   transport, fullscreen, phone overlays, OBS bare and fallback errors.
 - `tests/browser-interaction.mjs` — complete desktop/mobile workbench trace:
   every pane/tab, menu/direct action, parameter family, filter, editor
-  actions/More/Templates, transport, focus, fullscreen and touch taps.
+  actions/More/Templates, transport, focus/HUD controls, fullscreen and touch
+  taps.
 - Interaction screenshots are written to `tests/artifacts/interaction/` and
   uploaded by CI.

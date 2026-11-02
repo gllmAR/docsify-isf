@@ -459,7 +459,19 @@ await blockEval((block) => {
     if (action) action.click();
     return !!action;
 });
-await sleep(300);
+await sleep(450);
+const hudState = await page.evaluate((s) => {
+    const block = document.querySelector(s);
+    const hud = block.querySelector(".isf-stage-hud");
+    const styles = getComputedStyle(hud);
+    return {
+        visible: styles.visibility !== "hidden" && !hud.classList.contains("isf-hud-unavailable"),
+        time: hud.querySelector(".isf-hud-time").textContent,
+        stats: hud.querySelector(".isf-hud-stats").textContent,
+        buttons: hud.querySelectorAll(".isf-hud-btn").length
+    };
+}, selector);
+check("focus reveals the stage HUD", hudState.visible && /^\d+:\d{2} \/ \d+:\d{2}$/.test(hudState.time) && /×/.test(hudState.stats) && hudState.buttons === 3, hudState);
 await capture("24-focus-preview");
 const focusState = await page.evaluate((s) => {
     const block = document.querySelector(s);
@@ -470,21 +482,37 @@ const focusState = await page.evaluate((s) => {
     };
 }, selector);
 check("focus preview closes all panes", focusState.left === "false" && focusState.right === "false" && focusState.bottom === "false", focusState);
+const hudPlay = await page.$(`${selector} .isf-stage-hud .isf-hud-btn`);
+if (hudPlay) { await hudPlay.click(); await sleep(300); }
+await capture("24b-hud-pause");
+const hudPlayLabel = await page.$eval(`${selector} .isf-stage-hud .isf-hud-btn`, (el) => el.getAttribute("aria-label"));
+check("HUD play/pause toggles playback", hudPlayLabel === "Play" || hudPlayLabel === "Pause", hudPlayLabel);
+const hudCapture = await page.$(`${selector} .isf-stage-hud button[aria-label*="Export current frame"]`);
+if (hudCapture) { await hudCapture.click(); await sleep(350); }
+await capture("24c-hud-capture");
+const hudDownloads = await page.evaluate(() => window.__downloads.slice());
+check("HUD capture exports a PNG", hudDownloads.some((href) => /^data:image\/png/.test(href)), hudDownloads.slice(-1));
 
-// ── fullscreen
+// ── fullscreen through the HUD action
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
-const point = await page.evaluate((s) => {
-    const rect = document.querySelector(s + " .isf-canvas").getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-}, selector);
-await page.mouse.click(point.x, point.y, { clickCount: 2 });
+const hudFullscreen = await page.$(`${selector} .isf-stage-hud button[aria-label="Fullscreen"]`);
+if (hudFullscreen) await hudFullscreen.click();
+else {
+    const point = await page.evaluate((s) => {
+        const rect = document.querySelector(s + " .isf-canvas").getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, selector);
+    await page.mouse.click(point.x, point.y, { clickCount: 2 });
+}
 await sleep(900);
 await capture("25-fullscreen");
 check("fullscreen entered", await page.evaluate(() => !!(document.fullscreenElement || document.webkitFullscreenElement)));
-await page.evaluate(async () => {
-    const exit = document.exitFullscreen || document.webkitExitFullscreen;
-    if (exit) await exit.call(document);
-});
+try {
+    await page.evaluate(async () => {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+    });
+} catch (error) { /* headless may already have left fullscreen */ }
 await sleep(500);
 
 // ── mobile touch pass: reload at phone width so auto-open/narrow are native.

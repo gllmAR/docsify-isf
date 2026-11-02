@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.14.1
+**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.14.2
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -23,6 +23,7 @@ checked against established editor/workbench implementations.
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |
 | Phone, Parameters | ![mobile parameters](ui-audit/mobile-parameters.png) |
 | Phone, Source | ![mobile source](ui-audit/mobile-source.png) |
+| Phone, stage HUD | ![mobile stage](ui-audit/mobile-stage.png) |
 | Phone, shortcuts help | ![mobile help](ui-audit/mobile-help.png) |
 | Phone, command palette | ![mobile palette](ui-audit/mobile-palette.png) |
 
@@ -128,6 +129,10 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 - Fullscreen keeps the compatibility status; auto-open never resets a selected
   tab or steals from an already-open Source pane; pending pane focus is
   cancelled when another pane opens.
+- Closing Playback (including Focus preview) reveals a content-first **stage
+  HUD** with play/pause, time, resolution/fps, capture and fullscreen. It stays
+  for keyboard focus/pause, auto-hides during pointer playback, drops stats
+  below 440 px of stage width, and is suppressed for OBS/bare viewers.
 
 ### Measured result
 
@@ -143,6 +148,10 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 - Playback strip: **~80 px** desktop / **112 px** phone including the two-line
   statusbar. The Source toolbar stacks a compact tab/fold row over Apply +
   More. The titlebar description is one ellipsized line (full tooltip).
+- Stage HUD: **32 px** controls (36 px coarse pointer) over the preview; the
+  desktop Focus HUD shows time + `width×height · fps`, while a phone stage
+  (356 px) keeps only time + play/capture/fullscreen because stats would
+  truncate.
 
 ---
 
@@ -177,7 +186,20 @@ The second full capture review found and fixed:
 11. **Stale drawer/inspector/template CSS** was removed after the workbench
     migration.
 
-## 4.2 Runtime cost controls
+## 4.2 Stage HUD (1.42.0)
+
+- The HUD appears only while Playback is closed, so it never duplicates the
+  full transport. Focus preview closes Playback and peeks the HUD for 1.7 s.
+- Controls: play/pause, elapsed/total time, resolution/fps, PNG capture,
+  fullscreen. All buttons stop the stage double-click handler.
+- Pointer movement/enter/down reveals it; a 1.9 s timer hides it during
+  playback. It stays while the stage or HUD has keyboard focus and whenever
+  playback is paused.
+- It is hidden until the runtime is live, unavailable with Playback open, and
+  suppressed in bare/OBS mode. The stats are hidden by a stage container query
+  under 440 px so phone buttons do not truncate.
+
+## 4.3 Runtime cost controls
 
 - Workbench state changes are **coalesced to one PUI apply per animation frame**;
   the badge and transport no longer trigger separate applies.
@@ -196,11 +218,8 @@ The second full capture review found and fixed:
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.
-- **Stage HUD**: fullscreen/focus still rely on the titlebar. A subtle
-  auto-hiding HUD (resolution, play, capture) is the next candidate for a
-  media-style preview.
 - **Custom tooltips** for icon-only mobile controls; native `title` is
-  functional but not first-class on touch.
+  functional but not first-class on touch. The stage HUD is now implemented.
 - **Parameter groups** and saved parameter presets for very large materials.
 
 ---
