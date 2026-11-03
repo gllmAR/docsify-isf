@@ -17,7 +17,20 @@ import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "..", "..", "..");
+const pluginDir = path.resolve(here, "..");
+const sharedRoot = path.resolve(pluginDir, "..", "..", "..");
+const corpusCandidates = [
+    process.env.ISF_CORPUS_ROOT,
+    process.env.OBS_ISF_ROOT,
+    path.resolve(sharedRoot, "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(pluginDir, "..", "..", "..", "..", "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(pluginDir, "..", ".."),
+    sharedRoot
+].filter(Boolean);
+const corpusRoot = corpusCandidates.find((dir) =>
+    fs.existsSync(path.join(dir, "modules", "fx", "isf-filter", "library")) &&
+    fs.existsSync(path.join(dir, "modules", "src", "isf-source", "library")));
+const root = corpusRoot || pluginDir;
 
 const chrome = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 if (!fs.existsSync(chrome)) {
@@ -43,8 +56,10 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".glsl": "text/pl
 const server = http.createServer((request, response) => {
     let urlPath = decodeURIComponent((request.url || "/").split("?")[0]);
     if (urlPath === "/") urlPath = "/index.html";
-    const file = path.join(root, urlPath);
-    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const pluginAsset = urlPath === "/docsify-isf.js" || urlPath.startsWith("/tests/") || urlPath.startsWith("/samples/");
+    const base = pluginAsset ? pluginDir : root;
+    const file = path.join(base, urlPath);
+    if (!file.startsWith(base) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         response.writeHead(404); response.end("not found"); return;
     }
     response.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
@@ -58,7 +73,7 @@ const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
 });
 const page = await browser.newPage();
-await page.goto(`http://127.0.0.1:${server.address().port}/docsify-plugins/docsify-isf/tests/coverage-host.html`, { waitUntil: "networkidle0", timeout: 90000 });
+await page.goto(`http://127.0.0.1:${server.address().port}/tests/coverage-host.html`, { waitUntil: "networkidle0", timeout: 90000 });
 
 const results = await page.evaluate(async (paths) => {
     const includeRe = /^[ \t]*#include[ \t]+["']([^"']+)["'][ \t]*(?:\/\/[^\n]*)?$/gm;

@@ -719,11 +719,20 @@ test("MadMapper GENERATORS are declared and exposed", () => {
 
 /* ------------------------------------------------------------ corpus test */
 
-const corpusRoots = [
-    path.join(__dirname, "..", "..", "..", "modules", "fx", "isf-filter", "library"),
-    path.join(__dirname, "..", "..", "..", "modules", "src", "isf-source", "library"),
-    path.join(__dirname, "..", "..", "..", "modules", "src", "isf-transition", "library")
-];
+const corpusCandidates = [
+    process.env.ISF_CORPUS_ROOT,
+    path.resolve(__dirname, "..", "..", "..", "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(__dirname, "..", "..", "..", "..", "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(__dirname, "..", "..")
+].filter(Boolean);
+const corpusRoot = corpusCandidates.find((dir) =>
+    fs.existsSync(path.join(dir, "modules", "fx", "isf-filter", "library")) &&
+    fs.existsSync(path.join(dir, "modules", "src", "isf-source", "library")));
+const corpusRoots = corpusRoot ? [
+    path.join(corpusRoot, "modules", "fx", "isf-filter", "library"),
+    path.join(corpusRoot, "modules", "src", "isf-source", "library"),
+    path.join(corpusRoot, "modules", "src", "isf-transition", "library")
+] : [];
 
 if (process.argv.indexOf("--corpus") !== -1 && corpusRoots.every((root) => fs.existsSync(root))) {
     console.log("\n# Bundled ISF corpus (--corpus)");

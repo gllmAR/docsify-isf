@@ -617,6 +617,7 @@ node tests/run.js --corpus
 
 # optional browser tests (need Chrome + puppeteer-core)
 npm install
+npm run test:coverage  # committed samples + bundled OBS corpus when present
 npm run test:smoke     # browser smoke
 npm run test:interaction # full workbench click/touch trace
 npm run test:frame     # headless frame renderer determinism + comparison

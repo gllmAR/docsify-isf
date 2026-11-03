@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.6 · **docsify-isf:** 1.45.10
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.6 · **docsify-isf:** 1.45.11
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It

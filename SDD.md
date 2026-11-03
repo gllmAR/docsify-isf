@@ -274,7 +274,7 @@ set next to `_<image>_imgSize` for shaders ported from the reference JS host.
 Measured against the bundled library after the include/generator/dialect work
 (`npm run test:coverage`): every material in the bundled library compiles —
 ES 1.00 natively, GLSL ES 3.00 or ES 3.00 with literal promotion otherwise
-(the exact split depends on the corpus, currently ~413/67/396 of 876) —
+(the exact split depends on the corpus; currently 400/41/453 of 894) —
 filters, transitions and sources all at 100 %.
 
 ### 5.9 Live controls and media
@@ -685,7 +685,8 @@ All options live under `window.$docsify.isf`; the reference table is in
 | Unit | `tests/run.js` | tolerant JSON (comments, trailing commas, quotes, escapes, leading comments), expression evaluator, `IMG_*`/`vv_*` rewriting (nesting, comments, `#define`), shader assembly (uniforms, passes, `#version`, line mapping), highlighting/escaping, URL resolution/fallback, link detection |
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
 | Parameter UI | `tests/pui-params.test.js` | vendored PUI hashes/version/release tag, every sample maps to controls, adapter round-trips, grouped documents validate with every field still bound |
-| Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
+| Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly when the OBS corpus is present |
+| Coverage | `npm run test:coverage` | committed samples always compile through ES1→ES3; the OBS corpus compiles when discovered (currently 400 ES1 / 41 ES3 / 453 promoted of 894, 0 failures) |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs) including the first frame at the requested drawing-buffer size, time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
 | Browser | `tests/browser-smoke.mjs` | headless Chrome: every viewer mounts the PUI workbench with Source left, Parameters right, Preview stage and compact Playback/status; icon-only pane/direct actions; Source/Parameters buttons show/hide; grouped parameter rows are scrolled into view and hit-tested before dragging; Parameters/View/Log tabs; direct focus/fullscreen/reset/share and the Menu for randomize/export/help/source; search filter; editor one-row Apply/More + templates; source status dot/caret; transport play/seek; fullscreen; focus; budget recovery; phone overlays; OBS bare; fallback errors |
 | Interaction | `tests/browser-interaction.mjs` | complete desktop/mobile click+touch trace; every pane/tab, menu/direct action, parameter family, filter, editor More/import/templates, transport, focus, fullscreen and phone actions; captures each result under `tests/artifacts/interaction/` |

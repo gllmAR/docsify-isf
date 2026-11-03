@@ -23,6 +23,10 @@ jobs:
       - name: Install Chrome
         id: chrome
         uses: browser-actions/setup-chrome@v1
+      - name: WebGL2 / ES3 coverage
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm run test:coverage
       - name: Browser smoke
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

@@ -7,7 +7,11 @@
  * ES 3.00 fallback — and reports how many materials render, how many only
  * render in compatibility mode, and what still fails.
  *
- *   node tests/es3-coverage.mjs [--limit N] [--library fx|src|transition]
+ *   node tests/es3-coverage.mjs [--limit N] [--library fx|src|transition] [--strict]
+ *
+ * Always compiles the committed samples. The bundled OBS corpus is discovered
+ * automatically (ISF_CORPUS_ROOT overrides), so CI still exercises ES3 without
+ * an external checkout. --strict exits non-zero on compile/parse/build issues.
  *
  * Requires puppeteer-core and a Chrome/Chromium binary (same setup as
  * tests/browser-smoke.mjs). Skips with a message when either is missing.
@@ -18,21 +22,40 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "..", "..", "..");
 const pluginDir = path.resolve(here, "..");
+const sharedRoot = path.resolve(pluginDir, "..", "..", "..");
+const corpusCandidates = [
+    process.env.ISF_CORPUS_ROOT,
+    process.env.OBS_ISF_ROOT,
+    path.resolve(sharedRoot, "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(pluginDir, "..", "..", "..", "..", "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(pluginDir, "..", ".."),
+    sharedRoot
+].filter(Boolean);
+const corpusRoot = corpusCandidates.find((dir) =>
+    fs.existsSync(path.join(dir, "modules", "fx", "isf-filter", "library")) &&
+    fs.existsSync(path.join(dir, "modules", "src", "isf-source", "library")));
+const root = corpusRoot || pluginDir;
 
 const args = process.argv.slice(2);
 let limit = Infinity;
 let filter = null;
+let strict = false;
 for (let i = 0; i < args.length; i++) {
     if (args[i] === "--limit") limit = Number(args[++i]) || Infinity;
     else if (args[i] === "--library") filter = args[++i];
+    else if (args[i] === "--strict") strict = true;
 }
 
 const libraryRoots = [
     { name: "isf-filter", dir: path.join(root, "modules", "fx", "isf-filter", "library") },
     { name: "isf-source", dir: path.join(root, "modules", "src", "isf-source", "library") },
     { name: "isf-transition", dir: path.join(root, "modules", "src", "isf-transition", "library") }
+];
+const committedSamples = [
+    "es3-fallback.fs", "plasma.fs", "kaleidoscope.fs", "feedback.fs",
+    "test-card.fs", "multi-pass.fs", "transition.fs", "crossfade.fs",
+    "mouse-ripple.fs"
 ];
 
 function walk(dir, out) {
@@ -46,6 +69,12 @@ function walk(dir, out) {
 }
 
 const materials = [];
+if (!filter) {
+    for (const name of committedSamples) {
+        const file = path.join(pluginDir, "samples", name);
+        if (fs.existsSync(file)) materials.push({ library: "docsify-samples", url: "/samples/" + name });
+    }
+}
 for (const library of libraryRoots) {
     if (filter && library.name.indexOf(filter) === -1) continue;
     for (const file of walk(library.dir, [])) {
@@ -92,8 +121,10 @@ const MIME = {
 const server = http.createServer((request, response) => {
     let urlPath = decodeURIComponent((request.url || "/").split("?")[0].split("#")[0]);
     if (urlPath === "/") urlPath = "/index.html";
-    const file = path.join(root, urlPath);
-    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const pluginAsset = urlPath === "/docsify-isf.js" || urlPath.startsWith("/tests/") || urlPath.startsWith("/samples/");
+    const base = pluginAsset ? pluginDir : root;
+    const file = path.join(base, urlPath);
+    if (!file.startsWith(base) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         response.writeHead(404, { "content-type": "text/plain" });
         response.end("not found");
         return;
@@ -113,7 +144,7 @@ const page = await browser.newPage();
 
 // The coverage host page loads docsify-isf.js with the same includePaths the
 // parent site uses, and creates no viewers.
-await page.goto(origin + "/docsify-plugins/docsify-isf/tests/coverage-host.html", { waitUntil: "networkidle0", timeout: 90000 });
+await page.goto(origin + "/tests/coverage-host.html", { waitUntil: "networkidle0", timeout: 90000 });
 const hasWebGL2 = await page.evaluate(() => !!document.createElement("canvas").getContext("webgl2"));
 if (!hasWebGL2) {
     console.log("es3-coverage: WebGL2 is not available in this browser. Skipping.");
@@ -123,6 +154,8 @@ if (!hasWebGL2) {
 }
 
 console.log(`es3-coverage: ${selected.length} material(s) from ${materials.length}, compiling ES1 + ES3 …`);
+console.log(`  corpus: ${corpusRoot ? corpusRoot : "not found (committed samples only)"}`);
+console.log(`  samples: ${materials.filter((item) => item.library === "docsify-samples").length}`);
 const started = Date.now();
 const results = await page.evaluate(async (items) => {
     // A fresh context every N materials: the software compiler accumulates
@@ -270,6 +303,8 @@ for (const name of Object.keys(perLibrary)) {
     console.log(`  ${name.padEnd(14)} es1=${entry.es1} es3=${entry.es3} promoted=${entry["es3-promoted"]} fail=${entry.fail}${entry.other ? " other=" + entry.other : ""}`);
 }
 const failures = results.filter((result) => result.status === "fail");
+const fatal = !materials.length || failures.length || other;
+if (strict && fatal) process.exitCode = 1;
 if (failures.length) {
     const patterns = {};
     for (const failure of failures) {
