@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.44.4
+ * docsify-isf v1.45.7
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -128,6 +128,9 @@
         if (config.mode !== "replace" && config.mode !== "augment") config.mode = DEFAULTS.mode;
         if (config.lazy !== "visible" && config.lazy !== "click" && config.lazy !== "none") config.lazy = DEFAULTS.lazy;
         if (config.params !== "auto" && config.params !== "open" && config.params !== "closed") config.params = DEFAULTS.params;
+        if (config.paramGroups === "off") config.paramGroups = "never";
+        if (config.paramGroups !== "auto" && config.paramGroups !== "always" && config.paramGroups !== "never" &&
+            config.paramGroups !== true && config.paramGroups !== false) config.paramGroups = DEFAULTS.paramGroups;
         if (typeof config.enabled !== "boolean") config.enabled = DEFAULTS.enabled;
         if (typeof config.controls !== "boolean") config.controls = DEFAULTS.controls;
         if (typeof config.editor !== "boolean") config.editor = DEFAULTS.editor;
@@ -4509,9 +4512,9 @@
             inputs: inputs,
             host: viewer.puiHost,
             rev: (viewer.puiRev = (viewer.puiRev || 0) + 1),
-            groupBy: viewer.config.paramGroups === false
+            groupBy: viewer.config.paramGroups === false || viewer.config.paramGroups === "never"
                 ? false
-                : (viewer.config.paramGroups === "always" || viewer.config.paramGroups === true || (viewer.config.paramGroups !== "never" && viewer.config.paramGroups !== "off" && inputs.length >= 6))
+                : (viewer.config.paramGroups === "always" || viewer.config.paramGroups === true || inputs.length >= 6)
                     ? "type" : false,
             // Embedded panels keep only their accessible name; give every
             // viewer's parameter region a unique one.

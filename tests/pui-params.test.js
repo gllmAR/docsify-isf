@@ -68,6 +68,19 @@ test("the vendored snapshot is present and hashed", () => {
     }
 });
 
+test("version claims agree across source, bundle and package", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    equal(VERSION, pkg.version, "bundle VERSION vs package.json");
+    const source = fs.readFileSync(path.join(root, "src", "plugin.src.js"), "utf8");
+    const sourceVersion = (source.match(/\* docsify-isf v(\d+\.\d+\.\d+)/) || [])[1];
+    const sourceConstant = (source.match(/var VERSION = "(\d+\.\d+\.\d+)"/) || [])[1];
+    equal(sourceVersion, pkg.version, "source banner");
+    equal(sourceConstant, pkg.version, "source VERSION");
+    const bundle = fs.readFileSync(path.join(root, "docsify-isf.js"), "utf8");
+    const bundleVersion = (bundle.match(/\* docsify-isf v(\d+\.\d+\.\d+)/) || [])[1];
+    equal(bundleVersion, pkg.version, "bundle banner");
+});
+
 test("the artifact exposes the shared renderer and ISF adapter", () => {
     assert(PupitreUI && typeof PupitreUI.create === "function", "PupitreUI");
     assert(PupitreISF && typeof PupitreISF.createDocument === "function", "PupitreISF");
@@ -84,6 +97,20 @@ test("the artifact reads the on-demand toolkit at call time", () => {
         {name: "speed", label: "Speed", type: "float", min: 0, max: 1, default: 0.5}
     ], {});
     assert(generated && generated.document.format === "pupitre-ui", "createParamsDocument uses the loaded adapter");
+});
+
+test("paramGroups accepts only documented modes", () => {
+    const previous = global.window;
+    try {
+        const cases = [["off", "never"], ["never", "never"], ["always", "always"], ["auto", "auto"], [false, false], [true, true], ["bogus", "auto"]];
+        for (const [value, expected] of cases) {
+            global.window = {$docsify: {isf: {paramGroups: value}}};
+            equal(isf.getConfig().paramGroups, expected, "paramGroups=" + JSON.stringify(value));
+        }
+    } finally {
+        if (previous === undefined) delete global.window;
+        else global.window = previous;
+    }
 });
 
 test("the on-demand asset base is configurable", () => {
@@ -195,6 +222,25 @@ test("generate_as_define inputs stay read-only constants", () => {
     }});
     equal(adapter.getValue("/isf/mode"), "After");
     equal(adapter.setValue("/isf/mode", "before"), false);
+});
+
+test("type grouping keeps every field bound in disclosure groups", () => {
+    const inputs = sampleInputs("plasma.fs");
+    const flat = blocksOf(isf.createParamsDocument(inputs, {}).document)
+        .fields.map((field) => field.bind).sort();
+    const grouped = isf.createParamsDocument(inputs, {groupBy: "type"}).document;
+    equal(PupitreUI.validateStructured(grouped), [], "grouped document validates");
+    const blocks = grouped.panels[0].pages[0].sections[0].blocks;
+    const groups = blocks.filter((block) => block.kind === "disclosure");
+    assert(groups.length >= 3, "expected Color/Geometry/Values groups");
+    equal(groups.map((group) => group.label), ["Color", "Geometry", "Values"]);
+    for (const group of groups) {
+        assert(group.id && /^isf-group-/.test(group.id), group.label + " group id");
+        assert(group.storage_key && group.open === true, group.label + " is open and persisted");
+    }
+    const nested = groups.flatMap((group) => group.blocks || [])
+        .filter((block) => block.kind === "field").map((field) => field.bind).sort();
+    equal(nested, flat, "all flat fields survive grouping exactly once");
 });
 
 test("the plasma sample maps every control family it declares", () => {
