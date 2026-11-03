@@ -1083,6 +1083,7 @@
 .pui-graph-color-preview:hover, .pui-graph-color-preview:focus-visible { border-color: var(--pui-accent); outline: none; }
 .pui-graph-color-preview .pui-graph-color-chip { flex: 1 1 auto; width: auto; height: 24px; }
 .pui-graph-color-preview-text { flex: 0 0 auto; color: var(--pui-muted); font: calc(var(--pui-type-base) * 0.56) ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pui input.pui-graph-color-hex { width: 100%; min-height: 22px; height: 22px; padding: 1px 5px; border: 1px solid var(--pui-border); border-radius: 3px; background: var(--pui-surface-2); color: var(--pui-text); font: calc(var(--pui-type-base) * 0.6) ui-monospace, SFMono-Regular, Menlo, monospace; }
 .pui-graph-color-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 44px; align-items: center; gap: 4px; min-width: 0; }
 .pui-graph-color-label { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-weight: 700; }
 .pui input.pui-graph-color-range { width: 100%; min-width: 0; min-height: 18px; height: 18px; accent-color: var(--pui-accent); }

@@ -4621,6 +4621,9 @@
     var previewText = el("span", {class: "pui-graph-color-preview-text", "aria-live": "polite"});
     preview.appendChild(previewText);
     panel.appendChild(preview);
+    var hexInput = el("input", {type: "text", class: "pui-graph-color-hex", spellcheck: "false", "aria-label": "Hex colour value", placeholder: "#rrggbbaa"});
+    hexInput.value = this.graphColorHex(parts, true);
+    panel.appendChild(hexInput);
 
     var native = el("input", {type: "color", class: "pui-graph-color-native", tabindex: "-1", "aria-hidden": "true"});
     native.value = this.graphColorHex(parts).slice(0, 7);
@@ -4659,6 +4662,7 @@
       var chip = preview.querySelector(".pui-graph-color-chip");
       if (chip && chip.style) chip.style.setProperty("--pui-graph-color", css);
       previewText.textContent = hex;
+      if (hexInput && (!global.document || global.document.activeElement !== hexInput)) hexInput.value = hex;
       preview.setAttribute("aria-label", "Open system colour picker, current " + hex);
       Object.keys(controls).forEach(function (key) {
         var entry = controls[key];
@@ -4691,6 +4695,26 @@
       controls.g.range.value = String(parts.g); controls.g.number.value = String(parts.g);
       controls.b.range.value = String(parts.b); controls.b.number.value = String(parts.b);
       paint();
+    });
+    var applyHex = function () {
+      var text = String(hexInput.value || "").trim();
+      if (!/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text)) {
+        hexInput.value = self.graphColorHex(parts, true);
+        return;
+      }
+      var next = self.graphColorParts(text);
+      parts.r = next.r; parts.g = next.g; parts.b = next.b; parts.a = next.a;
+      Object.keys(controls).forEach(function (key) {
+        controls[key].range.value = String(parts[key]);
+        controls[key].number.value = String(parts[key]);
+      });
+      paint();
+    };
+    hexInput.addEventListener("change", applyHex);
+    hexInput.addEventListener("keydown", function (event) {
+      if (String(event.key || "") !== "Enter") return;
+      if (event.preventDefault) event.preventDefault();
+      applyHex();
     });
 
     rec.viewport.appendChild(panel);
@@ -14889,7 +14913,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.3",
+    version: "1.18.4",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
