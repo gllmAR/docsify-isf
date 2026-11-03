@@ -13125,7 +13125,7 @@
     rec.actions.textContent = "";
     var storage = rec.block.storage || {};
     var selected = !!rec.selectedPreset;
-    ["save", "delete", "rename"].forEach(function (key) {
+    ["save", "rename", "delete"].forEach(function (key) {
       var action = storage[key];
       if (!isObject(action)) return;
       var copy = rec.renderer.presetStorageAction(rec, action);
@@ -13472,6 +13472,37 @@
     return {label: label, control: control, hint: fileHint || colorHint, filesOf: control.__puiFilesOf};
   };
 
+  function hasOpaqueBackground(value) {
+    var text = String(value || "").trim().toLowerCase();
+    if (!text || text === "transparent" || text.indexOf("var(") === 0) return false;
+    var rgba = /^rgba?\(([^)]+)\)$/.exec(text);
+    if (rgba) {
+      var parts = rgba[1].replace(/\s*\/\s*/, ",").split(/[,\s]+/).filter(Boolean);
+      if (parts.length > 3) {
+        var alpha = parts[3];
+        return /%$/.test(alpha) ? parseFloat(alpha) >= 100 : parseFloat(alpha) >= 1;
+      }
+      return true;
+    }
+    var hex = /^#([0-9a-f]{3,8})$/.exec(text);
+    if (hex) {
+      var digits = hex[1];
+      if (digits.length === 4) return digits.charAt(3) !== "0";
+      if (digits.length === 8) return digits.slice(6) !== "00";
+    }
+    return true;
+  }
+
+  function opaqueBackdrop(node) {
+    var current = node;
+    while (current) {
+      var styles = getComputedStyle(current);
+      if (styles && hasOpaqueBackground(styles.backgroundColor)) return styles.backgroundColor;
+      current = current.parentElement;
+    }
+    return "";
+  }
+
   Renderer.prototype.styleDialog = function (dialog) {
     if (!dialog || !this.root || typeof getComputedStyle !== "function") return;
     var styles = getComputedStyle(this.root);
@@ -13481,10 +13512,20 @@
       var value = styles.getPropertyValue ? styles.getPropertyValue(name) : "";
       if (value) dialog.style.setProperty(name, value);
     });
+    var surface = styles.getPropertyValue ? styles.getPropertyValue("--pui-surface") : "";
+    if (!hasOpaqueBackground(surface)) {
+      var backdrop = opaqueBackdrop(this.root);
+      if (backdrop) {
+        dialog.style.setProperty("--pui-surface", backdrop);
+        var background = styles.getPropertyValue ? styles.getPropertyValue("--pui-bg") : "";
+        if (!hasOpaqueBackground(background)) dialog.style.setProperty("--pui-bg", backdrop);
+      }
+    }
     if (typeof styles.fontFamily === "string" && styles.fontFamily) dialog.style.fontFamily = styles.fontFamily;
   };
 
   Renderer.prototype.openActionForm = function (item, button) {
+    this.hideTooltips();
     var self = this;
     var formId = this.id("form");
     var dialog = el("dialog", {class: "pui-dialog", "aria-labelledby": formId + "-title"});
@@ -14372,6 +14413,7 @@
   Renderer.prototype.openPalette = function () {
     var self = this;
     if (this._palette) { this._palette.close(); return 0; }
+    this.hideTooltips();
     var dialog = el("dialog", {class: "pui-dialog pui-palette", "aria-label": this.t("palette.title", "Commands")});
     this.styleDialog(dialog);
     var form = el("form", {method: "dialog"});
@@ -14913,7 +14955,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.4",
+    version: "1.18.6",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
