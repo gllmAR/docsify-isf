@@ -210,7 +210,12 @@ await blockEval((block) => {
     if (left && left.getAttribute("aria-expanded") !== "true") left.click();
     return true;
 });
-await sleep(400);
+await page.waitForFunction((s) => {
+    const block = document.querySelector(s);
+    const more = block && block.querySelector(".isf-editor-more");
+    return !!more && !more.classList.contains("isf-hidden") && !!more.querySelector(".pui-menu-trigger");
+}, { timeout: 2500 }, selector).catch(() => {});
+await sleep(250);
 await capture("04-source-pane");
 await blockEval((block) => {
     const toggle = block.querySelector(".pui-workbench-titlebar-toggle");
@@ -499,7 +504,47 @@ if (templateOpen) {
     await sleep(300);
 }
 const fold = await page.$(`${selector} .isf-fold-btn`);
-if (fold) { await fold.click(); await sleep(200); await capture("22-editor-folded"); await fold.click(); }
+if (fold) {
+    await fold.click();
+    await sleep(250);
+    await capture("22-editor-folded");
+    const folded = await page.evaluate((s) => {
+        const block = document.querySelector(s);
+        const pane = block.querySelector(".pui-workbench-pane.is-left");
+        const wrap = block.querySelector(".isf-editor-wrap");
+        const editor = block.querySelector(".isf-editor");
+        const area = block.querySelector(".isf-editor textarea");
+        const p = pane.getBoundingClientRect(), w = wrap.getBoundingClientRect(), e = editor.getBoundingClientRect();
+        return {
+            paneWidth: Math.round(p.width), paneHeight: Math.round(p.height),
+            wrapWidth: Math.round(w.width), editorHeight: Math.round(e.height),
+            clientHeight: area.clientHeight, scrollHeight: area.scrollHeight,
+            overflowY: getComputedStyle(area).overflowY
+        };
+    }, selector);
+    check("folded editor follows the Source width", folded.wrapWidth >= folded.paneWidth - 8, folded);
+    check("folded editor owns vertical scrolling", folded.scrollHeight > folded.clientHeight && folded.editorHeight <= folded.paneHeight, folded);
+    const resizePoint = await page.evaluate((s) => {
+        const r = document.querySelector(s + " .pui-workbench-resizer.is-left").getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, selector);
+    const widthBeforeResize = folded.paneWidth;
+    await page.mouse.move(resizePoint.x, resizePoint.y);
+    await page.mouse.down();
+    await page.mouse.move(resizePoint.x + 70, resizePoint.y, { steps: 8 });
+    await page.mouse.up();
+    await sleep(300);
+    await capture("22b-editor-resized");
+    const resized = await page.evaluate((s) => {
+        const block = document.querySelector(s);
+        const pane = block.querySelector(".pui-workbench-pane.is-left");
+        const wrap = block.querySelector(".isf-editor-wrap");
+        return { paneWidth: Math.round(pane.getBoundingClientRect().width), wrapWidth: Math.round(wrap.getBoundingClientRect().width) };
+    }, selector);
+    check("folded editor follows a Source pane resize", resized.paneWidth > widthBeforeResize && resized.wrapWidth >= resized.paneWidth - 8, {before: widthBeforeResize, ...resized});
+    await fold.click();
+    await sleep(200);
+}
 const sourceClose = await blockEval((block) => {
     const toggle = block.querySelector('.pui-workbench-toggle[data-pui-region="left"]');
     if (toggle && toggle.getAttribute("aria-expanded") === "true") toggle.click();

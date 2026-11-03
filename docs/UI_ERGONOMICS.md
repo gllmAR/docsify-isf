@@ -18,7 +18,8 @@ checked against established editor/workbench implementations.
 | Desktop, View tab | ![desktop view](ui-audit/desktop-view-tab.png) |
 | Desktop, saved preset | ![desktop presets](ui-audit/desktop-presets.png) |
 | Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
-| Desktop, title bar compact | ![desktop compact](ui-audit/desktop-compact.png) |
+| Desktop, title bar compact (default) | ![desktop default](ui-audit/desktop-default.png) |
+| Desktop, title bar expanded | ![desktop expanded](ui-audit/desktop-expanded.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |
@@ -143,8 +144,9 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 
 ### Measured result
 
-- Desktop title bar: **~80 px** expanded with a one-line description, **~48 px**
-  compact; section/action controls are 32 px high and icon-only.
+- Desktop title bar: **41 px compact by default**, **~98 px** expanded with
+  the one-line description and eyebrow; section/action controls are 32 px high
+  and icon-only.
 - Phone title bar: **~121 px** with identity + one icon row (previously ~192 px
   with stacked text controls).
 - Phone side pane: **full workbench width** in a one-drawer layout; the stage
@@ -153,8 +155,10 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
 - Source at 280–300 px keeps a `Ln x, Col y` and compile-status indicator
   without spending a full status row.
 - Playback strip: **~80 px** desktop / **112 px** phone including the two-line
-  statusbar. The Source toolbar stacks a compact tab/fold row over Apply +
-  More. The titlebar description is one ellipsized line (full tooltip).
+  statusbar. The Source toolbar is **one 34 px row**: fold, Fragment/Vertex,
+  Apply; secondary More is in the Source header. The folded editor fills the
+  pane, follows pane resizes and scrolls its textarea. PUI compact fields use
+  one label/control/value row (~47 px), and custom slots stretch to their pane.
 - Stage HUD: **32 px** controls (36 px coarse pointer) over the preview; the
   desktop Focus HUD shows time + `width×height · fps`, while a phone stage
   (356 px) keeps only time + play/capture/fullscreen because stats would
@@ -220,6 +224,18 @@ The second full capture review found and fixed:
 - Captures: `desktop-presets.png`; the interaction trace covers the save name
   form, value change, recall, rename name form and label update, delete
   confirmation and removal.
+
+## 4.7 Density pass (1.45.0)
+
+- Title bar starts compact at 41 px; expanding restores the ISF eyebrow and
+  description. The page heading remains the document context.
+- Parameters: compact PUI rows put labels beside controls; Presets stays above
+  the fields. Source slot padding was removed, returning 18 px to the editor.
+- Source: one-row tabs + Apply; More moved to the header; compact caret/dot
+  title. Folding keeps the editor full-height/width and scrollable. Invalid
+  unquoted `data-pui-slot` selectors were fixed.
+- PUI upstream 1.16.0/1.16.1 stretches custom slots, compacts inspector density
+  and flips menu popovers at the viewport edge.
 
 ## 4.6 CI popover geometry (1.44.3)
 

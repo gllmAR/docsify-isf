@@ -288,6 +288,9 @@
       filePick: options.filePick || null,
       dialogAction: options.dialogAction || null,
       historyCheckpoint: options.historyCheckpoint || null,
+      beginTransaction: options.beginTransaction || null,
+      commitTransaction: options.commitTransaction || null,
+      abortTransaction: options.abortTransaction || null,
       graphInspector: options.graphInspector || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
@@ -301,6 +304,8 @@
       touchTarget: options.touchTarget || 32
     };
     this.uid = "pui" + (++NEXT_ID);
+    this.writeSeq = 0;
+    this.writeStats = {total: 0, pending: 0, acked: 0, failed: 0, lastId: null, lastPath: null, lastState: null, lastError: null};
     this.records = [];
     this.blockRecords = [];
     this.actions = [];
@@ -4458,7 +4463,8 @@
     var button = event.currentTarget;
     var raw = isObject(node.params) ? node.params[param.id] : undefined;
     rec.paramDrag = {start: deepClone(rec.graph), nodeId: String(node.id), param: param, x: event.clientX || 0,
-      value: raw === undefined ? Number(param.default) || 0 : Number(raw) || 0, el: button};
+      value: raw === undefined ? Number(param.default) || 0 : Number(raw) || 0, el: button,
+      transaction: this.beginHostTransaction("graph.param", {op: "node.param", nodeId: String(node.id), param: String(param.id), source: "scrub"})};
     if (button && button.classList) button.classList.add("is-scrubbing");
     if (button && button.setPointerCapture) button.setPointerCapture(event.pointerId || 1);
   };
@@ -4490,6 +4496,7 @@
     if (!rec || !rec.paramDrag) return;
     var drag = rec.paramDrag;
     rec.paramDrag = null;
+    this.finishHostTransaction(drag.transaction, true);
     if (drag.el && drag.el.classList) drag.el.classList.remove("is-scrubbing");
     var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === drag.nodeId; });
     var value = node && isObject(node.params) ? node.params[drag.param.id] : drag.value;
@@ -9978,9 +9985,18 @@
       number.addEventListener("wheel", function (event) { nudge(event.deltaY < 0 ? 1 : -1, event); }, {passive: false});
       range.addEventListener("input", function () { paintRange(); emit(Number(range.value), false); });
       number.addEventListener("change", function () { emit(Number(number.value), true); });
-      range.addEventListener("pointerdown", function () { rec.dragging = true; });
-      range.addEventListener("pointerup", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
-      range.addEventListener("blur", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); });
+      var endRangeTransaction = function () {
+        if (!rec.rangeTransaction) return;
+        self.finishHostTransaction(rec.rangeTransaction, true);
+        rec.rangeTransaction = null;
+      };
+      range.addEventListener("pointerdown", function () {
+        rec.dragging = true;
+        if (!rec.rangeTransaction) rec.rangeTransaction = self.beginHostTransaction("field.range", {op: "field.set", path: path, source: "range"});
+      });
+      range.addEventListener("pointerup", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); endRangeTransaction(); });
+      range.addEventListener("pointercancel", endRangeTransaction);
+      range.addEventListener("blur", function () { rec.dragging = false; if (rec.rangeValue !== undefined) emit(rec.rangeValue, true); endRangeTransaction(); });
       var rangeScrub = this.scrubHandle(rec, field, function () { return Number(range.value); }, function (value, final) { emit(value, final); }, this.labelText(field));
       row.appendChild(range); row.appendChild(number); row.appendChild(rangeScrub);
       rec.inputs = [range, number, rangeScrub];
@@ -11243,7 +11259,14 @@
     function open() {
       if (!popup.hasAttribute("hidden")) return;
       popup.removeAttribute("hidden");
+      popup.classList.remove("is-align-end");
       trigger.setAttribute("aria-expanded", "true");
+      // Flip to the trigger's end edge when the popup would cross the viewport.
+      if (typeof window !== "undefined" && popup.getBoundingClientRect) {
+        var triggerRect = root.getBoundingClientRect();
+        var popupWidth = popup.getBoundingClientRect().width;
+        if (triggerRect.left + popupWidth > window.innerWidth - 8) popup.classList.add("is-align-end");
+      }
       if (typeof document !== "undefined" && document.addEventListener) document.addEventListener("mousedown", outside, true);
       var first = menuItems()[0];
       if (first) first.focus();
@@ -13579,17 +13602,83 @@
       : this.adapter.setValue(path, value);
   };
 
+  /** Observe a host write. A boolean is already acknowledged; a Promise is a
+   * pending write until it resolves/rejects. PUI remains optimistic and never
+   * blocks rendering on the host. */
+  Renderer.prototype.trackHostWrite = function (result, path) {
+    var self = this;
+    var stats = this.writeStats || (this.writeStats = {total: 0, pending: 0, acked: 0, failed: 0, lastId: null, lastPath: null, lastState: null, lastError: null});
+    var id = ++this.writeSeq;
+    stats.total += 1;
+    stats.lastId = id;
+    stats.lastPath = String(path || "");
+    var fail = function (message) {
+      stats.pending = Math.max(0, stats.pending - 1);
+      stats.failed += 1;
+      stats.lastState = "failed";
+      stats.lastError = String(message || "Write failed");
+      try { self.adapter.announce("error", "Write failed: " + stats.lastPath); } catch (error) { /* optional */ }
+    };
+    var ack = function () {
+      stats.pending = Math.max(0, stats.pending - 1);
+      stats.acked += 1;
+      stats.lastState = "acked";
+      stats.lastError = null;
+    };
+    if (result && typeof result.then === "function") {
+      stats.pending += 1;
+      stats.lastState = "pending";
+      result.then(function (value) {
+        if (value === false) fail("Host rejected the write");
+        else ack();
+      }).catch(function (error) {
+        fail(error && error.message || error);
+      });
+    } else if (result === false) {
+      fail("Host rejected the write");
+    } else {
+      ack();
+    }
+    return result;
+  };
+
   Renderer.prototype.write = function (path, value, block) {
-    if (!this.setPath(path, value, block)) { this.apply(); return; }
+    var result = this.setPath(path, value, block);
+    this.trackHostWrite(result, path);
+    if (!result) { this.apply(); return; }
     this.apply();
+  };
+
+  /** Optional host transaction boundary for continuous edits. The host owns
+   * atomicity/ack; PUI only brackets the interaction and guarantees one
+   * commit/abort call per begin call. */
+  Renderer.prototype.beginHostTransaction = function (label, context) {
+    if (!this.adapter || typeof this.adapter.beginTransaction !== "function") return null;
+    try {
+      var token = this.adapter.beginTransaction(String(label || "edit"), context || {});
+      if (token === false) return null;
+      return {token: token, active: true};
+    } catch (error) {
+      try { this.adapter.announce("warning", "Host transaction could not start."); } catch (announceError) { /* optional */ }
+      return null;
+    }
+  };
+
+  Renderer.prototype.finishHostTransaction = function (transaction, commit) {
+    if (!transaction || !transaction.active) return;
+    transaction.active = false;
+    var method = commit ? "commitTransaction" : "abortTransaction";
+    if (!this.adapter || typeof this.adapter[method] !== "function") return;
+    try { this.adapter[method](transaction.token); } catch (error) { /* host transaction is best-effort */ }
   };
 
   Renderer.prototype.writeRecord = function (rec, value) {
     if (rec.collection && rec.collection.items && rec.collection.item) {
-      var ok = typeof this.adapter.setCollectionItem === "function"
+      var writeResult = typeof this.adapter.setCollectionItem === "function"
         ? this.adapter.setCollectionItem(rec.collection.bind, rec.collection.key, rec.rawBind, value, rec.block)
         : this.setPath(rec.path, value, rec.block);
-      if (!ok) {
+      this.trackHostWrite(writeResult, rec.path);
+      if (!writeResult) {
         var raw = String(rec.rawBind || "");
         if (raw && raw.charAt(0) !== "/") setByPath(rec.collection.item, raw, value);
         this.setPath(rec.collection.bind, rec.collection.items, rec.block);
@@ -14366,6 +14455,7 @@
       renderMs: this.renderMs,
       lastAnnounce: this.lastAnnounce,
       lastError: this.lastError,
+      writes: Object.assign({}, this.writeStats || {total: 0, pending: 0, acked: 0, failed: 0, lastId: null, lastPath: null, lastState: null, lastError: null}),
       adapterMethods: Object.keys(this.adapter).filter(function (key) { return typeof this.adapter[key] === "function"; }, this),
       activePages: activePages
     };
@@ -14733,7 +14823,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.16.0",
+    version: "1.17.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

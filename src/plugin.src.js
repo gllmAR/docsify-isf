@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.44.4";
+    var VERSION = "1.45.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3647,10 +3647,25 @@
             ".isf-workbench .pui-workbench-pane.is-left .pui-section{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;margin:0}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-fields{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-slot{flex:1 1 auto;min-height:0;height:100%}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=isf.editor]:has(.isf-editor.isf-hidden){display:none!important}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=isf.import]{display:flex;flex-direction:column}",
-            ".isf-workbench .isf-editor-wrap{height:100%;min-height:0;display:flex;flex-direction:column}",
-            ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.editor\"]:has(.isf-editor.isf-hidden){display:none!important}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.import\"]{display:flex;flex-direction:column}",
+            ".isf-workbench .isf-editor-wrap{height:100%;min-height:0;display:flex;flex-direction:column;width:100%}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-fields{align-items:stretch}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.editor\"]{padding:0;border:0;border-radius:0}",
+            ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{padding:0}",
+            ".isf-workbench .pui-workbench-pane.is-right .pui-slot[data-pui-slot=\"isf.params\"]{padding:0;border:0;border-radius:0}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{font-size:0;padding:3px 8px;min-height:24px}",
+            ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto!important}",
+            ".isf-workbench .isf-editor-wrap > .isf-resize-y{display:none}",
+            ".isf-workbench .isf-editor-toolbar{flex-wrap:nowrap;padding:.22rem .35rem;gap:.22rem;min-height:34px}",
+            ".isf-workbench .isf-editor-actions{flex:0 0 auto;flex-wrap:nowrap;max-width:none;gap:.2rem;margin-inline-start:auto}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{flex:0 0 auto;margin-inline-start:4px}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-trigger{min-width:24px;min-height:24px;padding:1px 4px}",
+            ".isf-workbench .isf-editor-tabs{gap:.15rem}",
+            ".isf-workbench .isf-editor-actions .isf-btn{padding:.18rem .38rem}",
+            ".isf-workbench .isf-editor-status,.isf-workbench .isf-editor-pos{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}",
+            ".isf-workbench .isf-editor-folded-summary{font-size:.7rem}",
             ".isf-workbench .isf-panel-intro{display:none!important}",
             ".isf-workbench .pui-workbench-description{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72ch}",
             ".isf-workbench .pui-workbench-titlebar-toggle{min-width:28px;min-height:28px;font-size:12px}",
@@ -3710,7 +3725,7 @@
             "@keyframes isf-pui-drawer-in{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}",
             "@media (prefers-reduced-motion:reduce){.isf-inspector-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
             "@media (pointer:coarse){.isf-inspector-pui .pui-drawer-body > .pui-toolbar .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-head .pui-button{min-height:36px}.isf-inspector-pui .pui-transport-controls input[type=range]{min-height:36px}.isf-inspector-pui .pui-menu-popup .pui-button{min-height:36px}}",
-            "@media (max-width:600px){.isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:fixed;inset:0;width:100vw!important;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=isf.params]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=isf.import]{padding:.5rem .55rem}}",
+            "@media (max-width:600px){.isf-inspector-pui .pui-drawer.is-contained .pui-drawer-panel,.isf-editor-pui .pui-drawer.is-contained .pui-drawer-panel{position:fixed;inset:0;width:100vw!important;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}.isf-inspector-pui .pui-drawer-body > .pui-toolbar{padding:.3rem .45rem}.isf-inspector-pui .pui-slot[data-pui-slot=\"isf.params\"]{padding:0 .55rem .3rem}.isf-editor-pui .pui-slot[data-pui-slot=\"isf.import\"]{padding:.5rem .55rem}}",
             "@keyframes isf-pui-editor-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}",
             "@media (prefers-reduced-motion:reduce){.isf-editor-pui .pui-drawer.is-open .pui-drawer-panel{animation:none}}",
             "@media (max-width:600px){.isf-editor-pui .pui-drawer-panel{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;border-radius:0;border:0;z-index:2147483003}}",
@@ -3825,7 +3840,7 @@
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-editor-actions .isf-editor-more{display:inline-flex;flex:0 0 auto;position:relative}",
             ".isf-editor-actions .isf-editor-more .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
-            ".isf-editor-actions .isf-editor-more .pui-menu-popup{inset-inline-start:0;inset-inline-end:auto;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
+            ".isf-editor-actions .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
             ".isf-editor-actions .isf-editor-more .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
             ".isf-editor-actions .isf-editor-more .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
             ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .6rem;padding:.55rem .75rem .6rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 35%,transparent)}",
@@ -5059,7 +5074,13 @@
         var moreMenuMounted = false;
         var moreMenuUI = null;
         function mountEditorMoreMenu() {
-            if (moreMenuMounted || viewer.disposed || !puiAvailable()) return;
+            if (moreMenuMounted || viewer.disposed) return;
+            if (!puiAvailable()) {
+                // Source can open before the on-demand toolkit resolves; retry
+                // once it is ready instead of leaving the More trigger hidden.
+                loadPUI().then(mountEditorMoreMenu, function () { /* keep Apply */ });
+                return;
+            }
             var insertPrefix = "isf.editor.insert.";
             var templatePrefix = "isf.editor.template.";
             var menuItems = [
@@ -5229,10 +5250,8 @@
             // viewport, and a delta cached from another width would free the
             // wrong number of pixels.
             collapsedToolbarExtra = measureCollapsedExtra();
-            if (editorBaseHeight == null) {
-                var current = editor.getBoundingClientRect().height;
-                if (current > 0) editorBaseHeight = clamp(current, 120, maxEditorHeight());
-            }
+            // A fold is not a manual height choice: the editor keeps filling
+            // the pane and the textarea owns vertical scrolling.
             refreshEditorHeight();
             updateFoldedSummary();
         }
@@ -5309,6 +5328,7 @@
             applyFontSize: applyFontSize,
             value: function () { return textarea.value; },
             setStatus: setStatus,
+            moreHost: moreMenuHost,
             mountMoreMenu: function () { mountEditorMoreMenu(); },
             toggleToolbar: function () { setToolbarCollapsed(!toolbarCollapsed, true); },
             folded: function () { return toolbarCollapsed; },
@@ -6408,8 +6428,8 @@
             // The Source pane has two custom slots. Keep the import slot out
             // of the flex allocation unless it is the visible surface.
             var host = viewer.dom.workbenchHost;
-            var editorSlot = host && host.querySelector('[data-pui-slot="isf.editor"]');
-            var importSlot = host && host.querySelector('[data-pui-slot="isf.import"]');
+            var editorSlot = host && host.querySelector('[data-pui-slot=\"isf.editor\"]');
+            var importSlot = host && host.querySelector('[data-pui-slot=\"isf.import\"]');
             if (editorSlot) editorSlot.style.display = viewer.inspectorImport ? "none" : "";
             if (importSlot) importSlot.style.display = viewer.inspectorImport ? "" : "none";
             if (viewer.applyPUIWorkbench) viewer.applyPUIWorkbench();
@@ -7182,7 +7202,7 @@
                         // description. Collapsing it hides only the heading;
                         // Menu, Source, Parameters and Playback stay reachable.
                         titlebar: {
-                            collapsible: true, eyebrow: eyebrow,
+                            collapsible: true, collapsed: true, eyebrow: eyebrow,
                             actions: [
                                 {id: "fullscreen", label: "Fullscreen", title: "Toggle fullscreen", icon: "⛶", call: "isf.fullscreen", icon_only: true},
                                 {id: "focus", label: "Focus preview", title: "Focus preview", icon: "⌖", call: "isf.focus", icon_only: true},
@@ -7381,6 +7401,13 @@
             if (editor) editor.el.classList.remove("isf-hidden");
             setEditorPanel();
             viewer.mountSourceMeta();
+            // Secondary editor actions belong beside the Source identity and
+            // caret, not in the 300 px primary toolbar. Append after the
+            // caret/meta so the trigger sits at the header's end.
+            if (viewer.editor && viewer.editor.moreHost) {
+                var sourceHead = viewer.workbenchPane("left") && viewer.workbenchPane("left").querySelector(".pui-workbench-pane-title");
+                if (sourceHead) sourceHead.appendChild(viewer.editor.moreHost);
+            }
             if (viewer.inspectorOpen) openInspector(viewer.inspectorTab || "params");
         };
 

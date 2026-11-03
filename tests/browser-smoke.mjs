@@ -472,6 +472,8 @@ try {
         const title = block.querySelector(".pui-workbench-title");
         const description = block.querySelector(".pui-workbench-description");
         const toggle = block.querySelector(".pui-workbench-titlebar-toggle");
+        // The workbench now defaults to the compact title bar.
+        if (toggle.getAttribute("aria-expanded") === "false") { toggle.click(); await wait(180); }
         const before = toolbar.getBoundingClientRect().height;
         const toolsBefore = toolbar.querySelectorAll(".pui-workbench-toggle").length;
         toggle.click();

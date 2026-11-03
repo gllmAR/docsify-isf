@@ -404,11 +404,12 @@ The viewer is a PUI workbench page with named regions:
 
 The titlebar carries an ISF `eyebrow`, the shader title, ISF `DESCRIPTION`
 (plus credit when present), a labeled collapse chevron and the function
-buttons. Pane toggles carry decorative host glyphs with accessible names and
+buttons, and starts in the compact title-only state (41 px); expanding restores
+the eyebrow and one-line description. Pane toggles carry decorative host glyphs with accessible names and
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.16.0's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.17.1's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -447,6 +448,8 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
+- PUI compact density puts labels beside controls; PUI 1.17.1 stretches custom
+  slots to their container and flips menu popups at the viewport edge.
 - The Parameters tab is led by the host-owned **Presets** block implemented
   with PUI's `presets`/`storage` contract. Presets are named snapshots of
   non-media input values, persisted under `docsify-isf:presets:<shader-url>`
@@ -454,16 +457,18 @@ Density decisions:
   and applies the stored values; delete is confirmed. The host owns values and storage;
   PUI owns the list, forms and confirmation. The preset list stays local to the
   viewer but is copied to other mounted viewers of the same shader.
-- PUI dialogs are body-hosted; PUI 1.16.0 copies the active surface/text/font
+- PUI dialogs are body-hosted; PUI 1.17.1 copies the active surface/text/font
   tokens into them so action forms, confirmations and the command palette keep
   their panel outside the PUI root.
 - Input sets of six or more get the PUI parameter filter. The workbench tools
   use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
   collapses Source, Parameters and Playback for a content-first stage.
 - The Source editor head is hidden in the workbench (the Source pane title and
-  title bar carry identity/close); the Source toolbar stacks its compact
-  tab/fold row over an Apply + More action row. More holds Revert/Copy/Import,
-  keyboard help and snippets/templates.
+  title bar carry identity/close). Its toolbar is one row: fold, Fragment/
+  Vertex, Apply. The secondary More menu lives in the Source pane header beside
+  the caret/dot. Folding the toolbar leaves the editor filling the pane and the
+  textarea scrollable; pane resizes change the editor width. More holds
+  Revert/Copy/Import, keyboard help and snippets/templates.
 - The Playback strip hides the transport heading and any loop/rate controls the
   host reports as unsupported, then keeps the statusbar visible in ~80 px. The
   titlebar Playback toggle can collapse the whole strip; fullscreen/focus/
@@ -489,7 +494,7 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
-- PUI 1.16.0 owns a delegated tooltip manager for flagged icon-only chrome:
+- PUI 1.17.1 owns a delegated tooltip manager for flagged icon-only chrome:
   titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
   host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
   450 ms touch long-press shows the label without activating the button. The

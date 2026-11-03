@@ -53,12 +53,16 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   name form and delete confirmation. Never persist media/event inputs in a
   preset. Presets must stay titled/confirmed, support rename, and survive both
   viewers of the same shader.
+- **The Source editor fills and scrolls.** Never pin the folded editor to a
+  captured width/height; it must follow pane resizes and scroll its textarea.
+  The Source toolbar is one row with tabs + Apply; secondary actions live in
+  the Source header. Regression checks cover fold, width and scroll.
 - **Popover geometry is a contract.** Anchor host popovers to their trigger and
   keep them inside their pane/viewport. Tests that measure pane-relative
   geometry must first assert the pane is open with non-zero width; CI can enter
   the narrow one-pane mode.
 - **Tooltips are PUI-owned.** Flag icon-only controls with
-  `data-pui-tooltip`; PUI 1.15.2 provides hover/focus/long-press labels, touch
+  `data-pui-tooltip`; PUI 1.17.1 provides hover/focus/long-press labels, touch
   click suppression, theme-token copying and document/fullscreen hosting. Never
   add a second tooltip manager per viewer. A long press must not activate the
   control, and a following mouse/pen press must not stay suppressed.

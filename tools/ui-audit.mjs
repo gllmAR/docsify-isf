@@ -136,6 +136,11 @@ await page.keyboard.press("Escape");
 await sleep(150);
 
 await clickRegion("left");
+await page.waitForFunction(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const more = block && block.querySelector(".isf-editor-more");
+    return !!more && !more.classList.contains("isf-hidden") && !!more.querySelector(".pui-menu-trigger");
+}, { timeout: 2500 }).catch(() => {});
 await sleep(300);
 await shot("desktop-both-panes");
 
@@ -151,14 +156,14 @@ await shot("desktop-view-tab");
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
     const toggle = block.querySelector(".pui-workbench-titlebar-toggle");
-    if (toggle && toggle.getAttribute("aria-expanded") === "true") toggle.click();
+    if (toggle && toggle.getAttribute("aria-expanded") === "false") toggle.click();
 });
 await sleep(250);
-await shot("desktop-compact");
+await shot("desktop-expanded");
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
     const toggle = block.querySelector(".pui-workbench-titlebar-toggle");
-    if (toggle && toggle.getAttribute("aria-expanded") === "false") toggle.click();
+    if (toggle && toggle.getAttribute("aria-expanded") === "true") toggle.click();
 });
 await sleep(250);
 
