@@ -5820,6 +5820,10 @@
             ".isf-source-dot.is-warn{background:#d29922}",
             ".isf-source-caret{font-variant-numeric:tabular-nums}",
             "@container (max-width:360px){.isf-workbench .isf-source-meta{display:inline-flex}}",
+            // Coarse-pointer floor: keep the compact workbench controls and
+            // the Source header action reachable at 32px without widening the
+            // desktop layout.
+            "@media (pointer:coarse){.isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{min-height:32px;padding-inline-end:42px}.isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{width:32px;min-width:32px}.isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more > .pui{width:32px;flex:0 0 32px}.isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-trigger{min-width:32px;min-height:32px}.isf-workbench .isf-editor-more .pui-menu-popup .pui-button{min-height:32px}.isf-workbench .pui-transport.is-compact .pui-transport-head .pui-button{min-height:32px}.isf-workbench .pui-transport-controls input[type=range]{min-height:32px}}",
         ].join("\n");
         document.head.appendChild(style);
     }

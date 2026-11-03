@@ -709,6 +709,24 @@ await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").len
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 await sleep(1500);
 await capture("26-mobile-initial");
+const smallTargets = await page.evaluate((s) => {
+    const root = document.querySelector(s);
+    if (!root) return null;
+    const nodes = Array.from(root.querySelectorAll("button, [role=button], select, input, .pui-preset, .pui-disclosure-summary"));
+    return nodes.filter((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        if (rect.width <= 0 || rect.height <= 0 || style.display === "none" || style.visibility === "hidden") return false;
+        // The native colour input is an invisible compatibility control; the
+        // swatch button is the actual target.
+        if (style.opacity === "0" || style.pointerEvents === "none") return false;
+        return rect.width < 32 || rect.height < 32;
+    }).map((node) => {
+        const rect = node.getBoundingClientRect();
+        return {tag: node.tagName, cls: String(node.className || ""), text: String(node.textContent || "").trim().slice(0, 20), width: Math.round(rect.width), height: Math.round(rect.height)};
+    }).slice(0, 20);
+}, selector);
+check("phone visible controls meet the 32px target floor", Array.isArray(smallTargets) && smallTargets.length === 0, smallTargets);
 const tapRegion = async (region, expected) => {
     const target = `${selector} .pui-workbench-toggle[data-pui-region="${region}"]`;
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -751,10 +769,11 @@ const phoneMore = await blockEval((block) => {
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
     return {
         left: Math.round(r.left - p.left), right: Math.round(r.right - p.right),
-        width: Math.round(r.width), hit: hit === trigger || (hit && trigger.contains(hit))
+        width: Math.round(r.width), height: Math.round(r.height),
+        hit: hit === trigger || (hit && trigger.contains(hit))
     };
 });
-check("phone Source More trigger stays inside the pane", !!phoneMore && phoneMore.left >= 0 && phoneMore.right <= 0 && phoneMore.width >= 20 && phoneMore.hit, phoneMore);
+check("phone Source More trigger stays inside the pane", !!phoneMore && phoneMore.left >= 0 && phoneMore.right <= 0 && phoneMore.width >= 32 && phoneMore.height >= 32 && phoneMore.hit, phoneMore);
 await tapRegion("right", true);
 await capture("28-mobile-parameters");
 phone = await mobileLayout();
