@@ -10445,9 +10445,12 @@
       color.addEventListener("change", commitColor);
       swatch.addEventListener("click", function (event) {
         if (event.stopPropagation) event.stopPropagation();
-        var host = self.mount && self.mount.querySelector ? (self.mount.querySelector(".pui") || self.mount) : self.mount;
+        var dialog = swatch.closest ? swatch.closest("dialog[open]") : null;
+        var host = dialog || (self.mount && self.mount.querySelector ? (self.mount.querySelector(".pui") || self.mount) : self.mount);
         var recColor = self.fieldColorRecord;
+        if (recColor && recColor.colorPicker) self.graphCloseColorPicker(recColor, true);
         if (!recColor || recColor.viewport !== host) recColor = self.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
+        if (dialog) dialog.addEventListener("close", function () { if (recColor.colorPicker) self.graphCloseColorPicker(recColor, true); }, {once: true});
         (self.graphRecords || []).forEach(function (graphRec) { if (graphRec.colorPicker) self.graphCloseColorPicker(graphRec, false); });
         var current = self.value(rec);
         self.graphOpenColorPicker(recColor, {id: ""}, {id: "field-color", label: label, type: "color"}, swatch, {
@@ -14856,7 +14859,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.1",
+    version: "1.18.2",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
