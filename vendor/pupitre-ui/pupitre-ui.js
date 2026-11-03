@@ -305,6 +305,7 @@
     };
     this.uid = "pui" + (++NEXT_ID);
     this.writeSeq = 0;
+    this.colorPickerSeq = 0;
     this.writeStats = {total: 0, pending: 0, acked: 0, failed: 0, lastId: null, lastPath: null, lastState: null, lastError: null};
     this.records = [];
     this.blockRecords = [];
@@ -4542,27 +4543,44 @@
   Renderer.prototype.graphCloseColorPicker = function (rec, cancel) {
     var picker = rec && rec.colorPicker;
     if (!picker) return false;
+    var activeInside = !!(global.document && global.document.activeElement && picker.panel && picker.panel.contains && picker.panel.contains(global.document.activeElement));
+    var anchor = picker.anchor;
     if (picker.panel && picker.panel.parentNode) picker.panel.parentNode.removeChild(picker.panel);
     if (picker.outside) global.document.removeEventListener("pointerdown", picker.outside, true);
     if (picker.keyHandler) global.document.removeEventListener("keydown", picker.keyHandler, true);
     rec.colorPicker = null;
+    if (anchor && anchor.setAttribute) {
+      anchor.setAttribute("aria-expanded", "false");
+      if (anchor.removeAttribute) anchor.removeAttribute("aria-controls");
+    }
+    function restoreFocus() {
+      if (!activeInside || !anchor || typeof anchor.focus !== "function") return;
+      var focusAnchor = function () {
+        if (anchor.isConnected === false || (global.document && global.document.contains && !global.document.contains(anchor))) return;
+        try { anchor.focus({preventScroll: true}); } catch (error) { try { anchor.focus(); } catch (focusError) { /* optional */ } }
+      };
+      if (global.setTimeout) global.setTimeout(focusAnchor, 0); else focusAnchor();
+    }
     if (picker.custom) {
       if (cancel) { if (picker.custom.onCancel) picker.custom.onCancel(); }
       else if (String(picker.currentValue) !== String(picker.startValue) && picker.custom.onCommit) picker.custom.onCommit(picker.currentValue);
+      restoreFocus();
       return true;
     }
     var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(picker.nodeId); });
-    if (!node) return true;
+    if (!node) { restoreFocus(); return true; }
     node.params = isObject(node.params) ? node.params : {};
     if (cancel) {
       node.params[picker.paramId] = picker.startValue;
       this.updateGraphDom(rec, [picker.nodeId]);
+      restoreFocus();
       return true;
     }
     if (String(node.params[picker.paramId]) !== String(picker.startValue)) {
       this.graphPushUndo(rec, picker.startGraph);
       this.writeGraph(rec, {op: "node.param", ids: [String(picker.nodeId)], param: String(picker.paramId), value: node.params[picker.paramId]});
     }
+    restoreFocus();
     return true;
   };
 
@@ -4578,7 +4596,13 @@
     var startValue = customMode ? (custom.value === undefined ? "#ffffff" : custom.value) : (isObject(node.params) && node.params[paramId] !== undefined ? node.params[paramId] : (param.default === undefined ? "#ffffff" : param.default));
     var currentValue = startValue;
     var parts = this.graphColorParts(startValue);
-    var panel = el("div", {class: "pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
+    var popoverId = "pui-color-popover-" + (++this.colorPickerSeq);
+    var panel = el("div", {id: popoverId, class: "pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
+    if (anchor.setAttribute) {
+      anchor.setAttribute("aria-haspopup", "dialog");
+      anchor.setAttribute("aria-expanded", "true");
+      anchor.setAttribute("aria-controls", popoverId);
+    }
     panel.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
     panel.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); });
 
@@ -4594,7 +4618,7 @@
     preview.title = "Open the system colour picker";
     var previewChip = el("span", {class: "pui-graph-color-chip"});
     preview.appendChild(previewChip);
-    var previewText = el("span", {class: "pui-graph-color-preview-text"});
+    var previewText = el("span", {class: "pui-graph-color-preview-text", "aria-live": "polite"});
     preview.appendChild(previewText);
     panel.appendChild(preview);
 
@@ -4613,7 +4637,7 @@
       var number = el("input", {type: "number", min: "0", max: "255", step: "1", class: "pui-graph-color-number", "aria-label": label + (key === "a" ? " alpha value" : " value")});
       number.value = String(parts[key]);
       row.appendChild(number);
-      controls[key] = {range: range, number: number};
+      controls[key] = {range: range, number: number, label: label};
       var apply = function (raw) {
         parts[key] = Math.max(0, Math.min(255, Math.round(Number(raw) || 0)));
         controls[key].range.value = String(parts[key]);
@@ -4635,6 +4659,12 @@
       var chip = preview.querySelector(".pui-graph-color-chip");
       if (chip && chip.style) chip.style.setProperty("--pui-graph-color", css);
       previewText.textContent = hex;
+      preview.setAttribute("aria-label", "Open system colour picker, current " + hex);
+      Object.keys(controls).forEach(function (key) {
+        var entry = controls[key];
+        entry.range.setAttribute("aria-valuetext", entry.label + " " + String(parts[key]) + " of 255");
+        entry.number.setAttribute("aria-valuetext", entry.label + " " + String(parts[key]) + " of 255");
+      });
       native.value = hex.slice(0, 7);
       currentValue = self.graphColorHex(parts);
       if (rec.colorPicker) rec.colorPicker.currentValue = currentValue;
@@ -4682,7 +4712,7 @@
     panel.style.left = Math.max(8, left) + "px";
     panel.style.top = Math.max(8, top) + "px";
 
-    var picker = {panel: panel, nodeId: String(node.id), paramId: paramId, startValue: startValue, currentValue: currentValue, startGraph: customMode ? null : deepClone(rec.graph), custom: customMode ? custom : null, outside: null, keyHandler: null};
+    var picker = {panel: panel, anchor: anchor, nodeId: String(node.id), paramId: paramId, startValue: startValue, currentValue: currentValue, startGraph: customMode ? null : deepClone(rec.graph), custom: customMode ? custom : null, outside: null, keyHandler: null};
     rec.colorPicker = picker;
     var outside = function (event) {
       if (!rec.colorPicker) return;
@@ -4694,7 +4724,10 @@
       if (event.preventDefault) event.preventDefault();
       if (event.stopPropagation) event.stopPropagation();
       self.graphCloseColorPicker(rec, false);
-      if (anchor.focus) anchor.focus();
+      if (anchor.focus) {
+        var focusAnchor = function () { if (!global.document || !global.document.contains || global.document.contains(anchor)) anchor.focus(); };
+        if (global.setTimeout) global.setTimeout(focusAnchor, 0); else focusAnchor();
+      }
     };
     picker.outside = outside;
     picker.keyHandler = keyHandler;
@@ -14823,7 +14856,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.0",
+    version: "1.18.1",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
