@@ -13061,7 +13061,7 @@
       var action = storage[key];
       if (!isObject(action)) return;
       var copy = rec.renderer.presetStorageAction(rec, action);
-      if (key === "delete" && !selected) copy.disabled = true;
+      if ((key === "delete" || key === "rename") && !selected) copy.disabled = true;
       var control = rec.renderer.addActionButton(rec.actions, copy);
       rec.storageActionRecords.push(control);
     });
@@ -14823,7 +14823,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.17.1",
+    version: "1.17.3",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

@@ -263,8 +263,11 @@
 .pui[data-density="compact"] .pui-workbench-pane-title { padding: 4px 8px; }
 .pui[data-density="compact"] .pui-pane-tabs { padding-bottom: 3px; margin-bottom: 3px; }
 .pui[data-density="compact"] .pui-workbench-toolbar { gap: 4px; }
-.pui[data-density="compact"] .pui-presets-title { margin: 0 0 3px; font-size: calc(var(--pui-type-base) * 0.9); }
-.pui[data-density="compact"] .pui-preset-list { gap: 3px; }
+.pui[data-density="compact"] .pui-presets { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pui[data-density="compact"] .pui-presets-title { margin: 0; flex: 0 0 auto; font-size: calc(var(--pui-type-base) * 0.9); }
+.pui[data-density="compact"] .pui-presets > .pui-actions:empty { display: none; }
+.pui[data-density="compact"] .pui-preset-list { flex: 1 1 auto; min-width: 0; gap: 3px; }
+.pui[data-density="compact"] .pui-preset-storage { flex: 1 1 100%; justify-content: flex-end; margin-inline-start: 0; }
 .pui[data-density="compact"] .pui-preset { min-height: 26px; padding: 2px 6px; }
 .pui[data-density="compact"] .pui-knob { width: 42px; height: 42px; }
 .pui[data-density="compact"] .pui-knob-value { font-size: calc(var(--pui-type-base) * 0.62); max-width: 30px; }
