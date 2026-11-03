@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.9
+ * docsify-isf v1.45.10
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.9";
+    var VERSION = "1.45.10";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3658,12 +3658,13 @@
             ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.editor\"]{padding:0;border:0;border-radius:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{padding:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-slot[data-pui-slot=\"isf.params\"]{padding:0;border:0;border-radius:0}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{font-size:0;padding:3px 8px;min-height:24px}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{position:relative;font-size:0;padding:3px 34px 3px 8px;min-height:24px}",
             ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto!important}",
             ".isf-workbench .isf-editor-wrap > .isf-resize-y{display:none}",
             ".isf-workbench .isf-editor-toolbar{flex-wrap:nowrap;padding:.22rem .35rem;gap:.22rem;min-height:34px}",
             ".isf-workbench .isf-editor-actions{flex:0 0 auto;flex-wrap:nowrap;max-width:none;gap:.2rem;margin-inline-start:auto}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{flex:0 0 auto;margin-inline-start:4px}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);width:24px;min-width:24px;margin:0;z-index:2}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more > .pui{width:24px;flex:0 0 24px}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-trigger{min-width:24px;min-height:24px;padding:1px 4px}",
             ".isf-workbench .isf-editor-tabs{gap:.15rem}",
@@ -3721,6 +3722,7 @@
             ".isf-overlay-btn{margin-top:.6rem;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:.35rem .7rem;font-size:.8rem;cursor:pointer}",
             ".isf-overlay-btn:hover{background:rgba(255,255,255,.2)}",
             ".isf-overlay.isf-overlay-help{position:fixed;inset:0;z-index:2147483002;padding:clamp(.75rem,4vw,2.5rem);overflow:auto;background:rgba(10,11,14,.86);align-items:flex-start}",
+            ".isf-block.isf-help-open{contain:none;overflow:visible}",
             ".isf-overlay.isf-overlay-help .isf-overlay-inner{max-width:min(34rem,94vw);max-height:calc(100dvh - 2rem);overflow:auto;margin:auto;padding:1rem 1.1rem;border:1px solid var(--isf-border);border-radius:10px;background:var(--isf-surface);color:var(--isf-text);box-shadow:0 24px 60px rgba(0,0,0,.5);text-align:left}",
             ".isf-overlay.isf-overlay-help .isf-shortcuts{max-height:none;overflow:visible}",
             ".isf-overlay.isf-overlay-help .isf-shortcut kbd{color:var(--isf-accent)}",
@@ -4466,17 +4468,17 @@
                             select: "/isf/presetSelected",
                             recall: {label: "Load preset", call: "isf.presets.recall"},
                             save: {
-                                label: "Save preset…",
+                                label: "Save",
                                 call: "isf.presets.save",
                                 style: "primary",
                                 inputs: [{name: "name", label: "Preset name", type: "text", required: true}]
                             },
                             rename: {
-                                label: "Rename preset",
+                                label: "Rename",
                                 call: "isf.presets.rename",
                                 inputs: [{name: "name", label: "New preset name", type: "text", required: true}]
                             },
-                            delete: {label: "Delete preset", call: "isf.presets.delete", confirm: true, style: "danger"}
+                            delete: {label: "Delete", call: "isf.presets.delete", confirm: true, style: "danger"}
                         }
                     }]
                 }].concat(page.sections);
@@ -6437,7 +6439,18 @@
         viewer.showOverlay = function (html, show) {
             overlayInner.innerHTML = html || "";
             overlay.style.display = show ? "flex" : "none";
-            overlay.classList.toggle("isf-overlay-help", !!show && /isf-shortcuts/.test(String(html || "")));
+            var help = !!show && /isf-shortcuts/.test(String(html || ""));
+            overlay.classList.toggle("isf-overlay-help", help);
+            if (viewer.dom.block) viewer.dom.block.classList.toggle("isf-help-open", help);
+            if (help) {
+                try {
+                    if (viewer.puiWorkbench && viewer.puiWorkbench.ui.hideTooltips) viewer.puiWorkbench.ui.hideTooltips();
+                } catch (error) { /* ignore */ }
+                requestAnimationFrame(function () {
+                    var close = overlay.querySelector('[data-isf-overlay="close"]');
+                    if (close) close.focus();
+                });
+            }
         };
         function setInspectorPanel() {
             if (paramsPanel) paramsPanel.classList.remove("isf-hidden");

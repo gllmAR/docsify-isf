@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.3 · **docsify-isf:** 1.45.8
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.6 · **docsify-isf:** 1.45.10
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -19,10 +19,12 @@ checked against established editor/workbench implementations.
 | Desktop, saved preset | ![desktop presets](ui-audit/desktop-presets.png) |
 | Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
 | Desktop, title bar compact (default) | ![desktop default](ui-audit/desktop-default.png) |
+| Desktop, light theme | ![desktop light](ui-audit/desktop-light.png) |
 | Desktop, title bar expanded | ![desktop expanded](ui-audit/desktop-expanded.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |
+| Tablet, Parameters | ![tablet default](ui-audit/tablet-default.png) |
 | Phone, Parameters | ![mobile parameters](ui-audit/mobile-parameters.png) |
 | Phone, Source | ![mobile source](ui-audit/mobile-source.png) |
 | Phone, stage HUD | ![mobile stage](ui-audit/mobile-stage.png) |
@@ -272,6 +274,22 @@ The second full capture review found and fixed:
 - The smoke test now scrolls the grouped row into view and asserts the pointer
   actually hits the speed slider before dragging; the previous test could grab
   the Playback scrubber when the Parameters pane was scrolled.
+
+## 4.9 Workbench audit (1.45.10)
+
+- The Source header's More trigger is absolutely anchored inside the pane and
+  the caret/status leaves room for it; the phone layout hit-tests the trigger
+  before opening the menu.
+- The keyboard-shortcuts overlay escapes the block's containment while open,
+  so it is fixed to the viewport, its Close button is reachable and focused,
+  and any stale tooltip is dismissed before the modal appears.
+- PUI 1.18.5 gives body-hosted dialogs an opaque surface fallback when the host
+  uses transparent embedded surfaces; the mobile command palette is no longer
+  see-through.
+- PUI 1.18.6 orders preset storage actions **Save, Rename, Delete** and the
+  compact single row keeps the destructive action last.
+- Added tablet (820 px) and light-theme captures alongside the desktop and
+  phone matrix.
 
 ## 4.3 Runtime cost controls
 

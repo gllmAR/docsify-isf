@@ -145,7 +145,7 @@ const clickPresetAction = (re) => blockEval((block, [pattern]) => {
     if (button) button.click();
     return !!button;
 }, re);
-check("save preset opens a name form", await clickPresetAction("Save preset"));
+check("save preset opens a name form", await clickPresetAction("^Save$"));
 await sleep(250);
 await page.screenshot({ path: path.join(artifacts, "02b-preset-save-dialog.png") });
 actions.push("02b-preset-save-dialog");
@@ -176,7 +176,7 @@ await sleep(350);
 const recalledLevel = levelNumber ? await levelNumber.evaluate((el) => el.value) : "";
 check("preset recall restores the saved value", recalledLevel === "1", recalledLevel);
 await capture("02d-preset-recall");
-check("rename preset opens a name form", await clickPresetAction("Rename preset"));
+check("rename preset opens a name form", await clickPresetAction("^Rename$"));
 await sleep(200);
 const renameDialog = await page.$("dialog.pui-dialog");
 if (renameDialog) {
@@ -192,7 +192,7 @@ const renamedPreset = await blockEval((block) => {
 });
 check("preset rename updates the selected label", renamedPreset === "Look B", renamedPreset);
 await capture("02e-preset-renamed");
-check("delete preset opens confirmation", await clickPresetAction("Delete preset"));
+check("delete preset opens confirmation", await clickPresetAction("^Delete$"));
 await sleep(200);
 const deleteDialog = await page.$("dialog.pui-dialog");
 if (deleteDialog) {
@@ -634,6 +634,8 @@ const parametersBefore = await blockEval((block) => {
     const pane = block.querySelector(".pui-workbench-pane.is-right");
     return !!pane && !pane.classList.contains("is-collapsed");
 });
+await page.keyboard.press("Escape");
+await sleep(120);
 await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
 await sleep(150);
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
@@ -739,6 +741,20 @@ await tapRegion("left", true);
 await capture("27-mobile-source");
 let phone = await mobileLayout();
 check("phone Source drawer is full-width and exclusive", phone.left && !phone.right && phone.leftWidth >= phone.bodyWidth - 2, phone);
+const phoneMore = await blockEval((block) => {
+    const pane = block.querySelector(".pui-workbench-pane.is-left");
+    const trigger = block.querySelector(".isf-editor-more .pui-menu-trigger");
+    if (!pane || !trigger) return null;
+    trigger.scrollIntoView({ block: "center" });
+    const p = pane.getBoundingClientRect();
+    const r = trigger.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+        left: Math.round(r.left - p.left), right: Math.round(r.right - p.right),
+        width: Math.round(r.width), hit: hit === trigger || (hit && trigger.contains(hit))
+    };
+});
+check("phone Source More trigger stays inside the pane", !!phoneMore && phoneMore.left >= 0 && phoneMore.right <= 0 && phoneMore.width >= 20 && phoneMore.hit, phoneMore);
 await tapRegion("right", true);
 await capture("28-mobile-parameters");
 phone = await mobileLayout();
@@ -752,6 +768,58 @@ await capture("29b-mobile-playback-open");
 phone = await mobileLayout();
 check("phone Playback strip stays visible", phone.bottom && phone.bottomHeight >= 60, phone);
 await page.screenshot({ path: path.join(artifacts, "30-mobile-page.png") });
+
+// The help modal and command palette must stay inside the viewport and remain
+// visually opaque over a dark host page.
+await openMenu();
+await menuAction("Keyboard shortcuts");
+await sleep(400);
+const phoneHelp = await page.evaluate(() => {
+    const overlay = document.querySelector(".isf-overlay-help");
+    const close = overlay && overlay.querySelector('[data-isf-overlay="close"]');
+    if (!overlay || !close) return null;
+    const o = overlay.getBoundingClientRect();
+    const c = close.getBoundingClientRect();
+    const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+    return {
+        top: Math.round(o.top), height: Math.round(o.height), viewport: window.innerHeight,
+        closeVisible: c.top >= 0 && c.bottom <= window.innerHeight,
+        closeHit: hit === close || (hit && close.contains(hit)),
+        closeFocused: !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('[data-isf-overlay="close"]')),
+        tooltipVisible: !!document.querySelector(".pui-tooltip.is-visible"),
+        position: getComputedStyle(overlay).position
+    };
+});
+check("phone help overlay is viewport-fixed and closable", !!phoneHelp && phoneHelp.position === "fixed" && phoneHelp.top === 0 &&
+    phoneHelp.height === phoneHelp.viewport && phoneHelp.closeVisible && phoneHelp.closeHit &&
+    phoneHelp.closeFocused && !phoneHelp.tooltipVisible, phoneHelp);
+await capture("31-mobile-help");
+await closeOverlay();
+await sleep(200);
+await page.keyboard.down("Control");
+await page.keyboard.down("Shift");
+await page.keyboard.press("P");
+await page.keyboard.up("Shift");
+await page.keyboard.up("Control");
+await sleep(400);
+const phonePalette = await page.evaluate(() => {
+    const dialog = document.querySelector("dialog.pui-palette");
+    if (!dialog) return null;
+    const r = dialog.getBoundingClientRect();
+    const bg = getComputedStyle(dialog).backgroundColor;
+    const alpha = (/rgba?\([^)]*,\s*([\d.]+)\s*\)/.exec(bg) || [])[1];
+    return {
+        left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom),
+        viewport: [window.innerWidth, window.innerHeight], background: bg,
+        opaque: !alpha || Number(alpha) > 0
+    };
+});
+check("phone command palette is opaque and inside the viewport", !!phonePalette && phonePalette.opaque &&
+    phonePalette.left >= 0 && phonePalette.top >= 0 && phonePalette.right <= phonePalette.viewport[0] &&
+    phonePalette.bottom <= phonePalette.viewport[1], phonePalette);
+await capture("31b-mobile-palette");
+await page.keyboard.press("Escape");
+await sleep(200);
 
 check("no console errors", errors.length === 0, errors.slice(0, 5));
 try {

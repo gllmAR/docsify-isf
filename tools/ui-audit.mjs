@@ -82,6 +82,7 @@ const shot = async (name) => {
 };
 
 await page.setViewport({ width: 1280, height: 1000, deviceScaleFactor: 1 });
+await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
 await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
 await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").length >= 12, { timeout: 30000 });
 await blockInfo();
@@ -95,7 +96,7 @@ await shot("desktop-default");
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
     const presetBlock = block.querySelector(".pui-presets");
-    const save = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /Save preset/i.test(node.textContent));
+    const save = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /^Save$/.test(node.textContent));
     if (save) save.click();
 });
 await sleep(200);
@@ -111,7 +112,7 @@ await shot("desktop-presets");
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
     const presetBlock = block.querySelector(".pui-presets");
-    const remove = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /Delete preset/i.test(node.textContent));
+    const remove = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /^Delete$/.test(node.textContent));
     if (remove) remove.click();
 });
 await sleep(200);
@@ -308,6 +309,28 @@ await page.evaluate(async () => {
     if (exit) await exit.call(document);
 });
 await sleep(500);
+
+// Light theme: the same workbench must remain readable when docsify loads its
+// light addon instead of the dark one.
+await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+await sleep(500);
+await clickRegion("right");
+await sleep(300);
+await shot("desktop-light");
+await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+await sleep(300);
+
+// Tablet width sits between desktop and phone: the workbench must still
+// choose a usable pane layout instead of leaving a sliver of stage.
+await page.setViewport({ width: 820, height: 1000, deviceScaleFactor: 1 });
+await page.reload({ waitUntil: "networkidle0", timeout: 60000 });
+await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").length >= 12, { timeout: 30000 });
+await blockInfo();
+await sleep(1000);
+await clickRegion("right");
+await sleep(350);
+await shot("tablet-default");
+
 await browser.close();
 server.close();
 console.log("ui-audit: wrote " + out);
