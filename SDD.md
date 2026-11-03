@@ -409,7 +409,7 @@ the eyebrow and one-line description. Pane toggles carry decorative host glyphs 
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.17.3's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.18.3's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -448,7 +448,7 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
-- PUI compact density puts labels beside controls; PUI 1.17.3 stretches custom
+- PUI compact density puts labels beside controls; PUI 1.18.3 stretches custom
   slots to their container and flips menu popups at the viewport edge.
 - The Parameters tab is led by the host-owned **Presets** block implemented
   with PUI's `presets`/`storage` contract. Presets are named snapshots of
@@ -457,11 +457,16 @@ Density decisions:
   and applies the stored values; delete is confirmed. The host owns values and storage;
   PUI owns the list, forms and confirmation. The preset list stays local to the
   viewer but is copied to other mounted viewers of the same shader.
-- PUI dialogs are body-hosted; PUI 1.17.3 copies the active surface/text/font
+- PUI dialogs are body-hosted; PUI 1.18.3 copies the active surface/text/font
   tokens into them so action forms, confirmations and the command palette keep
   their panel outside the PUI root.
-- Input sets of six or more get the PUI parameter filter. The workbench tools
-  use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
+- Input sets of six or more are grouped into PUI disclosures by type
+  (Media, Color, Geometry, Values, Constants) when `paramGroups` is `"auto"`;
+  `"always"` groups every size, and `false`/`"never"` keeps the flat list. A
+  host `input.group`/`GROUP` value overrides the type fallback. Groups open by
+  default, persist their state, and each field keeps its `/isf/<name>` binding.
+  PUI's parameter filter stays available inside the grouped panel. The workbench
+  tools use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
   collapses Source, Parameters and Playback for a content-first stage.
 - The Source editor head is hidden in the workbench (the Source pane title and
   title bar carry identity/close). Its toolbar is one row: fold, Fragment/
@@ -494,7 +499,7 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
-- PUI 1.17.3 owns a delegated tooltip manager for flagged icon-only chrome:
+- PUI 1.18.3 owns a delegated tooltip manager for flagged icon-only chrome:
   titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
   host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
   450 ms touch long-press shows the label without activating the button. The
@@ -667,9 +672,9 @@ back into view or on click.
 
 All options live under `window.$docsify.isf`; the reference table is in
 [README.md](README.md#configuration). The most important ones:
-`mode`, `lazy`, `params`, `editor`, `editorLive`, `maxContexts`,
-`maxPixelRatio`, `resolution`, `maxResolution`, `puiBase`, `vertexShader`,
-`imports`.
+`mode`, `lazy`, `params`, `paramGroups`, `presets`, `editor`, `editorLive`,
+`maxContexts`, `maxPixelRatio`, `resolution`, `maxResolution`, `puiBase`,
+`vertexShader`, `imports`.
 
 ## 11. Testing strategy
 
@@ -677,9 +682,10 @@ All options live under `window.$docsify.isf`; the reference table is in
 |---|---|---|
 | Unit | `tests/run.js` | tolerant JSON (comments, trailing commas, quotes, escapes, leading comments), expression evaluator, `IMG_*`/`vv_*` rewriting (nesting, comments, `#define`), shader assembly (uniforms, passes, `#version`, line mapping), highlighting/escaping, URL resolution/fallback, link detection |
 | Self-test | `tests/run.js` | every link in `README.md` points at a committed `samples/*.fs`; every sample parses and assembles with no unresolved images |
+| Parameter UI | `tests/pui-params.test.js` | vendored PUI hashes/version, every sample maps to controls, adapter round-trips, grouped documents validate with every field still bound |
 | Corpus | `node tests/run.js --corpus` | all bundled `.fs` materials parse and assemble cleanly |
 | Frames | `tests/frame-tool.mjs` | `renderFrame`/`compareFrames` are deterministic (byte-identical PNGs), time/inputs/steps/parent frames change the output, the MAE metric behaves, and strict mode fails above the threshold |
-| Browser | `tests/browser-smoke.mjs` | headless Chrome: every viewer mounts the PUI workbench with Source left, Parameters right, Preview stage and compact Playback/status; icon-only pane/direct actions; Source/Parameters buttons show/hide; Parameters/View/Log tabs; direct focus/fullscreen/reset/share and the Menu for randomize/export/help/source; search filter; editor one-row Apply/More + templates; source status dot/caret; transport play/seek; fullscreen; focus; budget recovery; phone overlays; OBS bare; fallback errors |
+| Browser | `tests/browser-smoke.mjs` | headless Chrome: every viewer mounts the PUI workbench with Source left, Parameters right, Preview stage and compact Playback/status; icon-only pane/direct actions; Source/Parameters buttons show/hide; grouped parameter rows are scrolled into view and hit-tested before dragging; Parameters/View/Log tabs; direct focus/fullscreen/reset/share and the Menu for randomize/export/help/source; search filter; editor one-row Apply/More + templates; source status dot/caret; transport play/seek; fullscreen; focus; budget recovery; phone overlays; OBS bare; fallback errors |
 | Interaction | `tests/browser-interaction.mjs` | complete desktop/mobile click+touch trace; every pane/tab, menu/direct action, parameter family, filter, editor More/import/templates, transport, focus, fullscreen and phone actions; captures each result under `tests/artifacts/interaction/` |
 
 `npm test` runs the unit/self-test layer; `npm run test:smoke` the browser

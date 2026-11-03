@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Date:** 2026-11-02 · **PUI:** 1.14.2
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.3 · **docsify-isf:** 1.45.7
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -261,6 +261,18 @@ The second full capture review found and fixed:
 - Captured at phone width on the titlebar Parameters toggle; the HUD variant is
   covered by the interaction trace.
 
+## 4.8 Parameter groups (1.45.4)
+
+- Large input sets are grouped into PUI disclosures by type: **Media**,
+  **Color**, **Geometry**, **Values**, **Constants**. Groups open by default,
+  persist through `isf.group.<type>`, and every field keeps its host bind.
+- `paramGroups:"auto"` groups at six or more inputs; `"always"` groups every
+  material; `false`/`"never"` keeps the flat list. `GROUP`/`input.group` wins
+  over the type fallback.
+- The smoke test now scrolls the grouped row into view and asserts the pointer
+  actually hits the speed slider before dragging; the previous test could grab
+  the Playback scrubber when the Parameters pane was scrolled.
+
 ## 4.3 Runtime cost controls
 
 - Workbench state changes are **coalesced to one PUI apply per animation frame**;
@@ -277,13 +289,12 @@ The second full capture review found and fixed:
 
 ## 5. Remaining opportunities
 
-- **Parameter groups** need a portable ISF/host group contract; no bundled
-  shader carries `GROUP`, so the presets block is the current large-material
-  affordance instead of invented arbitrary sections.
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.
-- **Parameter groups** and saved parameter presets for very large materials.
+- **Group-level actions** (collapse/expand all) are not needed at current
+  material sizes; the persisted disclosure state and parameter filter cover
+  the 8–20 input range.
 
 ---
 
