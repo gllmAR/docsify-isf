@@ -21,6 +21,9 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
+const artifacts = path.join(here, "artifacts");
+// CI starts from a clean checkout; the screenshot directory is gitignored.
+fs.mkdirSync(artifacts, { recursive: true });
 
 const MIME = {
     ".html": "text/html; charset=utf-8",
@@ -366,14 +369,14 @@ try {
         problems.push("broken-header viewer has no visible error: " + JSON.stringify(negative));
     }
 
-    await page.screenshot({ path: path.join(here, "artifacts", "browser-smoke.png"), fullPage: false });
+    await page.screenshot({ path: path.join(artifacts, "browser-smoke.png"), fullPage: false });
     const blocks = await page.$$(".isf-block");
     for (let index = 0; index < blocks.length; index++) {
         const item = summary[index];
         if (!item) continue;
         const slug = String(item.title || "viewer").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "viewer";
         try {
-            await blocks[index].screenshot({ path: path.join(here, "artifacts", slug + ".png") });
+            await blocks[index].screenshot({ path: path.join(artifacts, slug + ".png") });
         } catch (error) {
             problems.push("screenshot failed for " + item.title + ": " + error.message);
         }
@@ -835,7 +838,7 @@ try {
     if (!phone.rightOpen || phone.leftOpen || phone.viewTab !== "View") problems.push("mobile: View did not replace Source in narrow mode: " + JSON.stringify(phone));
     if (phone.minButton < 30) problems.push("mobile: workbench touch target under 30px (" + phone.minButton + ")");
     if (!phone.titlebarTitle || phone.titlebarHeight > 130) problems.push("mobile: title bar is not compact: " + JSON.stringify(phone));
-    await page.screenshot({ path: path.join(here, "artifacts", "mobile.png"), fullPage: false });
+    await page.screenshot({ path: path.join(artifacts, "mobile.png"), fullPage: false });
     await page.setViewport({ width: 1280, height: 1000 });
     await new Promise((resolve) => setTimeout(resolve, 800));
 
