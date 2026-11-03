@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.42.0
+ * docsify-isf v1.43.2
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.42.0";
+    var VERSION = "1.43.2";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -4556,6 +4556,7 @@
         var foldButton = h("button", "isf-btn isf-fold-btn", {
             type: "button", html: ICONS.chevron,
             title: "Collapse the editor toolbar", "aria-label": "Collapse the editor toolbar",
+            "data-pui-tooltip": "Collapse the editor toolbar",
             "aria-expanded": "true", "aria-controls": "isf-editor-toolbar-content"
         });
         var foldedSummary = h("span", "isf-editor-folded-summary", { "aria-hidden": "true" });
@@ -5891,12 +5892,12 @@
         // full transport. It auto-hides while playing unless the stage or HUD
         // has keyboard focus, and it is suppressed in the bare/OBS surface.
         var hud = h("div", "isf-stage-hud", { role: "group", "aria-label": "Preview controls" });
-        var hudPlay = h("button", "isf-hud-btn", { type: "button", title: "Pause", "aria-label": "Pause" });
+        var hudPlay = h("button", "isf-hud-btn", { type: "button", title: "Pause", "aria-label": "Pause", "data-pui-tooltip": "Pause" });
         var hudTime = h("span", "isf-hud-time", { "aria-hidden": "true" });
         var hudStats = h("span", "isf-hud-stats", { "aria-hidden": "true" });
         var hudActions = h("div", "isf-hud-actions");
-        var hudCapture = h("button", "isf-hud-btn", { type: "button", title: "Export current frame as PNG", "aria-label": "Export current frame as PNG" });
-        var hudFull = h("button", "isf-hud-btn", { type: "button", title: "Fullscreen", "aria-label": "Fullscreen" });
+        var hudCapture = h("button", "isf-hud-btn", { type: "button", title: "Export current frame as PNG", "aria-label": "Export current frame as PNG", "data-pui-tooltip": "Export current frame as PNG" });
+        var hudFull = h("button", "isf-hud-btn", { type: "button", title: "Fullscreen", "aria-label": "Fullscreen", "data-pui-tooltip": "Fullscreen" });
         hudPlay.innerHTML = ICONS.pause;
         hudCapture.innerHTML = ICONS.download;
         hudFull.innerHTML = ICONS.fullscreen;
@@ -5952,6 +5953,7 @@
                 hudPlay.innerHTML = playing ? ICONS.pause : ICONS.play;
                 hudPlay.title = playing ? "Pause" : "Play";
                 hudPlay.setAttribute("aria-label", playing ? "Pause" : "Play");
+                hudPlay.setAttribute("data-pui-tooltip", playing ? "Pause" : "Play");
                 var transport = viewer.transportValue ? viewer.transportValue() : { position: 0, duration: 60 };
                 hudTime.textContent = hudFormatTime(transport.position) + " / " + hudFormatTime(transport.duration);
                 if (runtime && runtime.destWidth) {
@@ -5962,6 +5964,7 @@
                 var full = isFullscreenActive();
                 hudFull.title = full ? "Exit fullscreen" : "Fullscreen";
                 hudFull.setAttribute("aria-label", hudFull.title);
+                hudFull.setAttribute("data-pui-tooltip", hudFull.title);
             },
             sync: function () {
                 var available = hudAvailable();

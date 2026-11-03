@@ -493,6 +493,43 @@ await capture("24c-hud-capture");
 const hudDownloads = await page.evaluate(() => window.__downloads.slice());
 check("HUD capture exports a PNG", hudDownloads.some((href) => /^data:image\/png/.test(href)), hudDownloads.slice(-1));
 
+// Long-press tooltip: readable label on touch, without firing the button.
+await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+await sleep(120);
+const hudFullBox = await page.$eval(`${selector} .isf-stage-hud button[aria-label="Fullscreen"]`, (el) => {
+    const rect = el.getBoundingClientRect();
+    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+});
+await page.evaluate(({x, y}) => {
+    const target = document.elementFromPoint(x, y);
+    if (target) target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, pointerType: "touch", clientX: x, clientY: y}));
+}, hudFullBox);
+await page.waitForFunction(() => {
+    const tip = document.querySelector(".pui-tooltip.is-visible");
+    return tip && /Fullscreen/.test(tip.textContent);
+}, {timeout: 2000}).catch(() => {});
+await sleep(120);
+const tooltipText = await page.evaluate(() => {
+    const tip = document.querySelector(".pui-tooltip.is-visible");
+    return tip ? tip.textContent : "";
+});
+check("long-press shows a tooltip label", /Fullscreen/.test(tooltipText), tooltipText);
+await page.screenshot({ path: path.join(artifacts, "24d-hud-tooltip.png") });
+actions.push("24d-hud-tooltip");
+await page.evaluate(({x, y}) => {
+    const target = document.elementFromPoint(x, y);
+    if (target) {
+        target.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerType: "touch", clientX: x, clientY: y}));
+        const button = target.closest ? target.closest("button") : null;
+        if (button) button.click();
+    }
+}, hudFullBox);
+await sleep(250);
+const longPressFullscreen = await page.evaluate(() => !!(document.fullscreenElement || document.webkitFullscreenElement));
+check("long-press tooltip does not activate the button", !longPressFullscreen, longPressFullscreen);
+await page.keyboard.press("Escape");
+await sleep(120);
+
 // ── fullscreen through the HUD action
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 const hudFullscreen = await page.$(`${selector} .isf-stage-hud button[aria-label="Fullscreen"]`);

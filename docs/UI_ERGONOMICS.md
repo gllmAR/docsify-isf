@@ -24,6 +24,7 @@ checked against established editor/workbench implementations.
 | Phone, Parameters | ![mobile parameters](ui-audit/mobile-parameters.png) |
 | Phone, Source | ![mobile source](ui-audit/mobile-source.png) |
 | Phone, stage HUD | ![mobile stage](ui-audit/mobile-stage.png) |
+| Phone, long-press tooltip | ![mobile tooltip](ui-audit/mobile-tooltip.png) |
 | Phone, shortcuts help | ![mobile help](ui-audit/mobile-help.png) |
 | Phone, command palette | ![mobile palette](ui-audit/mobile-palette.png) |
 
@@ -133,6 +134,11 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
   HUD** with play/pause, time, resolution/fps, capture and fullscreen. It stays
   for keyboard focus/pause, auto-hides during pointer playback, drops stats
   below 440 px of stage width, and is suppressed for OBS/bare viewers.
+- Icon-only chrome now has **hover/focus/long-press tooltips** (PUI 1.15.2):
+  titlebar toggles/actions, PUI menus, the host HUD and the fold control. A
+  touch long-press shows the label without firing the button; the next pointer
+  gesture clears suppression. Tooltips are hosted outside contained PUI roots
+  and copy the active theme tokens, so they position correctly in fullscreen.
 
 ### Measured result
 
@@ -199,6 +205,21 @@ The second full capture review found and fixed:
   suppressed in bare/OBS mode. The stats are hidden by a stage container query
   under 440 px so phone buttons do not truncate.
 
+## 4.4 Tooltips (1.15.2)
+
+- One delegated manager per PUI mount; flagged controls carry
+  `data-pui-tooltip`. Hover 320 ms, focus immediate, touch long-press 450 ms.
+- A long press suppresses the release click; the next non-touch pointer press
+  clears suppression so a mouse/pen click after a touch tooltip is not
+  swallowed.
+- Tooltips are hosted on the document body, or the fullscreen element while
+  fullscreen is active, and copy the active PUI surface/text/font tokens.
+  Position is viewport-clamped and above/below the trigger.
+- Escape, scroll, focus-out and a 1.6 s touch timeout dismiss; the original
+  `title` is restored.
+- Captured at phone width on the titlebar Parameters toggle; the HUD variant is
+  covered by the interaction trace.
+
 ## 4.3 Runtime cost controls
 
 - Workbench state changes are **coalesced to one PUI apply per animation frame**;
@@ -218,8 +239,6 @@ The second full capture review found and fixed:
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.
-- **Custom tooltips** for icon-only mobile controls; native `title` is
-  functional but not first-class on touch. The stage HUD is now implemented.
 - **Parameter groups** and saved parameter presets for very large materials.
 
 ---

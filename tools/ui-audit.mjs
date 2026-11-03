@@ -191,6 +191,29 @@ await page.mouse.click(stagePoint.x, stagePoint.y);
 await sleep(350);
 await shot("mobile-stage");
 
+// Long-press tooltip on a stage HUD action at phone width.
+const tooltipPoint = await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const button = block.querySelector('.pui-workbench-toggle[data-pui-region="right"]');
+    button.scrollIntoView({ block: "center" });
+    const rect = button.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+});
+await sleep(200);
+await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    if (target) target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch", clientX: x, clientY: y }));
+}, tooltipPoint);
+await sleep(650);
+// Do not scroll here: PUI correctly dismisses a tooltip on scroll.
+await page.screenshot({ path: path.join(out, "mobile-tooltip.png") });
+await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    if (target) target.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch", clientX: x, clientY: y }));
+}, tooltipPoint);
+await page.keyboard.press("Escape");
+await sleep(150);
+
 // Help and palette at phone width: both must fit without horizontal clipping.
 await page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));

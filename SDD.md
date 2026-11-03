@@ -408,7 +408,7 @@ buttons. Pane toggles carry decorative host glyphs with accessible names and
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.14.2's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.15.2's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -479,6 +479,14 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
+- PUI 1.15.2 owns a delegated tooltip manager for flagged icon-only chrome:
+  titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
+  host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
+  450 ms touch long-press shows the label without activating the button. The
+  next non-touch pointer press clears suppression; Escape, scroll, focus-out
+  and a 1.6 s timeout hide. The tooltip is hosted on the document (or the
+  fullscreen element) with copied PUI tokens, so it is correct in contained
+  workbenches and fullscreen.
 - Keyboard help is a workbench modal, the editor More menu is anchored inside
   the Source pane, and the command palette has a visible title/hint. On phones
   both help and palette are checked at 390 px for horizontal clipping.

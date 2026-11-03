@@ -48,6 +48,11 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   cancel the closed pane's deferred toggle focus. Auto-open never resets a
   user-selected tab and never steals from an already-open Source/Parameters
   pane.
+- **Tooltips are PUI-owned.** Flag icon-only controls with
+  `data-pui-tooltip`; PUI 1.15.2 provides hover/focus/long-press labels, touch
+  click suppression, theme-token copying and document/fullscreen hosting. Never
+  add a second tooltip manager per viewer. A long press must not activate the
+  control, and a following mouse/pen press must not stay suppressed.
 - **Stage HUD complements, never duplicates, Playback.** The HUD is available
   only while the Playback strip is closed (including Focus preview); it carries
   play/pause, time, stats, capture and fullscreen. Keep it keyboard reachable,
@@ -91,7 +96,7 @@ npm run build
   transport, fullscreen, phone overlays, OBS bare and fallback errors.
 - `tests/browser-interaction.mjs` — complete desktop/mobile workbench trace:
   every pane/tab, menu/direct action, parameter family, filter, editor
-  actions/More/Templates, transport, focus/HUD controls, fullscreen and touch
-  taps.
+  actions/More/Templates, transport, focus/HUD controls, tooltips, fullscreen
+  and touch taps.
 - Interaction screenshots are written to `tests/artifacts/interaction/` and
   uploaded by CI.
