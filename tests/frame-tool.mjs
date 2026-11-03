@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createRenderSession, renderFrames } from "../tools/render-frame.mjs";
+import { CORPUS_ROOT, createRenderSession, findMaterial, renderFrames, sweepTargets } from "../tools/render-frame.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -118,6 +118,20 @@ try {
 
     const report = await renderFrames(Object.assign({}, base, { dryRun: true }));
     check("dry runs render without writing", !report.entries[0].png && report.entries[0].sha256 === first.entries[0].sha256);
+
+    const corpusSweep = CORPUS_ROOT ? sweepTargets("generator", 1) : [];
+    check("CLI library sweep discovers the corpus", !CORPUS_ROOT || corpusSweep.length === 1, corpusSweep.map((target) => target.slug));
+    const corpusMaterial = CORPUS_ROOT && findMaterial("2d-clouds", "generator");
+    if (corpusMaterial) {
+        const corpusFrame = await renderFrames(Object.assign({}, base, {
+            targets: [corpusMaterial], time: 1.5, outDir: OUT, width: 160, height: 90
+        }));
+        check("bundled generator corpus renders through the CLI root", !corpusFrame.entries[0].error &&
+            corpusFrame.entries[0].width === 160 && corpusFrame.entries[0].height === 90,
+            corpusFrame.entries[0].error || corpusMaterial.file);
+    } else {
+        process.stdout.write("  skip bundled generator corpus (set ISF_CORPUS_ROOT to exercise it)\n");
+    }
 } finally {
     await session.close();
 }

@@ -63,11 +63,33 @@ import puppeteer from "puppeteer-core";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(HERE, "..");
-const PARENT_ROOT = path.resolve(PLUGIN_ROOT, "..", "..");
 const SHARED_GLSL = path.join("modules", "src", "isf-source", "isf", "glsl");
-// Inside obs-lua-projection-mapping the parent root also serves the bundled
-// library and the shared GLSL ports; standalone it is just this repo.
-const WEB_ROOT = fs.existsSync(path.join(PARENT_ROOT, SHARED_GLSL)) ? PARENT_ROOT : PLUGIN_ROOT;
+const sharedRoot = path.resolve(PLUGIN_ROOT, "..", "..", "..");
+const corpusCandidates = [
+    process.env.ISF_CORPUS_ROOT,
+    process.env.OBS_ISF_ROOT,
+    path.resolve(sharedRoot, "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(PLUGIN_ROOT, "..", "..", "..", "..", "_codeberg", "gllm", "obs-lua-projection-mapping"),
+    path.resolve(PLUGIN_ROOT, "..", ".."),
+    sharedRoot
+].filter(Boolean);
+const CORPUS_ROOT = corpusCandidates.find((dir) =>
+    fs.existsSync(path.join(dir, "modules", "fx", "isf-filter", "library")) &&
+    fs.existsSync(path.join(dir, "modules", "src", "isf-source", "library")));
+const LIBRARY_ROOT = CORPUS_ROOT || PLUGIN_ROOT;
+
+function commonAncestor(a, b) {
+    const left = path.resolve(a).split(path.sep);
+    const right = path.resolve(b).split(path.sep);
+    let index = 0;
+    while (index < left.length && index < right.length && left[index] === right[index]) index++;
+    return left.slice(0, index).join(path.sep) || path.parse(a).root;
+}
+
+// Serve the common ancestor so committed samples and the external OBS corpus
+// can share one origin. The host page and plugin are still served from this
+// repository; site-absolute include paths resolve against the same origin.
+const WEB_ROOT = CORPUS_ROOT ? commonAncestor(PLUGIN_ROOT, CORPUS_ROOT) : PLUGIN_ROOT;
 const HOST_FILE = path.join(PLUGIN_ROOT, "tools", "frame-host.html");
 
 // The plugin resolves a leading-slash includePath against the document base,
@@ -81,7 +103,7 @@ function toIncludePath(dir) {
     return "/" + relative.split(path.sep).join("/") + "/";
 }
 
-const INCLUDE_PATHS = [toIncludePath(path.join(PARENT_ROOT, SHARED_GLSL))].filter(Boolean);
+const INCLUDE_PATHS = [toIncludePath(path.join(LIBRARY_ROOT, SHARED_GLSL))].filter(Boolean);
 
 // The plugin's parser gives Node the input types needed to replay capture
 // parameters (colours are packed OBS integers in the cover sidecar).
@@ -314,7 +336,7 @@ function slugOf(file) {
 function findMaterial(slug, kind) {
     const kinds = kind && kind !== "all" && LIBRARIES[kind] ? [kind] : Object.keys(LIBRARIES);
     for (const candidate of kinds) {
-        const dir = path.join(WEB_ROOT, LIBRARIES[candidate], slug);
+        const dir = path.join(LIBRARY_ROOT, LIBRARIES[candidate], slug);
         if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
         const expected = path.join(dir, slug + ".fs");
         if (fs.existsSync(expected)) return { file: expected, slug, kind: candidate };
@@ -328,7 +350,7 @@ function sweepTargets(kind, limit) {
     const kinds = kind && kind !== "all" && LIBRARIES[kind] ? [kind] : Object.keys(LIBRARIES);
     const targets = [];
     for (const candidate of kinds) {
-        const dir = path.join(WEB_ROOT, LIBRARIES[candidate]);
+        const dir = path.join(LIBRARY_ROOT, LIBRARIES[candidate]);
         if (!fs.existsSync(dir)) continue;
         const slugs = fs.readdirSync(dir).filter((name) => fs.statSync(path.join(dir, name)).isDirectory());
         slugs.sort();
@@ -737,6 +759,8 @@ async function main() {
     }
     process.exit(report.exitCode || 0);
 }
+
+export {CORPUS_ROOT, LIBRARY_ROOT, WEB_ROOT, findMaterial, sweepTargets};
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
     main();

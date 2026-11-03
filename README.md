@@ -572,7 +572,9 @@ the same capture. Image inputs upload bottom-up so `IMG_NORM_PIXEL()` is
 upright with the bottom-left `isf_FragNormCoord`, like the reference renderer.
 
 The bundled CLI renders files or whole library sweeps and can diff them
-against the project's OBS `_cover.png` captures:
+against the project's OBS `_cover.png` captures. It discovers the OBS corpus
+automatically (or via `ISF_CORPUS_ROOT`) and serves committed samples plus the
+corpus from a common origin, so `--kind`/`--parent`/`--cover` work standalone:
 
 ```bash
 node tools/render-frame.mjs samples/plasma.fs --out plasma.png
