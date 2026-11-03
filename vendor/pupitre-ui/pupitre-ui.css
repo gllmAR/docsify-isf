@@ -132,7 +132,7 @@
 .pui input:disabled, .pui select:disabled, .pui textarea:disabled, .pui button:disabled { opacity: 0.55; cursor: not-allowed; }
 .pui [inert] { opacity: 0.55; }
 .pui-switch { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: var(--pui-touch); font-size: calc(var(--pui-type-base) * 0.78); font-weight: 600; }
-.pui-switch input { inline-size: 36px; block-size: 20px; }
+.pui-switch input[role="switch"] { inline-size: 36px; block-size: 20px; }
 .pui-range { display: flex; align-items: center; gap: 5px; width: 100%; }
 .pui-range > input[type="range"] { flex: 1 1 auto; cursor: ew-resize; }
 .pui-range.is-vertical { flex-direction: column; align-items: center; width: auto; gap: 3px; }
@@ -1427,3 +1427,44 @@
  * otherwise leaves a dead column that reads as broken layout. */
 .pui-field:has(> .pui-button), .pui-field:has(> .pui-impulse) { grid-column: 1 / -1; }
 .pui-field:has(.pui-xypad-control) { grid-column: 1 / -1; }
+
+/* Modern, compact control language. Native controls remain the semantic
+ * source; appearance is replaced only for mouse/touch surfaces. */
+.pui input[type="text"], .pui input[type="number"], .pui select, .pui textarea,
+.pui .pui-button, .pui .pui-preset, .pui .pui-scrub { border-radius: 6px; }
+.pui-section { border-radius: 8px; }
+.pui input[type="checkbox"], .pui input[type="radio"] {
+  appearance: none; -webkit-appearance: none; position: relative;
+  inline-size: 18px; block-size: 18px; margin: 0; padding: 0;
+  border: 1px solid color-mix(in srgb, var(--pui-border) 88%, var(--pui-text));
+  border-radius: 5px; background: var(--pui-surface-2);
+  cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.pui input[type="checkbox"]:checked {
+  border-color: var(--pui-accent); background: var(--pui-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.1 3L13 4.7' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 13px 13px;
+}
+.pui input[type="radio"] { border-radius: 50%; }
+.pui input[type="radio"]:checked {
+  border-color: var(--pui-accent);
+  background: radial-gradient(circle, var(--pui-accent) 0 4px, var(--pui-surface) 4.5px 100%);
+}
+.pui-switch input[role="switch"] {
+  inline-size: 36px; block-size: 20px; border-radius: 999px; border-color: var(--pui-border);
+  background-color: var(--pui-surface-2);
+  background-image: radial-gradient(circle, var(--pui-surface) 0 7px, transparent 7.5px);
+  background-repeat: no-repeat; background-position: 3px center; background-size: 14px 14px;
+  transition: background-color 0.14s ease, background-position 0.14s ease, border-color 0.14s ease;
+}
+.pui-switch input[role="switch"]:checked {
+  border-color: var(--pui-accent); background-color: var(--pui-accent);
+  background-image: radial-gradient(circle, var(--pui-accent-text) 0 7px, transparent 7.5px);
+  background-position: calc(100% - 3px) center;
+}
+.pui input[type="checkbox"]:disabled, .pui input[type="radio"]:disabled { opacity: 0.55; cursor: not-allowed; }
+@media (forced-colors: active) {
+  .pui input[type="checkbox"], .pui input[type="radio"], .pui-switch input[role="switch"] {
+    appearance: auto; -webkit-appearance: auto; background-image: none;
+  }
+}

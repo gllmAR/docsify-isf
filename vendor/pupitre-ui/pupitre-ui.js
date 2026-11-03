@@ -14955,7 +14955,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.7",
+    version: "1.18.8",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
