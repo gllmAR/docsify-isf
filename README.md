@@ -287,9 +287,10 @@ Only one Parameters pane is open across viewers at a time, so panels never stack
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.18.3** snapshot
-(commit `c209d74`). The workbench titlebar contract (`description`, collapsible
-heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
+The renderer/adapter are vendored from the clean PUI **1.18.3** release
+(commit `c209d74`, upstream tag `v1.18.3`). The workbench titlebar contract
+(`description`, collapsible heading, controls retained) is upstream in
+`spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
 so loading/errors remain visible.
@@ -596,8 +597,8 @@ node tools/build.mjs          # writes docsify-isf.js
 node tools/build.mjs --check  # CI: fails when the artifact is out of date
 
 # the parameter panel is the shared Pupitre UI toolkit (vendor/pupitre-ui):
-# sync it from a pupitre-ui checkout and verify the pinned snapshot
-node tools/sync-pupitre-ui.mjs          # PUPITRE_UI_DIR=... when not a sibling
+# sync it from a clean tagged pupitre-ui worktree and verify the pinned snapshot
+node tools/sync-pupitre-ui.mjs          # PUPITRE_UI_DIR=/tmp/pui-vX.Y.Z for a tag worktree
 node tools/sync-pupitre-ui.mjs --check  # CI: vendored files match SOURCE.json
 
 # unit tests: header parser, expression evaluator, IMG_* rewriting, URL

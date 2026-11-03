@@ -76,7 +76,9 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   trace plus screenshots. `node tools/ui-audit.mjs` refreshes the committed
   review captures.
 - **Update the record.** Version bumps, README/SDD, UI audit, CHANGELOG where
-  present and the PUI consumer record must agree.
+  present and the PUI consumer record must agree. `SOURCE.json` records the
+  release tag and commit; `npm run test:vendor` verifies the tag matches the
+  vendored version.
 
 ## Commands
 
@@ -87,14 +89,15 @@ npm run test:interaction       # full workbench action trace
 node tools/ui-audit.mjs        # docs/ui-audit captures
 npm run build:check            # bundle is current
 npm run test:vendor            # PUI snapshot matches SOURCE.json
-PUPITRE_UI_DIR=/tmp/pui-<sha> npm run test:vendor
+PUPITRE_UI_DIR=/tmp/pui-<version> npm run test:vendor
 ```
 
-Sync is **only** from a clean PUI worktree/tag:
+Sync is **only** from a clean PUI release tag; the sync script rejects a dirty
+worktree or a HEAD that is not exactly the `v<VERSION>` tag:
 
 ```bash
 cd ../../../_codeberg/gllm/pupitre-ui
-git worktree add --detach /tmp/pui-release <clean-sha>
+git worktree add --detach /tmp/pui-release vX.Y.Z
 cd ../../../_github/gllmar/docsify-isf
 PUPITRE_UI_DIR=/tmp/pui-release node tools/sync-pupitre-ui.mjs
 PUPITRE_UI_DIR=/tmp/pui-release node tools/sync-pupitre-ui.mjs --check

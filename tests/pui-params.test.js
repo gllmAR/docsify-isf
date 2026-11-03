@@ -60,6 +60,8 @@ console.log("\n# Vendored Pupitre UI");
 test("the vendored snapshot is present and hashed", () => {
     const record = JSON.parse(fs.readFileSync(path.join(puiDir, "SOURCE.json"), "utf8"));
     assert(/^\d+\.\d+\.\d+$/.test(record.version), "SOURCE.json version");
+    equal(record.tag, "v" + record.version, "SOURCE.json release tag");
+    assert(/^[0-9a-f]{7,40}$/.test(record.commit || ""), "SOURCE.json tagged commit");
     for (const [name, expected] of Object.entries(record.files)) {
         const file = path.join(puiDir, name);
         assert(fs.existsSync(file), "missing " + name);

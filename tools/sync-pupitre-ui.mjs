@@ -11,6 +11,10 @@
  *   PUPITRE_UI_DIR=/path/to/pupitre-ui node tools/...
  *   node tools/sync-pupitre-ui.mjs --check         # verify vendored snapshot
  *
+ * Sync requires a clean worktree checked out exactly at `v<VERSION>`; the
+ * SOURCE.json record names that tag and the tagged commit. The check also
+ * accepts a clean main checkout when the release tag is an ancestor.
+ *
  * Do not edit the vendored files: change pupitre-ui, re-run this script, and
  * rebuild the artifact (node tools/build.mjs).
  * ========================================================================= */
@@ -49,12 +53,25 @@ function findSource() {
     return null;
 }
 
+function git(dir, args) {
+    return execFileSync('git', ['-C', dir].concat(args), {encoding: 'utf8'}).trim();
+}
+
 function gitRevision(dir) {
     try {
         return {
-            commit: execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], {encoding: 'utf8'}).trim(),
-            dirty: execFileSync('git', ['-C', dir, 'status', '--porcelain'], {encoding: 'utf8'}).trim().length > 0
+            commit: git(dir, ['rev-parse', '--short', 'HEAD']),
+            dirty: git(dir, ['status', '--porcelain']).length > 0,
+            tags: git(dir, ['tag', '--points-at', 'HEAD']).split('\n').filter(Boolean)
         };
+    } catch {
+        return null;
+    }
+}
+
+function tagCommit(dir, tag) {
+    try {
+        return git(dir, ['rev-parse', '--short', 'refs/tags/' + tag + '^{commit}']);
     } catch {
         return null;
     }
@@ -63,12 +80,16 @@ function gitRevision(dir) {
 function readSource() {
     const source = findSource();
     if (!source) return null;
+    const version = fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim();
     const revision = gitRevision(source);
     return {
         dir: source,
-        version: fs.readFileSync(path.join(source, 'VERSION'), 'utf8').trim(),
+        version: version,
+        releaseTag: 'v' + version,
+        tagCommit: tagCommit(source, 'v' + version),
         commit: revision ? revision.commit : '',
-        dirty: revision ? revision.dirty : false
+        dirty: revision ? revision.dirty : false,
+        tags: revision ? revision.tags : []
     };
 }
 
@@ -80,6 +101,7 @@ function snapshot(source) {
         note: 'Vendored from pupitre-ui by tools/sync-pupitre-ui.mjs — never edit these files; re-sync and rebuild instead.',
         source: 'https://codeberg.org/gllm/pupitre-ui',
         version: source ? source.version : previous.version,
+        tag: source ? source.releaseTag : previous.tag,
         files
     };
     if (source && source.commit) {
@@ -92,29 +114,43 @@ function snapshot(source) {
     return record;
 }
 
-function verifyVendored() {
+function verifyVendored(source) {
     if (!fs.existsSync(SOURCE_FILE)) return ['missing vendor/pupitre-ui/SOURCE.json'];
     const record = JSON.parse(fs.readFileSync(SOURCE_FILE, 'utf8'));
     const problems = [];
+    if (record.tag !== 'v' + record.version) {
+        problems.push('SOURCE.json must name the release tag v' + record.version + ' (found ' + JSON.stringify(record.tag) + ')');
+    }
+    if (!/^[0-9a-f]{7,40}$/.test(record.commit || '')) {
+        problems.push('SOURCE.json must record the tagged commit');
+    }
     for (const entry of FILES) {
         const file = path.join(VENDOR, entry.vendored);
         if (!fs.existsSync(file)) { problems.push('missing ' + entry.vendored); continue; }
         if (record.files[entry.vendored] !== sha256(file)) problems.push(entry.vendored + ': hash does not match SOURCE.json');
     }
+    if (source) {
+        if (source.version !== record.version) {
+            problems.push('source VERSION ' + source.version + ' does not match SOURCE.json ' + record.version);
+        }
+        if (!source.tagCommit) {
+            problems.push('source has no ' + source.releaseTag + ' tag');
+        } else if (!record.commit.startsWith(source.tagCommit) && !source.tagCommit.startsWith(record.commit)) {
+            problems.push('SOURCE.json commit ' + record.commit + ' does not match ' + source.releaseTag + ' -> ' + source.tagCommit);
+        }
+    }
     return problems;
 }
 
 if (CHECK) {
-    const problems = verifyVendored();
-    if (!problems.length) {
-        const source = readSource();
-        if (source) {
-            for (const entry of FILES) {
-                const upstream = path.join(source.dir, entry.upstream);
-                if (!fs.existsSync(upstream)) { problems.push('upstream missing ' + entry.upstream); continue; }
-                if (sha256(upstream) !== sha256(path.join(VENDOR, entry.vendored))) {
-                    problems.push(entry.vendored + ': differs from ' + source.dir + ' — run node tools/sync-pupitre-ui.mjs');
-                }
+    const source = readSource();
+    const problems = verifyVendored(source);
+    if (source) {
+        for (const entry of FILES) {
+            const upstream = path.join(source.dir, entry.upstream);
+            if (!fs.existsSync(upstream)) { problems.push('upstream missing ' + entry.upstream); continue; }
+            if (sha256(upstream) !== sha256(path.join(VENDOR, entry.vendored))) {
+                problems.push(entry.vendored + ': differs from ' + source.dir + ' — run node tools/sync-pupitre-ui.mjs');
             }
         }
     }
@@ -122,7 +158,8 @@ if (CHECK) {
         console.log('sync-pupitre-ui --check: FAIL\n  ' + problems.join('\n  '));
         process.exit(1);
     }
-    console.log('sync-pupitre-ui --check: vendored snapshot is current');
+    const label = source ? source.releaseTag : JSON.parse(fs.readFileSync(SOURCE_FILE, 'utf8')).tag;
+    console.log('sync-pupitre-ui --check: vendored snapshot is current (' + label + ')');
     process.exit(0);
 }
 
@@ -135,6 +172,16 @@ if (!source) {
         process.exit(1);
     }
     process.exit(0);
+}
+
+if (source.dirty) {
+    console.log('sync-pupitre-ui: source worktree is dirty — commit/stash before syncing');
+    process.exit(1);
+}
+if (!source.tags.includes(source.releaseTag)) {
+    console.log('sync-pupitre-ui: source is not checked out at ' + source.releaseTag +
+        ' (HEAD ' + source.commit + ') — use a clean tag worktree');
+    process.exit(1);
 }
 
 fs.mkdirSync(VENDOR, {recursive: true});
