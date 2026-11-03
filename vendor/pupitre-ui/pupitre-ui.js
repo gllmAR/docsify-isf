@@ -2122,7 +2122,7 @@
               self.graphSetNodeParam(rec, node.id, param.id, next);
             });
           } else {
-            simpleControl = el("button", {type: "button", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id)});
+            simpleControl = el("button", {type: "button", class: "pui-graph-param-value is-color", "data-param-id": String(param.id), "data-param-type": paramType, "aria-label": String(param.label || param.id), "aria-haspopup": "dialog", "aria-expanded": "false"});
             var chip = el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"});
             simpleControl.appendChild(chip);
             simpleControl.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
@@ -9948,6 +9948,27 @@
     return handle;
   };
 
+  /** Open the compact RGBA editor for any independent colour control. The
+   * popover follows an open dialog into the top layer; the caller owns the
+   * resulting value. */
+  Renderer.prototype.openColorFieldPopover = function (anchor, label, value, onLive, onCommit) {
+    if (!anchor) return false;
+    var self = this;
+    var dialog = anchor.closest ? anchor.closest("dialog[open]") : null;
+    var host = dialog || (this.mount && this.mount.querySelector ? (this.mount.querySelector(".pui") || this.mount) : this.mount);
+    var recColor = this.fieldColorRecord;
+    if (recColor && recColor.colorPicker) this.graphCloseColorPicker(recColor, true);
+    if (!recColor || recColor.viewport !== host) recColor = this.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
+    if (dialog) dialog.addEventListener("close", function () { if (recColor.colorPicker) self.graphCloseColorPicker(recColor, true); }, {once: true});
+    (this.graphRecords || []).forEach(function (graphRec) { if (graphRec.colorPicker) self.graphCloseColorPicker(graphRec, false); });
+    return this.graphOpenColorPicker(recColor, {id: ""}, {id: "field-color", label: label, type: "color"}, anchor, {
+      fixed: true,
+      value: value,
+      onLive: onLive,
+      onCommit: onCommit
+    });
+  };
+
   Renderer.prototype.controlFor = function (field, widget, id, rec) {
     var self = this;
     var path = rec.path;
@@ -10427,7 +10448,7 @@
       var label = self.labelText(field);
       var color = el("input", {type: "color", class: "pui-color-native", tabindex: "-1", "aria-hidden": "true"});
       color.value = this.colorValue(value);
-      var swatch = el("button", {type: "button", id: id, class: "pui-color-swatch-button", "data-pui-bind": path, "aria-label": label});
+      var swatch = el("button", {type: "button", id: id, class: "pui-color-swatch-button", "data-pui-bind": path, "aria-label": label, "aria-haspopup": "dialog", "aria-expanded": "false"});
       swatch.appendChild(el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"}));
       swatch.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
       self.graphColorPaint(swatch, {label: label, id: "field-color"}, value);
@@ -10445,20 +10466,7 @@
       color.addEventListener("change", commitColor);
       swatch.addEventListener("click", function (event) {
         if (event.stopPropagation) event.stopPropagation();
-        var dialog = swatch.closest ? swatch.closest("dialog[open]") : null;
-        var host = dialog || (self.mount && self.mount.querySelector ? (self.mount.querySelector(".pui") || self.mount) : self.mount);
-        var recColor = self.fieldColorRecord;
-        if (recColor && recColor.colorPicker) self.graphCloseColorPicker(recColor, true);
-        if (!recColor || recColor.viewport !== host) recColor = self.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
-        if (dialog) dialog.addEventListener("close", function () { if (recColor.colorPicker) self.graphCloseColorPicker(recColor, true); }, {once: true});
-        (self.graphRecords || []).forEach(function (graphRec) { if (graphRec.colorPicker) self.graphCloseColorPicker(graphRec, false); });
-        var current = self.value(rec);
-        self.graphOpenColorPicker(recColor, {id: ""}, {id: "field-color", label: label, type: "color"}, swatch, {
-          fixed: true,
-          value: current,
-          onLive: function (hex) { paintColor(hex); },
-          onCommit: function (hex) { self.writeRecord(rec, hex); }
-        });
+        self.openColorFieldPopover(swatch, label, self.value(rec), function (hex) { paintColor(hex); }, function (hex) { self.writeRecord(rec, hex); });
       });
       var wrap = el("span", {class: "pui-color-control"});
       wrap.appendChild(swatch);
@@ -13365,6 +13373,7 @@
     var id = formId + "-" + String(input.name || "arg");
     var label = el("label", {class: "pui-dialog-label", for: id, text: String(input.label || input.name || "Value")});
     var control;
+    var colorHint = null;
     var type = String(input.type || "text");
     if (type === "select") {
       control = el("select", {id: id, name: String(input.name || "")});
@@ -13388,8 +13397,29 @@
       if (input.multiple) { control.multiple = true; control.setAttribute("multiple", ""); }
       if (input.capture) control.setAttribute("capture", String(input.capture));
       if (input.directory) control.setAttribute("webkitdirectory", "");
+    } else if (type === "color") {
+      var native = el("input", {type: "color", class: "pui-color-native", name: String(input.name || ""), tabindex: "-1", "aria-hidden": "true"});
+      native.value = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(input.value || "")) ? String(input.value).slice(0, 7) : "#000000";
+      var colorLabel = String(input.label || input.name || "Colour");
+      var swatch = el("button", {type: "button", id: id, class: "pui-color-swatch-button", value: String(input.value || native.value), "aria-label": colorLabel, "aria-haspopup": "dialog", "aria-expanded": "false"});
+      swatch.appendChild(el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"}));
+      swatch.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
+      renderer.graphColorPaint(swatch, {label: colorLabel, id: "action-color"}, swatch.value);
+      swatch.addEventListener("click", function () {
+        renderer.openColorFieldPopover(swatch, colorLabel, swatch.value, function (hex) {
+          swatch.value = hex;
+          native.value = hex.slice(0, 7);
+          renderer.graphColorPaint(swatch, {label: colorLabel, id: "action-color"}, hex);
+        }, function (hex) {
+          swatch.value = hex;
+          native.value = hex.slice(0, 7);
+          renderer.graphColorPaint(swatch, {label: colorLabel, id: "action-color"}, hex);
+        });
+      });
+      control = swatch;
+      colorHint = native;
     } else {
-      var inputType = type === "number" || type === "integer" ? "number" : type === "color" ? "color" : "text";
+      var inputType = type === "number" || type === "integer" ? "number" : "text";
       control = el("input", {type: inputType, id: id, name: String(input.name || "")});
       if (input.min !== undefined) control.min = String(input.min);
       if (input.max !== undefined) control.max = String(input.max);
@@ -13415,7 +13445,7 @@
       control.addEventListener("change", updateFiles);
       updateFiles();
     }
-    return {label: label, control: control, hint: fileHint, filesOf: control.__puiFilesOf};
+    return {label: label, control: control, hint: fileHint || colorHint, filesOf: control.__puiFilesOf};
   };
 
   Renderer.prototype.styleDialog = function (dialog) {
@@ -14859,7 +14889,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.2",
+    version: "1.18.3",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
