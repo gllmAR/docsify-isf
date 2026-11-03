@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.7 · **docsify-isf:** 1.45.12
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.9 · **docsify-isf:** 1.45.14
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -299,6 +299,18 @@ The second full capture review found and fixed:
   centering against a tall block.
 - PUI 1.18.7 adds forced-colors token overrides and a committed widget-geometry
   audit. Docsify's desktop/tablet/phone captures were refreshed against it.
+
+## 4.11 Touch targets and switch surfaces (1.45.14)
+
+- The phone audit now checks every visible control against the 32 px target
+  floor. The Source More trigger grows from 24 to 32 px, the transport buttons
+  from 30 to 32 px, and the transport seek from 20 to 32 px on coarse pointers.
+- PUI 1.18.9 keeps compact preset chips at `--pui-touch` size on coarse
+  pointers instead of collapsing them to 26 px.
+- PUI 1.18.8 modernizes checkbox, radio and switch surfaces; the desktop,
+  tablet and phone captures were refreshed against those styles.
+- The native colour input is intentionally hidden and excluded from the target
+  audit; the swatch button is the measured target.
 
 ## 4.3 Runtime cost controls
 

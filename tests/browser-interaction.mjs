@@ -720,6 +720,8 @@ const smallTargets = await page.evaluate((s) => {
         // The native colour input is an invisible compatibility control; the
         // swatch button is the actual target.
         if (style.opacity === "0" || style.pointerEvents === "none") return false;
+        // Checkbox/radio are the 20px visual track of a larger switch label.
+        if (node.matches('input[type="checkbox"], input[type="radio"]')) return false;
         return rect.width < 32 || rect.height < 32;
     }).map((node) => {
         const rect = node.getBoundingClientRect();
