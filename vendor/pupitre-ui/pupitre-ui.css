@@ -226,6 +226,12 @@
   .pui-field-help, .pui-status { margin-inline-start: 0; }
   .pui-readout-row { grid-template-columns: minmax(0, 1fr); }
   .pui-switch { grid-column: 1; }
+  .pui-xypad-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 6px; }
+  .pui-xypad { grid-column: 1 / -1; width: 100%; max-width: 220px; }
+  .pui-xypad-input { width: 100%; }
+  .pui-xypad-input input { width: 100%; min-width: 0; max-width: none; }
+  .pui-readout-value { min-width: 0; overflow-wrap: anywhere; }
+
   .pui-field.is-knob .pui-knob-caption { grid-column: 1; grid-row: 1; }
   .pui-field.is-knob .pui-control-row { grid-column: 1; grid-row: 2; }
   .pui-field.is-knob .pui-field-help { grid-row: 3; }
@@ -240,6 +246,11 @@
   .pui-control-row { grid-column: 1; }
   .pui-field-help, .pui-status { margin-inline-start: 0; }
   .pui-readout-row { grid-template-columns: minmax(0, 1fr); }
+  .pui-xypad-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 6px; }
+  .pui-xypad { grid-column: 1 / -1; width: 100%; max-width: 220px; }
+  .pui-xypad-input { width: 100%; }
+  .pui-xypad-input input { width: 100%; min-width: 0; max-width: none; }
+  .pui-readout-value { min-width: 0; overflow-wrap: anywhere; }
   .pui-section { padding: 6px 8px; }
   .pui-switch { grid-column: 1; }
   .pui-field.is-knob .pui-knob-caption { grid-column: 1; grid-row: 1; }
@@ -1388,3 +1399,31 @@
   .pui input[type="range"]::-webkit-slider-runnable-track { border-color: ButtonText; }
   .pui input[type="range"]::-moz-range-track { border-color: ButtonText; }
 }
+
+/* Narrow fields: the XY pad owns the first row and its two axis inputs share
+ * the second row instead of wrapping unevenly. */
+@media (max-width: 640px) {
+  .pui .pui-xypad-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 6px; }
+  .pui .pui-xypad-control .pui-xypad { grid-column: 1 / -1; width: 100%; max-width: 220px; }
+  .pui .pui-xypad-control .pui-xypad-input { display: grid; grid-template-columns: auto minmax(0, 1fr); width: 100%; }
+  .pui .pui-xypad-control .pui-xypad-input input { width: 100%; min-width: 0; max-width: none; }
+  .pui-readout-value { min-width: 0; overflow-wrap: anywhere; }
+}
+@container (max-width: 420px) {
+  .pui .pui-xypad-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 6px; }
+  .pui .pui-xypad-control .pui-xypad { grid-column: 1 / -1; width: 100%; max-width: 220px; }
+  .pui .pui-xypad-control .pui-xypad-input { display: grid; grid-template-columns: auto minmax(0, 1fr); width: 100%; }
+  .pui .pui-xypad-control .pui-xypad-input input { width: 100%; min-width: 0; max-width: none; }
+  .pui-readout-value { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* Multiline controls read as a block: keep the caption at the leading edge
+ * instead of centering it against a tall textarea/JSON editor. */
+.pui-field:has(.pui-textarea) { align-items: start; }
+.pui-field:has(.pui-textarea) > .pui-caption { align-self: start; padding-block-start: 4px; }
+.pui-field:has(.pui-textarea) .pui-control-row { align-items: flex-start; }
+
+/* Action-like fields own a full row: a short button beside a tall XY pad
+ * otherwise leaves a dead column that reads as broken layout. */
+.pui-field:has(> .pui-button), .pui-field:has(> .pui-impulse) { grid-column: 1 / -1; }
+.pui-field:has(.pui-xypad-control) { grid-column: 1 / -1; }
