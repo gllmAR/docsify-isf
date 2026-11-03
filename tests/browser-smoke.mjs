@@ -499,24 +499,51 @@ try {
         window.isfOpenMaterial(block);
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
-    const slider = await page.$('.isf-block [data-isf-param="speed"] input[type="range"]');
+    // The grouped Values section can sit below the Parameters viewport; scroll
+    // the row into view and prove the hit target before dragging. Otherwise
+    // the mouse would grab the Playback scrubber that overlays the pane edge.
+    const sliderState = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+        if (!block) return { missing: true };
+        window.isfOpenMaterial(block);
+        await wait(200);
+        const input = block.querySelector('[data-isf-param="speed"] input[type="range"]');
+        if (!input) return { missing: true };
+        (input.closest(".pui-field") || input).scrollIntoView({ block: "center" });
+        await wait(200);
+        const rect = input.getBoundingClientRect();
+        const x = rect.left + rect.width * 0.25;
+        const y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+            missing: false,
+            pane: window.isfPaneOpen(block, "right"),
+            visible: rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight,
+            hit: hit === input || (hit && input.contains(hit)),
+            hitTag: hit ? hit.tagName + "." + hit.className : "",
+            box: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+            x: x,
+            y: y
+        };
+    });
     let sliderResult = null;
-    if (slider) {
-        const box = await slider.boundingBox();
-        if (box) {
-            await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
-            await page.mouse.down();
-            await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 10 });
-            await page.mouse.up();
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            sliderResult = await page.evaluate(() => {
-                const input = document.querySelector('.isf-block [data-isf-param="speed"] input[type="range"]');
-                const number = document.querySelector('.isf-block [data-isf-param="speed"] input[type="number"]');
-                return { range: input ? Number(input.value) : null, number: number ? Number(number.value) : null };
-            });
-        }
+    if (!sliderState.missing && sliderState.pane && sliderState.visible && sliderState.hit) {
+        await page.mouse.move(sliderState.x, sliderState.y);
+        await page.mouse.down();
+        await page.mouse.move(sliderState.box.x + sliderState.box.width * 0.8, sliderState.box.y + sliderState.box.height / 2, { steps: 10 });
+        await page.mouse.up();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        sliderResult = await page.evaluate(() => {
+            const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+            const input = block && block.querySelector('[data-isf-param="speed"] input[type="range"]');
+            const number = block && block.querySelector('[data-isf-param="speed"] input[type="number"]');
+            return { range: input ? Number(input.value) : null, number: number ? Number(number.value) : null };
+        });
     }
-    if (!sliderResult || !(sliderResult.range > 0.4)) problems.push("dragging the speed slider did not reach the PUI/host: " + JSON.stringify(sliderResult));
+    if (!sliderResult || !(sliderResult.range > 0.4)) {
+        problems.push("dragging the speed slider did not reach the PUI/host: " + JSON.stringify({state: sliderState, result: sliderResult}));
+    }
 
     const filterResult = await page.evaluate(async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
