@@ -408,7 +408,7 @@ buttons. Pane toggles carry decorative host glyphs with accessible names and
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.15.2's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.15.3's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -447,6 +447,16 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
+- The Parameters tab is led by the host-owned **Presets** block implemented
+  with PUI's `presets`/`storage` contract. Presets are named snapshots of
+  non-media input values, persisted under `docsify-isf:presets:<shader-url>`
+  with the selected id. Save opens PUI's name form; recall selects and applies
+  the stored values; delete is confirmed. The host owns values and storage;
+  PUI owns the list, forms and confirmation. The preset list stays local to the
+  viewer but is copied to other mounted viewers of the same shader.
+- PUI dialogs are body-hosted; PUI 1.15.3 copies the active surface/text/font
+  tokens into them so action forms, confirmations and the command palette keep
+  their panel outside the PUI root.
 - Input sets of six or more get the PUI parameter filter. The workbench tools
   use a roving `toolbar` tab stop, and the Menu's **Focus preview** action
   collapses Source, Parameters and Playback for a content-first stage.
@@ -479,7 +489,7 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
-- PUI 1.15.2 owns a delegated tooltip manager for flagged icon-only chrome:
+- PUI 1.15.3 owns a delegated tooltip manager for flagged icon-only chrome:
   titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
   host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
   450 ms touch long-press shows the label without activating the button. The

@@ -129,6 +129,56 @@ await capture("01-desktop-initial");
 await togglePane("right", true);
 await selectTab("Parameters");
 await capture("02-parameters");
+
+// ── named presets: save, change a value, recall, delete
+const clickPresetAction = (re) => blockEval((block, [pattern]) => {
+    const presetBlock = block.querySelector(".pui-presets");
+    const button = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => new RegExp(pattern).test(node.textContent));
+    if (button) button.click();
+    return !!button;
+}, re);
+check("save preset opens a name form", await clickPresetAction("Save preset"));
+await sleep(250);
+await page.screenshot({ path: path.join(artifacts, "02b-preset-save-dialog.png") });
+actions.push("02b-preset-save-dialog");
+const presetDialog = await page.$("dialog.pui-dialog");
+if (presetDialog) {
+    const presetName = await presetDialog.$('input[type="text"]');
+    if (presetName) await presetName.type("Look A");
+    const savePreset = await presetDialog.$('button[type="submit"]');
+    if (savePreset) await savePreset.click();
+}
+await sleep(400);
+const savedPresets = await blockEval((block) => Array.from(block.querySelectorAll(".pui-preset")).map((node) => ({text: node.textContent, selected: node.getAttribute("aria-selected")})));
+check("preset save creates a selectable preset", savedPresets.length === 1 && savedPresets[0].text === "Look A" && savedPresets[0].selected === "true", savedPresets);
+await capture("02c-preset-saved");
+const levelNumber = await page.$(`${selector} [data-isf-param="level"] input[type="number"]`);
+if (levelNumber) {
+    await levelNumber.click({ clickCount: 3 });
+    await page.keyboard.type("0.25");
+    await page.keyboard.press("Tab");
+    await sleep(250);
+}
+await blockEval((block) => {
+    const preset = block.querySelector(".pui-preset");
+    if (preset) preset.click();
+    return !!preset;
+});
+await sleep(350);
+const recalledLevel = levelNumber ? await levelNumber.evaluate((el) => el.value) : "";
+check("preset recall restores the saved value", recalledLevel === "1", recalledLevel);
+await capture("02d-preset-recall");
+check("delete preset opens confirmation", await clickPresetAction("Delete preset"));
+await sleep(200);
+const deleteDialog = await page.$("dialog.pui-dialog");
+if (deleteDialog) {
+    const confirmDelete = await deleteDialog.$('button[type="submit"]');
+    if (confirmDelete) await confirmDelete.click();
+}
+await sleep(350);
+const remainingPresets = await blockEval((block) => block.querySelectorAll(".pui-preset").length);
+check("preset delete removes the preset", remainingPresets === 0, remainingPresets);
+await capture("02e-preset-delete");
 for (const label of ["View", "Log", "Parameters"]) {
     await selectTab(label);
     await sleep(200);
@@ -493,29 +543,38 @@ await capture("24c-hud-capture");
 const hudDownloads = await page.evaluate(() => window.__downloads.slice());
 check("HUD capture exports a PNG", hudDownloads.some((href) => /^data:image\/png/.test(href)), hudDownloads.slice(-1));
 
-// Long-press tooltip: readable label on touch, without firing the button.
+// Long-press tooltip on the titlebar: readable label without firing the toggle.
+const parametersBefore = await blockEval((block) => {
+    const pane = block.querySelector(".pui-workbench-pane.is-right");
+    return !!pane && !pane.classList.contains("is-collapsed");
+});
 await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+await sleep(150);
+await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 await sleep(120);
-const hudFullBox = await page.$eval(`${selector} .isf-stage-hud button[aria-label="Fullscreen"]`, (el) => {
+const titleToggleBox = await page.$eval(`${selector} .pui-workbench-toggle[data-pui-region="right"]`, (el) => {
     const rect = el.getBoundingClientRect();
     return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
 });
 await page.evaluate(({x, y}) => {
     const target = document.elementFromPoint(x, y);
     if (target) target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, pointerType: "touch", clientX: x, clientY: y}));
-}, hudFullBox);
+}, titleToggleBox);
+// The toggle may already be focused, showing its tooltip. Wait past the
+// 450 ms long-press threshold so this also arms release click suppression.
+await sleep(650);
 await page.waitForFunction(() => {
     const tip = document.querySelector(".pui-tooltip.is-visible");
-    return tip && /Fullscreen/.test(tip.textContent);
+    return tip && /Toggle Parameters/.test(tip.textContent);
 }, {timeout: 2000}).catch(() => {});
 await sleep(120);
 const tooltipText = await page.evaluate(() => {
     const tip = document.querySelector(".pui-tooltip.is-visible");
     return tip ? tip.textContent : "";
 });
-check("long-press shows a tooltip label", /Fullscreen/.test(tooltipText), tooltipText);
-await page.screenshot({ path: path.join(artifacts, "24d-hud-tooltip.png") });
-actions.push("24d-hud-tooltip");
+check("long-press shows a tooltip label", /Toggle Parameters/.test(tooltipText), tooltipText);
+await page.screenshot({ path: path.join(artifacts, "24d-title-tooltip.png") });
+actions.push("24d-title-tooltip");
 await page.evaluate(({x, y}) => {
     const target = document.elementFromPoint(x, y);
     if (target) {
@@ -523,10 +582,13 @@ await page.evaluate(({x, y}) => {
         const button = target.closest ? target.closest("button") : null;
         if (button) button.click();
     }
-}, hudFullBox);
+}, titleToggleBox);
 await sleep(250);
-const longPressFullscreen = await page.evaluate(() => !!(document.fullscreenElement || document.webkitFullscreenElement));
-check("long-press tooltip does not activate the button", !longPressFullscreen, longPressFullscreen);
+const parametersAfter = await blockEval((block) => {
+    const pane = block.querySelector(".pui-workbench-pane.is-right");
+    return !!pane && !pane.classList.contains("is-collapsed");
+});
+check("long-press tooltip does not activate the toggle", parametersAfter === parametersBefore, {before: parametersBefore, after: parametersAfter});
 await page.keyboard.press("Escape");
 await sleep(120);
 

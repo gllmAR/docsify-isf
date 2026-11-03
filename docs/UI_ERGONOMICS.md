@@ -16,6 +16,7 @@ checked against established editor/workbench implementations.
 | Desktop, defaults (Parameters open) | ![desktop default](ui-audit/desktop-default.png) |
 | Desktop, Source + Parameters | ![desktop both panes](ui-audit/desktop-both-panes.png) |
 | Desktop, View tab | ![desktop view](ui-audit/desktop-view-tab.png) |
+| Desktop, saved preset | ![desktop presets](ui-audit/desktop-presets.png) |
 | Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
 | Desktop, title bar compact | ![desktop compact](ui-audit/desktop-compact.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
@@ -134,7 +135,7 @@ is the subject. The phone captures are 390×844 CSS px; desktop is 1280×1000.
   HUD** with play/pause, time, resolution/fps, capture and fullscreen. It stays
   for keyboard focus/pause, auto-hides during pointer playback, drops stats
   below 440 px of stage width, and is suppressed for OBS/bare viewers.
-- Icon-only chrome now has **hover/focus/long-press tooltips** (PUI 1.15.2):
+- Icon-only chrome now has **hover/focus/long-press tooltips** (PUI 1.15.3):
   titlebar toggles/actions, PUI menus, the host HUD and the fold control. A
   touch long-press shows the label without firing the button; the next pointer
   gesture clears suppression. Tooltips are hosted outside contained PUI roots
@@ -205,7 +206,21 @@ The second full capture review found and fixed:
   suppressed in bare/OBS mode. The stats are hidden by a stage container query
   under 440 px so phone buttons do not truncate.
 
-## 4.4 Tooltips (1.15.2)
+## 4.4 Parameter presets
+
+- PUI's existing `presets`/`storage` contract is adopted for named looks. The
+  host owns the values and localStorage; PUI owns the list, Save name form,
+  Select-to-recall and Delete confirmation.
+- Stored at `docsify-isf:presets:<shader-url>` as
+  `{presets:[{id,label,values}],selected}`. Media, audio and event inputs are
+  intentionally excluded. `persistValues:false` (OBS/bare) disables the store;
+  `presets:false` hides the feature.
+- Two mounted viewers of the same shader receive a synchronized preset list
+  (not each other's live values) without a reload.
+- Captures: `desktop-presets.png`; the interaction trace covers the name form,
+  save, value change, recall, delete confirmation and removal.
+
+## 4.5 Tooltips (1.15.2)
 
 - One delegated manager per PUI mount; flagged controls carry
   `data-pui-tooltip`. Hover 320 ms, focus immediate, touch long-press 450 ms.
@@ -236,6 +251,9 @@ The second full capture review found and fixed:
 
 ## 5. Remaining opportunities
 
+- **Parameter groups** need a portable ISF/host group contract; no bundled
+  shader carries `GROUP`, so the presets block is the current large-material
+  affordance instead of invented arbitrary sections.
 - **Dockable layout**: Dockview-style docking is unnecessary for the current
   two-pane model; PUI's split panes and focus mode cover it. Revisit only if
   third panes or user-arranged layouts become a requirement.

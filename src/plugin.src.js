@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.43.2
+ * docsify-isf v1.44.0
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.43.2";
+    var VERSION = "1.44.0";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -103,6 +103,7 @@
         editorIndent: 2,            // spaces per indent level; 0 = tab
         persistLayout: true,        // remember editor height / side width
         persistValues: true,        // remember parameter values per shader URL
+        presets: true,              // named parameter presets per shader URL
         share: true,                // show the copy-link button
         imageUrl: null,
         vertexShader: "auto",       // "auto" | false
@@ -226,6 +227,7 @@
 
     var LAYOUT_KEY = "docsify-isf:layout";
     var VALUES_KEY_PREFIX = "docsify-isf:values:";
+    var PRESETS_KEY_PREFIX = "docsify-isf:presets:";
     var VIEWERS = [];
     var PALETTE_SHORTCUT_BOUND = false;
 
@@ -276,6 +278,78 @@
                 localStorage.setItem(VALUES_KEY_PREFIX + viewer.url, JSON.stringify(viewer.nonDefaultValues()));
             }
         } catch (err) { /* private mode / full storage */ }
+    }
+
+    function loadStoredPresets(url) {
+        try {
+            var raw = typeof localStorage !== "undefined" ? localStorage.getItem(PRESETS_KEY_PREFIX + url) : null;
+            var parsed = raw ? JSON.parse(raw) : null;
+            return isObject(parsed) ? parsed : null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function storePresets(viewer) {
+        if (!viewer || viewer.disposed || viewer.config.presets === false || viewer.config.persistValues === false) return;
+        try {
+            if (typeof localStorage !== "undefined") {
+                localStorage.setItem(PRESETS_KEY_PREFIX + viewer.url, JSON.stringify({
+                    presets: viewer.presets || [],
+                    selected: viewer.presetSelected || ""
+                }));
+            }
+        } catch (err) { /* private mode / full storage */ }
+        // Two viewers can show the same shader; keep their preset lists (not
+        // their live values) in sync without a reload.
+        for (var i = 0; i < VIEWERS.length; i++) {
+            var other = VIEWERS[i];
+            if (!other || other === viewer || other.disposed || other.url !== viewer.url) continue;
+            other.presets = (viewer.presets || []).slice();
+            other.presetSelected = viewer.presetSelected || "";
+            if (other.pui) {
+                try { other.pui.ui.apply(); } catch (error) { /* ignore */ }
+            }
+        }
+    }
+
+    function loadViewerPresets(viewer) {
+        if (!viewer) return;
+        viewer.presets = [];
+        viewer.presetSelected = "";
+        if (viewer.config.presets === false || viewer.config.persistValues === false) return;
+        var stored = loadStoredPresets(viewer.url);
+        if (!stored) return;
+        if (Array.isArray(stored.presets)) {
+            viewer.presets = stored.presets.filter(function (preset) {
+                return isObject(preset) && preset.id !== undefined && isObject(preset.values);
+            }).map(function (preset) {
+                return {
+                    id: String(preset.id),
+                    label: String(preset.label || preset.id),
+                    values: preset.values
+                };
+            });
+        }
+        if (typeof stored.selected === "string") viewer.presetSelected = stored.selected;
+        if (!viewer.presets.some(function (preset) { return preset.id === viewer.presetSelected; })) {
+            viewer.presetSelected = viewer.presets.length ? viewer.presets[0].id : "";
+        }
+    }
+
+    function presetParameterValues(viewer) {
+        var out = {};
+        var inputs = viewer && viewer.built && viewer.built.inputs ? viewer.built.inputs : [];
+        for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            if (!input || !input.name || input.define) continue;
+            var type = String(input.type || "");
+            if (type === "image" || type === "audio" || type === "audioFFT" || type === "event") continue;
+            var value = viewer.values ? viewer.values[input.name] : undefined;
+            if (value === undefined || value === null) continue;
+            out[input.name] = Array.isArray(value) ? value.slice() : value;
+        }
+        return out;
     }
 
     function readUrlFlags() {
@@ -3801,6 +3875,8 @@
             "@container (min-width:301px){.isf-pui .pui-field{grid-template-columns:minmax(84px,32%) minmax(0,1fr) auto;align-items:center}.isf-pui .pui-caption,.isf-pui .pui-control-row,.isf-pui .pui-switch{grid-column:auto}.isf-pui .pui-field>.pui-button{grid-column:1/-1;justify-self:start}.isf-pui .pui-actions{grid-column:1/-1}.isf-pui .pui-field-help,.isf-pui .pui-status{margin-inline-start:0}}",
             ".isf-pui .pui-actions{justify-content:flex-start}",
             ".isf-pui .pui-button{font-size:.75rem;font-weight:500}",
+            ".isf-pui .pui-preset-storage .pui-primary,.pui-dialog .pui-primary{background:var(--isf-accent)!important;color:var(--isf-accent-contrast)!important;border-color:var(--isf-accent)!important}",
+            ".isf-pui .pui-preset-storage .pui-danger,.pui-dialog .pui-danger{color:var(--isf-danger)!important;border-color:var(--isf-danger)!important}",
             ".isf-pui .pui-field{padding:.4rem 0}",
             ".isf-pui .pui-scrub{display:none}",
             ".isf-pui .pui-caption{font-size:.76rem;font-weight:500}",
@@ -4349,6 +4425,43 @@
         return marked;
     }
 
+    function appendPresetsSection(document, viewer) {
+        if (!viewer || viewer.config.presets === false || !document || !Array.isArray(document.panels)) return document;
+        for (var p = 0; p < document.panels.length; p++) {
+            var pages = document.panels[p] && document.panels[p].pages;
+            if (!Array.isArray(pages)) continue;
+            for (var g = 0; g < pages.length; g++) {
+                var page = pages[g];
+                if (!page || !Array.isArray(page.sections)) continue;
+                if (page.sections.some(function (section) { return section && section.id === "isf-presets"; })) continue;
+                page.sections = [{
+                    id: "isf-presets",
+                    title: "Presets",
+                    blocks: [{
+                        kind: "presets",
+                        id: "isf-presets",
+                        label: "Presets",
+                        bind: "/isf/presets",
+                        storage: {
+                            list: "/isf/presets",
+                            select: "/isf/presetSelected",
+                            recall: {label: "Load preset", call: "isf.presets.recall"},
+                            save: {
+                                label: "Save preset…",
+                                call: "isf.presets.save",
+                                style: "primary",
+                                inputs: [{name: "name", label: "Preset name", type: "text", required: true}]
+                            },
+                            delete: {label: "Delete preset", call: "isf.presets.delete", confirm: true, style: "danger"}
+                        }
+                    }]
+                }].concat(page.sections);
+                return document;
+            }
+        }
+        return document;
+    }
+
     function buildPUIParams(container, inputs, viewer) {
         if (viewer.pui) {
             try { viewer.pui.ui.destroy(); } catch (error) { /* ignore */ }
@@ -4402,9 +4515,31 @@
             // input. It runs as a host block inside the normal PUI flow, so
             // the whole drawer is one renderer without inventing a portable
             // block kind or moving host state into the document.
-            getValue: function (path) { return adapter.getValue(path); },
-            setValue: function (path, value) { return adapter.setValue(path, value); },
-            callAction: function (name, args) { return adapter.callAction(name, args); },
+            getValue: function (path) {
+                if (path === "/isf/presets") {
+                    return (viewer.presets || []).map(function (preset) {
+                        return {id: preset.id, label: preset.label};
+                    });
+                }
+                if (path === "/isf/presetSelected") return viewer.presetSelected || "";
+                return adapter.getValue(path);
+            },
+            setValue: function (path, value) {
+                if (path === "/isf/presetSelected") {
+                    viewer.presetSelected = String(value || "");
+                    storePresets(viewer);
+                    return true;
+                }
+                return adapter.setValue(path, value);
+            },
+            callAction: function (name, args) {
+                if (name === "isf.presets.save") return viewer.savePreset(args && args.name);
+                if (name === "isf.presets.recall") return viewer.recallPreset(args && args.preset);
+                if (name === "isf.presets.delete") {
+                    return viewer.deletePreset(args && (args.preset_id || (args.preset && args.preset.id)));
+                }
+                return adapter.callAction(name, args);
+            },
             getPathMeta: function (path) { return adapter.getPathMeta(path); },
             translate: function (key, fallback) { return fallback; },
             announce: function (level, message) {
@@ -4415,7 +4550,9 @@
         viewer.pui = { ui: ui, adapter: adapter, mount: mount, host: viewer.puiHost };
         // The View controls live in the workbench inspector pane, not in the
         // parameters document: PUI owns the tabs, the host keeps the widgets.
-        ui.render(adapter.document());
+        // The host adds the named-preset storage block on top of the fields;
+        // PUI owns the list/save/delete/recall UX.
+        ui.render(appendPresetsSection(adapter.document(), viewer));
         return markPUIParams(container, viewer);
     }
 
@@ -5800,6 +5937,8 @@
         viewer.visible = false;
         viewer.lastUsed = performance.now();
         viewer.values = {};
+        viewer.presets = [];
+        viewer.presetSelected = "";
         viewer.events = {};
         viewer.listeners = [];
         viewer.disposed = false;
@@ -6727,6 +6866,57 @@
             viewer.rebuildParams();
         };
         viewer.getParameter = function (name) { return viewer.values[name]; };
+        viewer.savePreset = function (name) {
+            if (viewer.config.presets === false) return false;
+            var label = String(name || "").trim().replace(/\s+/g, " ");
+            if (!label) return false;
+            var id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            viewer.presets.push({id: id, label: label.slice(0, 80), values: presetParameterValues(viewer)});
+            viewer.presetSelected = id;
+            storePresets(viewer);
+            viewer.refreshParamControls();
+            viewer.notify("success", "Preset saved: " + label);
+            return true;
+        };
+        viewer.recallPreset = function (preset) {
+            // PUI's storage list carries {id,label}; the host owns the values.
+            var presetId = typeof preset === "string" ? preset : String(preset && (preset.id || preset.preset_id) || "");
+            var storedPreset = null;
+            for (var ps = 0; ps < viewer.presets.length; ps++) {
+                if (viewer.presets[ps].id === presetId) { storedPreset = viewer.presets[ps]; break; }
+            }
+            if (!storedPreset && isObject(preset) && isObject(preset.values)) storedPreset = preset;
+            if (!storedPreset || !isObject(storedPreset.values)) return false;
+            preset = storedPreset;
+            var inputNames = viewer.built && viewer.built.inputs ? viewer.built.inputs : [];
+            for (var i = 0; i < inputNames.length; i++) {
+                var inputName = inputNames[i].name;
+                if (Object.prototype.hasOwnProperty.call(preset.values, inputName)) {
+                    viewer.setParameter(inputName, preset.values[inputName]);
+                }
+            }
+            viewer.presetSelected = String(preset.id || viewer.presetSelected || "");
+            storePresets(viewer);
+            viewer.refreshParamControls();
+            viewer.notify("success", "Preset loaded: " + String(preset.label || "Preset"));
+            return true;
+        };
+        viewer.deletePreset = function (id) {
+            var presetId = String(id || "");
+            var index = -1;
+            for (var i = 0; i < viewer.presets.length; i++) {
+                if (viewer.presets[i].id === presetId) { index = i; break; }
+            }
+            if (index < 0) return false;
+            var removed = viewer.presets.splice(index, 1)[0];
+            if (viewer.presetSelected === presetId) {
+                viewer.presetSelected = viewer.presets.length ? viewer.presets[Math.min(index, viewer.presets.length - 1)].id : "";
+            }
+            storePresets(viewer);
+            viewer.refreshParamControls();
+            viewer.notify("info", "Preset deleted: " + String(removed.label || "Preset"));
+            return true;
+        };
         viewer.resetParameter = function (name) {
             var defaults = viewer.defaultValues();
             if (defaults[name] !== undefined) {
@@ -7395,6 +7585,7 @@
                         if (restoreInput) viewer.values[flagName] = clampInputValue(restoreInput, flagged[flagName]);
                     }
                 }
+                loadViewerPresets(viewer);
                 if (built.unresolved && built.unresolved.length) {
                     var first = built.unresolved[0];
                     var unresolvedError = new Error(first.name + "(" + first.image + ") at line " + first.line + ": " + first.reason);

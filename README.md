@@ -231,6 +231,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `editorIndent` | `2` | Spaces per indent level; `0` uses a hard tab. |
 | `persistLayout` | `true` | Remember editor height, folded toolbar, workbench pane widths, Scale and Resolution across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
+| `presets` | `true` | Named parameter presets per shader URL (save/recall/delete in the Parameters pane); requires `persistValues`. |
 | `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters + Resolution/Scale). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |
@@ -251,9 +252,9 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.15.2 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.15.3 **collapsible title
 bar**. Pane toggles and direct actions are icon-only (`</>`, `⚙`, `▶`,
-fullscreen, focus, reset, share, menu) with accessible names. PUI 1.15.2 gives
+fullscreen, focus, reset, share, menu) with accessible names. PUI 1.15.3 gives
 them hover/focus tooltips and a touch long-press label; the long press never
 activates the control. Active panes use the accent state. The description is one ellipsized line by default,
 so the identity row stays compact. Collapsing
@@ -267,6 +268,9 @@ and “Open source file”.
 buttons show/hide each section. The right pane has **Parameters / View / Log**
 tabs: parameters are primary, View owns pass/scale/resolution/randomize/export,
 and Log carries status, render/input/pass readouts and quick actions. The
+Parameters tab starts with named **Presets**: save the current scalar/colour/
+geometry look, recall it, or delete it. Presets are stored per shader URL and
+skip image/audio/event inputs; the PUI preset block owns the list and forms. The
 bottom **Playback** row carries the native PUI transport and a PUI statusbar.
 Closing that strip, including with **Focus preview**, reveals a host stage HUD
 with play/pause, time, resolution/fps, capture and fullscreen. The source
@@ -279,8 +283,8 @@ Only one Parameters pane is open across viewers at a time, so panels never stack
 `params:"auto"` opens Parameters for the in-view viewer only and never steals
 another open one.
 
-The renderer/adapter are vendored from the clean PUI **1.15.2** snapshot (commit
-`b38f12c`; upstream tag `v1.15.2`). The workbench titlebar contract (`description`, collapsible
+The renderer/adapter are vendored from the clean PUI **1.15.3** snapshot (commit
+`35f68b1`; upstream tag `v1.15.3`). The workbench titlebar contract (`description`, collapsible
 heading, controls retained) is upstream in `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
 header cannot be parsed — the host keeps a plain stage/header/status fallback
@@ -399,7 +403,7 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.15.2) hides the description and keeps a compact
+  Its collapse control (PUI 1.15.3) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -417,6 +421,14 @@ persist with the layout and can be overridden from the URL (`isf-res`,
 - The Source pane title carries a compact compile-status dot and `Ln x, Col y`
   when the editor chrome is folded at narrow widths; the full editor status
   remains aria-live.
+- The Parameters pane has a **Presets** block above the fields: Save preset…
+  asks for a name, the saved look is recalled by selecting it, and Delete is
+  confirmed. Presets store non-media values per shader URL (PUI owns the list
+  and forms; the host owns values and persistence). Two viewers of the same
+  shader share the list without a reload.
+- PUI dialogs (save/confirm/palette) copy the active PUI surface/text/font
+  tokens, so they remain opaque on host pages whose tokens live on the PUI
+  root. This is PUI 1.15.3.
 - Larger input sets get PUI's `Filter parameters` field. The titlebar tools are
   a roving `role="toolbar"`, and Menu → **Focus preview** collapses Source,
   Parameters and Playback in one action.

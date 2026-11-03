@@ -4804,6 +4804,7 @@
     var self = this;
     if (rec.block.readonly) return;
     var dialog = el("dialog", {class: "pui-dialog pui-graph-add", "aria-label": "Add node"});
+    this.styleDialog(dialog);
     var form = el("form", {method: "dialog"});
     var input = el("input", {type: "search", "aria-label": "Search node types", placeholder: "Search node types…"});
     var list = el("div", {class: "pui-graph-add-list", role: "listbox", "aria-label": "Node types"});
@@ -13319,10 +13320,23 @@
     return {label: label, control: control, hint: fileHint, filesOf: control.__puiFilesOf};
   };
 
+  Renderer.prototype.styleDialog = function (dialog) {
+    if (!dialog || !this.root || typeof getComputedStyle !== "function") return;
+    var styles = getComputedStyle(this.root);
+    ["--pui-bg", "--pui-surface", "--pui-surface-2", "--pui-text", "--pui-muted", "--pui-border",
+     "--pui-accent", "--pui-danger", "--pui-warning", "--pui-radius", "--pui-touch", "--pui-gap",
+     "--pui-type-base", "--pui-font"].forEach(function (name) {
+      var value = styles.getPropertyValue ? styles.getPropertyValue(name) : "";
+      if (value) dialog.style.setProperty(name, value);
+    });
+    if (typeof styles.fontFamily === "string" && styles.fontFamily) dialog.style.fontFamily = styles.fontFamily;
+  };
+
   Renderer.prototype.openActionForm = function (item, button) {
     var self = this;
     var formId = this.id("form");
     var dialog = el("dialog", {class: "pui-dialog", "aria-labelledby": formId + "-title"});
+    this.styleDialog(dialog);
     var form = el("form", {method: "dialog"});
     form.appendChild(el("h2", {id: formId + "-title", text: String(item.label || "Action")}));
     var fields = [];
@@ -13383,6 +13397,7 @@
   Renderer.prototype.openConfirm = function (item, button, extraArgs) {
     var self = this;
     var dialog = el("dialog", {class: "pui-dialog", "aria-labelledby": this.id("confirm")});
+    this.styleDialog(dialog);
     var form = el("form", {method: "dialog"});
     form.appendChild(el("h2", {id: dialog.getAttribute("aria-labelledby"), text: String(item.confirm_text || item.label || "Confirm")}));
     var bar = el("div", {class: "pui-dialog-actions"});
@@ -14142,6 +14157,7 @@
     var self = this;
     if (this._palette) { this._palette.close(); return 0; }
     var dialog = el("dialog", {class: "pui-dialog pui-palette", "aria-label": this.t("palette.title", "Commands")});
+    this.styleDialog(dialog);
     var form = el("form", {method: "dialog"});
     var head = el("div", {class: "pui-palette-head"});
     head.appendChild(el("strong", {text: this.t("palette.title", "Commands")}));
@@ -14680,7 +14696,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.15.2",
+    version: "1.15.3",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

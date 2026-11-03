@@ -48,6 +48,11 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   cancel the closed pane's deferred toggle focus. Auto-open never resets a
   user-selected tab and never steals from an already-open Source/Parameters
   pane.
+- **Presets use PUI’s storage contract.** The host stores non-media values per
+  shader URL and owns save/recall/delete semantics; PUI owns the preset list,
+  name form and delete confirmation. Never persist media/event inputs in a
+  preset. Presets must stay titled/confirmed and survive both viewers of the
+  same shader.
 - **Tooltips are PUI-owned.** Flag icon-only controls with
   `data-pui-tooltip`; PUI 1.15.2 provides hover/focus/long-press labels, touch
   click suppression, theme-token copying and document/fullscreen hosting. Never
@@ -96,7 +101,7 @@ npm run build
   transport, fullscreen, phone overlays, OBS bare and fallback errors.
 - `tests/browser-interaction.mjs` — complete desktop/mobile workbench trace:
   every pane/tab, menu/direct action, parameter family, filter, editor
-  actions/More/Templates, transport, focus/HUD controls, tooltips, fullscreen
-  and touch taps.
+  actions/More/Templates, transport, presets, focus/HUD controls, tooltips,
+  fullscreen and touch taps.
 - Interaction screenshots are written to `tests/artifacts/interaction/` and
   uploaded by CI.

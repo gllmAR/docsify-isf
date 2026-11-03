@@ -89,6 +89,42 @@ await sleep(1000);
 await clickRegion("right");
 await sleep(300);
 await shot("desktop-default");
+
+// Named preset: save the current look, capture it, then remove it so the
+// remaining captures start from a clean store.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const presetBlock = block.querySelector(".pui-presets");
+    const save = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /Save preset/i.test(node.textContent));
+    if (save) save.click();
+});
+await sleep(200);
+await page.evaluate(() => {
+    const dialog = document.querySelector("dialog.pui-dialog");
+    const input = dialog && dialog.querySelector('input[type="text"]');
+    if (input) input.value = "Review look";
+    const submit = dialog && dialog.querySelector('button[type="submit"]');
+    if (submit) submit.click();
+});
+await sleep(400);
+await shot("desktop-presets");
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const presetBlock = block.querySelector(".pui-presets");
+    const remove = presetBlock && Array.from(presetBlock.querySelectorAll("button")).find((node) => /Delete preset/i.test(node.textContent));
+    if (remove) remove.click();
+});
+await sleep(200);
+await page.evaluate(() => {
+    const dialog = document.querySelector("dialog.pui-dialog");
+    const submit = dialog && dialog.querySelector('button[type="submit"]');
+    if (submit) submit.click();
+});
+await sleep(300);
+await page.evaluate(() => {
+    document.querySelectorAll(".pui-toast-close").forEach((button) => button.click());
+});
+await sleep(200);
 await page.keyboard.down("Control");
 await page.keyboard.down("Shift");
 await page.keyboard.press("P");
