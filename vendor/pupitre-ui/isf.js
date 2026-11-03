@@ -319,6 +319,25 @@
    * @param {Object} [options.theme]
    * @returns {{document: Object, bindings: Object, inputs: Array<Object>}}
    */
+  function typeGroup(input) {
+    var type = String(input && input.type || "float");
+    if (type === "image" || type === "audio" || type === "audioFFT") return {id: "media", label: "Media", order: 0};
+    if (type === "color") return {id: "color", label: "Color", order: 1};
+    if (type === "point2D" || type === "floatRange") return {id: "geometry", label: "Geometry", order: 2};
+    if (input && input.define) return {id: "constants", label: "Constants", order: 4};
+    return {id: "values", label: "Values", order: 3};
+  }
+
+  function customGroup(input, fallback) {
+    var raw = input && (input.group || input.GROUP);
+    if (typeof raw === "string" && raw.trim()) return {id: slug(raw), label: raw.trim(), order: 50};
+    if (isObject(raw) && (raw.id || raw.label)) {
+      var id = String(raw.id || raw.label);
+      return {id: slug(id), label: String(raw.label || id), order: raw.order !== undefined ? num(raw.order, 50) : 50};
+    }
+    return fallback;
+  }
+
   function createDocument(inputs, options) {
     options = options || {};
     var valueOf = (Object.prototype.hasOwnProperty.call(options, "valueOf") && typeof options.valueOf === "function")
@@ -329,10 +348,34 @@
     var list = isArray(inputs) ? inputs : [];
     var blocks = [];
     var bindings = {};
+    var groupMode = options.groupBy;
+    var grouped = groupMode === "type" || typeof groupMode === "function";
+    var groups = [];
+    var groupMap = {};
+    var groupOpen = options.groupOpen !== false;
 
     function register(block, input, component, kind) {
       bindings[block.bind] = {block: block, input: input, component: component, kind: kind};
       return block;
+    }
+
+    function appendBlock(group, block) {
+      if (!grouped) { blocks.push(block); return; }
+      var spec = typeof group === "function" ? (group(block) || typeGroup(block)) : group;
+      var id = String(spec && spec.id || "values");
+      if (!groupMap[id]) {
+        groupMap[id] = {id: id, label: String(spec && spec.label || id), order: spec && spec.order !== undefined ? Number(spec.order) : 3, blocks: []};
+        groups.push(groupMap[id]);
+      }
+      groupMap[id].blocks.push(block);
+    }
+
+    function groupFor(input) {
+      if (typeof groupMode === "function") {
+        var custom = groupMode(input);
+        if (isObject(custom) && (custom.id || custom.label)) return {id: slug(custom.id || custom.label), label: String(custom.label || custom.id), order: custom.order !== undefined ? Number(custom.order) : 50};
+      }
+      return customGroup(input, typeGroup(input));
     }
 
     for (var i = 0; i < list.length; i++) {
@@ -341,6 +384,7 @@
       var current = valueOf(input);
       if (current === undefined) current = defaultValue(input);
       var built = inputBlocks(input, current, options);
+      var group = groupFor(input);
       for (var b = 0; b < built.length; b++) {
         var block = built[b];
         var component = null;
@@ -349,7 +393,7 @@
           component = axis === "x" || axis === "min" ? 0 : axis === "y" || axis === "max" ? 1 : null;
         }
         register(block, input, component, input.define ? "define" : input.type);
-        blocks.push(block);
+        appendBlock(group, block);
       }
     }
 
@@ -363,7 +407,7 @@
         if (PREFIX + "/" + list[a].name + "/source" === readout.bind) audioInput = list[a];
       }
       register(readout, audioInput, null, audioInput ? audioInput.type : "readout");
-      blocks.push(readout);
+      appendBlock(typeGroup(audioInput || {type: "audio"}), readout);
     }
 
     var actionItems = extras.actions.map(function (item) {
@@ -380,7 +424,21 @@
       }
       return item;
     });
-    if (actionItems.length) blocks.push({kind: "actions", id: "isf-media-actions", items: actionItems});
+    if (actionItems.length) appendBlock(typeGroup({type: "audio"}), {kind: "actions", id: "isf-media-actions", items: actionItems});
+
+    if (grouped) {
+      groups.sort(function (a, b) { return a.order - b.order; });
+      blocks = groups.map(function (group) {
+        return {
+          kind: "disclosure",
+          id: "isf-group-" + group.id,
+          label: group.label,
+          open: groupOpen,
+          storage_key: "isf.group." + group.id,
+          blocks: group.blocks
+        };
+      });
+    }
 
     var document = {
       format: "pupitre-ui",
