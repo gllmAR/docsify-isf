@@ -28,6 +28,10 @@ jobs:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
           REQUIRE_BROWSER: "1"
         run: npm run test:smoke
+      - name: Headless frame determinism
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm run test:frame
       - name: Full workbench interaction trace
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

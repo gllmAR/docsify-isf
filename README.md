@@ -587,6 +587,9 @@ capture differences. `--steps N` walks the runtime from zero in N virtual
 steps for feedback/multi-pass shaders; `--strict` exits non-zero above
 `--max-mae`. Run `node tools/render-frame.mjs --help` for every option.
 
+The first call already renders at the requested `width`/`height`; there is no
+warm-up frame or viewport resizing race.
+
 ## Development and tests
 
 ```bash

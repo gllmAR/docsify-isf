@@ -59,6 +59,8 @@ try {
     const size = pngSize(first.entries[0].png);
     check("frame is a 160x90 PNG", !!size && size.width === 160 && size.height === 90,
         size ? size.width + "x" + size.height : "not a PNG");
+    check("renderer reports the requested drawing-buffer size", first.entries[0].width === 160 && first.entries[0].height === 90,
+        first.entries[0].width + "x" + first.entries[0].height);
     check("checksum is reported", /^[0-9a-f]{64}$/.test(first.entries[0].sha256 || ""));
 
     const later = await renderFrames(Object.assign({}, base, { time: 3.0, out: path.join(OUT, "plasma-3.0.png") }));

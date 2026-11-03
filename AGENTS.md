@@ -72,9 +72,10 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   auto-hiding during pointer playback, stats-free below 440 px, and hidden in
   OBS/bare mode. HUD buttons must stop stage double-click propagation.
 - **Verify the whole use.** `npm test` for the contract, `npm run test:smoke`
-  for mounting/features, and `npm run test:interaction` for the full click/touch
-  trace plus screenshots. `node tools/ui-audit.mjs` refreshes the committed
-  review captures.
+  for mounting/features, `npm run test:frame` for deterministic off-screen
+  captures, and `npm run test:interaction` for the full click/touch trace plus
+  screenshots. `node tools/ui-audit.mjs` refreshes the committed review
+  captures.
 - **Update the record.** Version bumps, README/SDD, UI audit, CHANGELOG where
   present and the PUI consumer record must agree. `SOURCE.json` records the
   release tag and commit; `npm run test:vendor` verifies the tag matches the
@@ -85,6 +86,7 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
 ```bash
 npm test                       # unit/adapter/PUI document checks
 npm run test:smoke             # browser smoke
+npm run test:frame             # deterministic headless frame capture/compare
 npm run test:interaction       # full workbench action trace
 node tools/ui-audit.mjs        # docs/ui-audit captures
 npm run build:check            # bundle is current

@@ -5456,6 +5456,7 @@
         this.running = false;
         this.destWidth = 1;
         this.destHeight = 1;
+        this.fixedFrameSize = null;
         this.frameCount = 0;
         this.statsAt = 0;
         this.fps = 0;
@@ -5829,6 +5830,18 @@
 
     ISFRuntimeCore.prototype.baseResize = function (force) {
         var canvas = this.gl.canvas;
+        if (this.fixedFrameSize) {
+            var fixedWidth = clamp(Math.round(this.fixedFrameSize[0]), 1, 8192);
+            var fixedHeight = clamp(Math.round(this.fixedFrameSize[1]), 1, 8192);
+            if (force || canvas.width !== fixedWidth || canvas.height !== fixedHeight) {
+                canvas.width = fixedWidth;
+                canvas.height = fixedHeight;
+                this.needsRender = true;
+            }
+            this.destWidth = fixedWidth;
+            this.destHeight = fixedHeight;
+            return;
+        }
         var rect;
         try { rect = canvas.getBoundingClientRect(); } catch (err) { rect = null; }
         var cssWidth = Math.max(1, Math.round((rect && rect.width) || canvas.clientWidth || 1));
@@ -8108,15 +8121,11 @@
         runtime.mouse = [0, 0, 0, 0];
         runtime.events = {};
         runtime.frameIndex = 0;
+        // The off-screen host can still be in a pre-layout state on the first
+        // frame. Pin the drawing buffer so draw()'s CSS resize cannot replace
+        // the requested frame with a stale viewport.
+        runtime.fixedFrameSize = [width, height];
         runtime.resize(true);
-        if (runtime.destWidth !== width || runtime.destHeight !== height) {
-            // The stage is sized explicitly, so this only guards against odd
-            // viewport scaling (e.g. a zoomed page).
-            runtime.destWidth = width;
-            runtime.destHeight = height;
-            runtime.gl.canvas.width = width;
-            runtime.gl.canvas.height = height;
-        }
         var time = options.time === undefined || options.time === null ? 1.5 : Number(options.time);
         if (!isFinite(time)) time = 1.5;
         var steps = Math.max(1, Math.round(numberOr(options.steps, 1)));
@@ -8135,6 +8144,7 @@
         // steps-1, the OBS frozen-capture convention); snapshot() only reads
         // the buffer and flips it to screen orientation.
         var dataUrl = runtime.snapshot({ render: false });
+        runtime.fixedFrameSize = null;
         if (!dataUrl) throw new Error("renderFrame: the shader did not produce a frame");
         // ISF output is straight RGBA; OBS composites it over the source
         // behind (black for a generator). Flatten by default so headless
