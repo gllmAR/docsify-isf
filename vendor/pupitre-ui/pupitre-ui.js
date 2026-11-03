@@ -371,6 +371,7 @@
     this.currentRoute = null;
     this.preferences = {favorites: [], recent: []};
     this._historyKeyHandler = null;
+    this._tooltipManager = null;
   }
 
   Renderer.prototype.render = function (doc) {
@@ -463,6 +464,7 @@
     this._sectionRecordIndex = -1;
     this._collectionRecordIndex = -1;
     if (!this.mount) throw new Error("PupitreUI: mount is required");
+    if (this._tooltipManager) this.hideTooltips();
     while (this.mount.firstChild) this.mount.removeChild(this.mount.firstChild);
     var errors = validateStructured(doc);
     if (errors.length) {
@@ -504,6 +506,7 @@
     var panels = doc.panels || [];
     for (var i = 0; i < panels.length; i++) this.root.appendChild(this.buildPanel(panels[i]));
     this.mount.appendChild(this.root);
+    this.installTooltips();
     this.root.addEventListener("input", function (event) {
       var target = event.target;
       if (target && String(target.type || "").toLowerCase() === "range") paintRangeFill(target);
@@ -1137,13 +1140,14 @@
       var storedTitlebar = null;
       try { storedTitlebar = window.localStorage && window.localStorage.getItem(titlebarKey); } catch (error) { storedTitlebar = null; }
       var titlebarCollapsed = storedTitlebar === null || storedTitlebar === undefined ? !!titlebar.collapsed : storedTitlebar === "1";
-      titlebarButton = el("button", {type: "button", class: "pui-workbench-titlebar-toggle", "aria-controls": headingId});
+      titlebarButton = el("button", {type: "button", class: "pui-workbench-titlebar-toggle", "aria-controls": headingId, "data-pui-tooltip": "Collapse title bar"});
       var setTitlebarCollapsed = function (collapsed, persist) {
         titlebarCollapsed = !!collapsed;
         toolbar.classList.toggle("is-titlebar-collapsed", titlebarCollapsed);
         titlebarButton.setAttribute("aria-expanded", titlebarCollapsed ? "false" : "true");
         titlebarButton.setAttribute("aria-label", titlebarCollapsed ? "Expand title bar" : "Collapse title bar");
         titlebarButton.title = titlebarCollapsed ? "Expand title bar" : "Collapse title bar";
+        titlebarButton.setAttribute("data-pui-tooltip", titlebarButton.title);
         titlebarButton.textContent = titlebarCollapsed ? "▸" : "▾";
         if (persist) { try { if (window.localStorage) window.localStorage.setItem(titlebarKey, titlebarCollapsed ? "1" : "0"); } catch (error) {} }
       };
@@ -1278,6 +1282,7 @@
       button.setAttribute("aria-keyshortcuts", shortcut);
       button.setAttribute("aria-label", "Toggle " + info.title);
       button.title = "Toggle " + info.title;
+      button.setAttribute("data-pui-tooltip", button.title);
       if (paneIcon) button.appendChild(el("span", {class: "pui-workbench-toggle-icon", "aria-hidden": "true", text: paneIcon}));
       button.appendChild(el("span", {class: "pui-workbench-toggle-label", text: info.title}));
       button.addEventListener("click", function () { self.workbenchToggle(rec, region); });
@@ -1295,6 +1300,7 @@
       var actionButton = el("button", {type: "button", class: "pui-workbench-action", "data-pui-action": String(action.id || action.call)});
       actionButton.setAttribute("aria-label", actionLabel);
       actionButton.title = String(action.title || actionLabel);
+      actionButton.setAttribute("data-pui-tooltip", actionButton.title);
       if (action.icon) actionButton.appendChild(el("span", {class: "pui-workbench-action-icon", "aria-hidden": "true", text: String(action.icon)}));
       else actionButton.appendChild(el("span", {class: "pui-workbench-action-label", text: actionLabel}));
       if (action.icon && action.icon_only === false) actionButton.appendChild(el("span", {class: "pui-workbench-action-label", text: actionLabel}));
@@ -11133,6 +11139,7 @@
     var label = String(block.label || "Menu");
     var trigger = el("button", {type: "button", class: "pui-button pui-header-menu-trigger", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": popupId, text: label});
     trigger.title = label;
+    trigger.setAttribute("data-pui-tooltip", label);
     if (block.icon) trigger.insertBefore(el("span", {class: "pui-header-menu-icon", "aria-hidden": "true", text: String(block.icon)}), trigger.firstChild);
     var popup = el("div", {class: "pui-header-menu-popup", id: popupId, role: "dialog", "aria-label": String(block.title || label), hidden: true});
     var head = el("div", {class: "pui-header-menu-head"});
@@ -11163,7 +11170,7 @@
     var root = el("div", {class: "pui-menu"});
     var label = String(block.label || "Actions");
     var popupId = this.id("menu-popup");
-    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": popupId});
+    var trigger = el("button", {type: "button", class: "pui-button pui-menu-trigger", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": popupId, "data-pui-tooltip": label});
     if (block.id) trigger.setAttribute("data-pui-item", String(block.id));
     var triggerContent = this.toolbarContent(block, trigger);
     var triggerRec = Object.assign({kind: "action", root: trigger, button: trigger, item: block}, triggerContent);
@@ -12697,7 +12704,224 @@
     this.slotInstances = [];
   };
 
+  Renderer.prototype.installTooltips = function () {
+    if (this._tooltipManager || !this.mount || typeof document === "undefined") return;
+    var self = this;
+    var manager = {tooltip: null, target: null, titleBackup: null, showTimer: null, hideTimer: null, pressTimer: null, pressedTarget: null, suppressClick: false, start: null};
+    this._tooltipManager = manager;
+    var tooltipId = this.id("tooltip");
+    var inside = function (parent, node) {
+      if (!parent || !node) return false;
+      if (parent === node) return true;
+      if (parent.contains) return parent.contains(node);
+      for (var walk = node; walk; walk = walk.parentNode) if (walk === parent) return true;
+      return false;
+    };
+    var triggerFor = function (event) {
+      var node = event && event.target;
+      return node && node.closest ? node.closest("[data-pui-tooltip]") : null;
+    };
+    var clearPress = function () {
+      if (manager.pressTimer) { clearTimeout(manager.pressTimer); manager.pressTimer = null; }
+      manager.start = null;
+    };
+    var restoreTitle = function () {
+      if (!manager.titleBackup) return;
+      var backup = manager.titleBackup;
+      manager.titleBackup = null;
+      if (backup.node && !backup.node.getAttribute("title")) backup.node.setAttribute("title", backup.title);
+    };
+    var hide = function () {
+      if (manager.showTimer) { clearTimeout(manager.showTimer); manager.showTimer = null; }
+      if (manager.hideTimer) { clearTimeout(manager.hideTimer); manager.hideTimer = null; }
+      if (manager.target && manager.target.getAttribute("aria-describedby") === tooltipId) manager.target.removeAttribute("aria-describedby");
+      manager.target = null;
+      if (manager.tooltip) {
+        manager.tooltip.classList.remove("is-visible");
+        manager.tooltip.setAttribute("hidden", "");
+      }
+      restoreTitle();
+    };
+    var position = function (node) {
+      var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : {left: 0, top: 0, width: 0, height: 0, bottom: 0, right: 0};
+      var tw = Number(manager.tooltip.offsetWidth) || 0;
+      var th = Number(manager.tooltip.offsetHeight) || 0;
+      var viewportW = (typeof window !== "undefined" && window.innerWidth) || 1000;
+      var viewportH = (typeof window !== "undefined" && window.innerHeight) || 800;
+      var below = (rect.top || 0) < 64;
+      var top = below ? (rect.bottom || 0) + 6 : (rect.top || 0) - th - 6;
+      var left = (rect.left || 0) + (rect.width || 0) / 2 - tw / 2;
+      left = Math.max(8, Math.min(left, viewportW - tw - 8));
+      top = Math.max(8, Math.min(top, viewportH - th - 8));
+      manager.tooltip.style.left = Math.round(left) + "px";
+      manager.tooltip.style.top = Math.round(top) + "px";
+    };
+    var tooltipHost = function () {
+      var fullscreen = typeof document !== "undefined" && (document.fullscreenElement || document.webkitFullscreenElement);
+      return fullscreen || (typeof document !== "undefined" ? document.body : self.root);
+    };
+    var ensureTooltip = function () {
+      var host = tooltipHost();
+      if (!manager.tooltip) {
+        manager.tooltip = el("div", {class: "pui-tooltip", role: "tooltip", id: tooltipId});
+        manager.tooltip.setAttribute("hidden", "");
+      }
+      if (manager.tooltip.parentNode !== host) host.appendChild(manager.tooltip);
+      if (typeof getComputedStyle === "function" && self.root) {
+        var styles = getComputedStyle(self.root);
+        ["--pui-border", "--pui-surface-2", "--pui-text", "--pui-font", "--pui-type-base"].forEach(function (name) {
+          var value = styles.getPropertyValue ? styles.getPropertyValue(name) : "";
+          if (value) manager.tooltip.style.setProperty(name, value);
+        });
+      }
+      return manager.tooltip;
+    };
+    var show = function (node) {
+      if (!node || !inside(self.mount, node)) return;
+      var text = String(node.getAttribute("data-pui-tooltip") || node.getAttribute("aria-label") || node.getAttribute("title") || "").trim();
+      if (!text) return;
+      if (manager.target && manager.target !== node) hide();
+      ensureTooltip();
+      manager.tooltip.textContent = text;
+      manager.tooltip.removeAttribute("hidden");
+      manager.tooltip.classList.add("is-visible");
+      var title = node.getAttribute("title");
+      if (title) {
+        manager.titleBackup = {node: node, title: title};
+        node.removeAttribute("title");
+      } else {
+        manager.titleBackup = null;
+      }
+      node.setAttribute("aria-describedby", tooltipId);
+      manager.target = node;
+      position(node);
+    };
+    var onOver = function (event) {
+      if (event.pointerType === "touch") return;
+      var node = triggerFor(event);
+      if (!node || manager.target === node) return;
+      hide();
+      if (manager.showTimer) clearTimeout(manager.showTimer);
+      manager.showTimer = setTimeout(function () { manager.showTimer = null; show(node); }, 320);
+    };
+    var onOut = function (event) {
+      if (event.pointerType === "touch") return;
+      var node = triggerFor(event);
+      if (!node) return;
+      var related = event.relatedTarget;
+      if (related && inside(node, related)) return;
+      if (manager.showTimer) { clearTimeout(manager.showTimer); manager.showTimer = null; }
+      if (manager.target === node) hide();
+    };
+    var onDown = function (event) {
+      if (event.pointerType !== "touch") {
+        // A mouse/pen press after a touch long-press is a new gesture; never
+        // let the previous suppression swallow it.
+        manager.suppressClick = false;
+        clearPress();
+        return;
+      }
+      var node = triggerFor(event);
+      if (!node) return;
+      hide();
+      clearPress();
+      manager.pressedTarget = node;
+      manager.suppressClick = false;
+      manager.start = {x: Number(event.clientX) || 0, y: Number(event.clientY) || 0};
+      manager.pressTimer = setTimeout(function () {
+        manager.pressTimer = null;
+        if (manager.pressedTarget !== node) return;
+        show(node);
+        manager.suppressClick = true;
+        if (manager.hideTimer) clearTimeout(manager.hideTimer);
+        manager.hideTimer = setTimeout(hide, 1600);
+      }, 450);
+    };
+    var onMove = function (event) {
+      if (!manager.start) return;
+      if (Math.abs((Number(event.clientX) || 0) - manager.start.x) > 8 ||
+          Math.abs((Number(event.clientY) || 0) - manager.start.y) > 8) clearPress();
+    };
+    var onUp = function () { clearPress(); };
+    var onClick = function (event) {
+      if (!manager.suppressClick) return;
+      manager.suppressClick = false;
+      var node = triggerFor(event);
+      if (node && node === manager.pressedTarget) {
+        if (event.preventDefault) event.preventDefault();
+        if (event.stopPropagation) event.stopPropagation();
+      }
+    };
+    var onFocus = function (event) {
+      var node = triggerFor(event);
+      if (!node) return;
+      if (manager.showTimer) { clearTimeout(manager.showTimer); manager.showTimer = null; }
+      show(node);
+    };
+    var onBlur = function (event) {
+      var node = triggerFor(event);
+      if (node && manager.target === node) hide();
+    };
+    var onKey = function (event) { if (event.key === "Escape") hide(); };
+    var onViewport = function () { hide(); };
+    var onContext = function (event) {
+      if (!manager.suppressClick) return;
+      var node = triggerFor(event);
+      if (node && node === manager.pressedTarget && event.preventDefault) event.preventDefault();
+    };
+    manager.hide = hide;
+    manager.cleanup = function () {
+      hide();
+      clearPress();
+      manager.pressedTarget = null;
+      manager.suppressClick = false;
+      self.mount.removeEventListener("pointerover", onOver);
+      self.mount.removeEventListener("pointerout", onOut);
+      self.mount.removeEventListener("pointerdown", onDown);
+      self.mount.removeEventListener("pointermove", onMove);
+      self.mount.removeEventListener("pointerup", onUp);
+      self.mount.removeEventListener("pointercancel", onUp);
+      self.mount.removeEventListener("click", onClick, true);
+      self.mount.removeEventListener("contextmenu", onContext);
+      self.mount.removeEventListener("focusin", onFocus);
+      self.mount.removeEventListener("focusout", onBlur);
+      if (typeof document !== "undefined") document.removeEventListener("keydown", onKey);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("scroll", onViewport, true);
+        window.removeEventListener("resize", onViewport);
+      }
+      if (manager.tooltip && manager.tooltip.parentNode) manager.tooltip.parentNode.removeChild(manager.tooltip);
+      manager.tooltip = null;
+    };
+    self.mount.addEventListener("pointerover", onOver);
+    self.mount.addEventListener("pointerout", onOut);
+    self.mount.addEventListener("pointerdown", onDown);
+    self.mount.addEventListener("pointermove", onMove);
+    self.mount.addEventListener("pointerup", onUp);
+    self.mount.addEventListener("pointercancel", onUp);
+    self.mount.addEventListener("click", onClick, true);
+    self.mount.addEventListener("contextmenu", onContext);
+    self.mount.addEventListener("focusin", onFocus);
+    self.mount.addEventListener("focusout", onBlur);
+    if (typeof document !== "undefined") document.addEventListener("keydown", onKey);
+    if (typeof window !== "undefined") {
+      window.addEventListener("scroll", onViewport, true);
+      window.addEventListener("resize", onViewport);
+    }
+  };
+
+  Renderer.prototype.hideTooltips = function () {
+    if (this._tooltipManager) this._tooltipManager.hide();
+  };
+
+  Renderer.prototype.destroyTooltips = function () {
+    if (!this._tooltipManager) return;
+    this._tooltipManager.cleanup();
+    this._tooltipManager = null;
+  };
+
   Renderer.prototype.destroy = function () {
+    this.destroyTooltips();
     this.unbindDebugShortcut();
     this.hideDebug();
     this.disconnectPreviews();
@@ -14456,7 +14680,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.14.3",
+    version: "1.15.2",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
