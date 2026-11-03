@@ -1010,7 +1010,13 @@
 .pui-big-slider .pui-range.is-vertical input[type="range"] { min-height: 188px; height: 188px; flex-basis: 188px; }
 .pui-big-slider .pui-number-input { min-height: 34px; font-size: calc(var(--pui-type-base) * 0.88); }
 @media (max-width: 640px) { .pui-macros-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.pui-color-control { display: inline-flex; align-items: center; gap: 4px; }
+.pui-color-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.pui input.pui-color-alpha { flex: 0 0 5.2em; width: 5.2em; min-width: 5.2em; min-height: 32px; }
+.pui input.pui-color-native { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; opacity: 0; pointer-events: none; }
+.pui-color-swatch-button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; min-width: 68px; padding: 2px 6px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface-2); color: var(--pui-text); font: inherit; cursor: pointer; }
+.pui-color-swatch-button:hover, .pui-color-swatch-button:focus-visible { border-color: var(--pui-accent); outline: none; }
+.pui-color-swatch-button .pui-graph-color-chip { flex: 0 0 32px; width: 32px; height: 20px; }
+.pui-color-swatch-button .pui-graph-color-code { display: inline; max-width: none; font-size: calc(var(--pui-type-base) * 0.62); }
 .pui-color-alpha { width: 5.2em; }
 .pui .pui-code-highlight { font: inherit; tab-size: 2; }
 /* Typed graph ports and cables */

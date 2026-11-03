@@ -411,6 +411,7 @@
     }
     this.menuRecords = [];
     this.destroySlots();
+    if (this.fieldColorRecord) this.graphCloseColorPicker(this.fieldColorRecord, true);
     var graphPick = this.graphRecords || [];
     for (var gp = 0; gp < graphPick.length; gp++) { this.graphCloseColorPicker(graphPick[gp], true); this.graphUnbindEscape(graphPick[gp]); }
     this.disconnectPreviews();
@@ -4562,6 +4563,7 @@
    * the popover closes; the preview deliberately opens the platform picker. */
   Renderer.prototype.graphOpenColorPicker = function (rec, node, param, anchor, custom) {
     if (!rec || !node || !param || !anchor) return false;
+    if (this.fieldColorRecord && this.fieldColorRecord !== rec && this.fieldColorRecord.colorPicker) this.graphCloseColorPicker(this.fieldColorRecord, false);
     if (rec.colorPicker) this.graphCloseColorPicker(rec, false);
     var self = this;
     var paramId = String(param.id);
@@ -4655,14 +4657,21 @@
     });
 
     rec.viewport.appendChild(panel);
+    var fixed = customMode && custom.fixed;
+    if (fixed) panel.style.position = "fixed";
     panel.style.left = "8px"; panel.style.top = "8px";
     var viewportRect = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0, width: 0, height: 0};
     var anchorRect = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : {left: 0, top: 0, bottom: 0};
     var panelRect = panel.getBoundingClientRect ? panel.getBoundingClientRect() : {width: 236, height: 250};
-    var left = anchorRect.left - viewportRect.left;
-    var top = anchorRect.bottom - viewportRect.top + 4;
-    if (viewportRect.width && panelRect.width && left + panelRect.width > viewportRect.width - 8) left = Math.max(8, viewportRect.width - panelRect.width - 8);
-    if (viewportRect.height && panelRect.height && top + panelRect.height > viewportRect.height - 8) top = Math.max(8, anchorRect.top - viewportRect.top - panelRect.height - 4);
+    var maxWidth = fixed ? (global.innerWidth || 800) : viewportRect.width;
+    var maxHeight = fixed ? (global.innerHeight || 600) : viewportRect.height;
+    var left = fixed ? anchorRect.left : anchorRect.left - viewportRect.left;
+    var top = fixed ? anchorRect.bottom + 4 : anchorRect.bottom - viewportRect.top + 4;
+    if (fixed) { left = Math.min(Math.max(8, left), Math.max(8, maxWidth - panelRect.width - 8)); top = Math.min(Math.max(8, top), Math.max(8, maxHeight - panelRect.height - 8)); }
+    else {
+      if (maxWidth && panelRect.width && left + panelRect.width > maxWidth - 8) left = Math.max(8, maxWidth - panelRect.width - 8);
+      if (maxHeight && panelRect.height && top + panelRect.height > maxHeight - 8) top = Math.max(8, anchorRect.top - viewportRect.top - panelRect.height - 4);
+    }
     panel.style.left = Math.max(8, left) + "px";
     panel.style.top = Math.max(8, top) + "px";
 
@@ -10366,27 +10375,56 @@
     if (widget === "color") {
       var value = this.value(rec);
       var hasAlpha = (typeof value === "string" && /^#[0-9a-fA-F]{8}$/.test(value)) || (isArray(value) && value.length >= 4);
-      var color = el("input", {type: "color", id: id, "data-pui-bind": path});
+      var label = self.labelText(field);
+      var color = el("input", {type: "color", class: "pui-color-native", tabindex: "-1", "aria-hidden": "true"});
       color.value = this.colorValue(value);
+      var swatch = el("button", {type: "button", id: id, class: "pui-color-swatch-button", "data-pui-bind": path, "aria-label": label});
+      swatch.appendChild(el("span", {class: "pui-graph-color-chip", "aria-hidden": "true"}));
+      swatch.appendChild(el("span", {class: "pui-graph-color-code", "aria-hidden": "true"}));
+      self.graphColorPaint(swatch, {label: label, id: "field-color"}, value);
+      var paintColor = function (next) {
+        var text = self.graphColorHex(self.graphColorParts(next));
+        swatch.setAttribute("data-value", text);
+        color.value = text.slice(0, 7);
+        self.graphColorPaint(swatch, {label: label, id: "field-color"}, text);
+        if (rec.alphaInput) rec.alphaInput.value = String(Math.round(self.colorAlphaValue(next) * 100));
+      };
       var commitColor = function () {
         var alpha = rec.alphaInput ? Math.round(Number(rec.alphaInput.value) / 100 * 255).toString(16).padStart(2, "0") : null;
         self.writeRecord(rec, alpha === null ? color.value : color.value + alpha);
       };
       color.addEventListener("change", commitColor);
-      rec.inputs = [color];
+      swatch.addEventListener("click", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        var host = self.mount && self.mount.querySelector ? (self.mount.querySelector(".pui") || self.mount) : self.mount;
+        var recColor = self.fieldColorRecord;
+        if (!recColor || recColor.viewport !== host) recColor = self.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
+        (self.graphRecords || []).forEach(function (graphRec) { if (graphRec.colorPicker) self.graphCloseColorPicker(graphRec, false); });
+        var current = self.value(rec);
+        self.graphOpenColorPicker(recColor, {id: ""}, {id: "field-color", label: label, type: "color"}, swatch, {
+          fixed: true,
+          value: current,
+          onLive: function (hex) { paintColor(hex); },
+          onCommit: function (hex) { self.writeRecord(rec, hex); }
+        });
+      });
+      var wrap = el("span", {class: "pui-color-control"});
+      wrap.appendChild(swatch);
+      wrap.appendChild(color);
+      rec.inputs = [swatch];
+      rec.control = swatch;
+      rec.colorSwatch = swatch;
+      rec.colorNative = color;
       if (hasAlpha) {
-        var alphaInput = el("input", {type: "number", class: "pui-color-alpha", min: "0", max: "100", step: "1", "aria-label": self.labelText(field) + " alpha"});
+        var alphaInput = el("input", {type: "number", class: "pui-color-alpha", min: "0", max: "100", step: "1", "aria-label": label + " alpha"});
         alphaInput.value = String(Math.round(this.colorAlphaValue(value) * 100));
         alphaInput.addEventListener("change", commitColor);
-        var wrap = el("span", {class: "pui-color-control"});
-        wrap.appendChild(color);
         wrap.appendChild(alphaInput);
         wrap.appendChild(el("span", {class: "pui-unit", text: "% α"}));
         rec.inputs.push(alphaInput);
         rec.alphaInput = alphaInput;
-        return wrap;
       }
-      return color;
+      return wrap;
     }
     if (widget === "xy-pad") {
       var xyValues = components(this.value(rec), 2);
@@ -12928,6 +12966,7 @@
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
+    if (this.fieldColorRecord) this.graphCloseColorPicker(this.fieldColorRecord, true);
     var graphPickers = this.graphRecords || [];
     for (var gp = 0; gp < graphPickers.length; gp++) { this.graphCloseColorPicker(graphPickers[gp], true); this.graphUnbindEscape(graphPickers[gp]); }
     this.disconnectGraphBodies();
@@ -13809,10 +13848,8 @@
       return;
     }
     if (rec.widget === "color") {
-      if (active !== rec.control) {
-        var colorInput = rec.control && rec.control.tagName && rec.control.tagName.toLowerCase() === "input" ? rec.control : rec.inputs[0];
-        if (colorInput) colorInput.value = this.colorValue(value);
-      }
+      if (rec.colorNative) rec.colorNative.value = this.colorValue(value);
+      if (rec.colorSwatch) this.graphColorPaint(rec.colorSwatch, {label: rec.block.label || rec.block.bind || "Colour", id: "field-color"}, value);
       if (rec.alphaInput && active !== rec.alphaInput) rec.alphaInput.value = String(Math.round(this.colorAlphaValue(value) * 100));
       return;
     }
@@ -14696,7 +14733,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.15.3",
+    version: "1.16.0",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
