@@ -209,16 +209,26 @@ The second full capture review found and fixed:
 ## 4.4 Parameter presets
 
 - PUI's existing `presets`/`storage` contract is adopted for named looks. The
-  host owns the values and localStorage; PUI owns the list, Save name form,
-  Select-to-recall and Delete confirmation.
+  host owns the values and localStorage; PUI owns the list, Save/Rename name
+  forms, Select-to-recall and Delete confirmation.
 - Stored at `docsify-isf:presets:<shader-url>` as
   `{presets:[{id,label,values}],selected}`. Media, audio and event inputs are
   intentionally excluded. `persistValues:false` (OBS/bare) disables the store;
   `presets:false` hides the feature.
 - Two mounted viewers of the same shader receive a synchronized preset list
   (not each other's live values) without a reload.
-- Captures: `desktop-presets.png`; the interaction trace covers the name form,
-  save, value change, recall, delete confirmation and removal.
+- Captures: `desktop-presets.png`; the interaction trace covers the save name
+  form, value change, recall, rename name form and label update, delete
+  confirmation and removal.
+
+## 4.6 CI popover geometry (1.44.3)
+
+- A CI-only failure exposed that the editor More popover could be measured
+  while the Source drawer was collapsed (zero width). The popover is now
+  anchored to its trigger (`position:relative`), and the interaction trace
+  asserts the Source pane is open before measuring its bounds.
+- Rule: pane-relative bounds are only meaningful when the pane is open; tests
+  must check the host state first, especially in narrow one-pane layouts.
 
 ## 4.5 Tooltips (1.15.2)
 

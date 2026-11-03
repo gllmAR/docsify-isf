@@ -269,7 +269,7 @@ buttons show/hide each section. The right pane has **Parameters / View / Log**
 tabs: parameters are primary, View owns pass/scale/resolution/randomize/export,
 and Log carries status, render/input/pass readouts and quick actions. The
 Parameters tab starts with named **Presets**: save the current scalar/colour/
-geometry look, recall it, or delete it. Presets are stored per shader URL and
+geometry look, rename or delete it. Presets are stored per shader URL and
 skip image/audio/event inputs; the PUI preset block owns the list and forms. The
 bottom **Playback** row carries the native PUI transport and a PUI statusbar.
 Closing that strip, including with **Focus preview**, reveals a host stage HUD
@@ -422,8 +422,8 @@ persist with the layout and can be overridden from the URL (`isf-res`,
   when the editor chrome is folded at narrow widths; the full editor status
   remains aria-live.
 - The Parameters pane has a **Presets** block above the fields: Save preset…
-  asks for a name, the saved look is recalled by selecting it, and Delete is
-  confirmed. Presets store non-media values per shader URL (PUI owns the list
+  asks for a name, the saved look is recalled by selecting it, Rename updates
+  the selected label, and Delete is confirmed. Presets store non-media values per shader URL (PUI owns the list
   and forms; the host owns values and persistence). Two viewers of the same
   shader share the list without a reload.
 - PUI dialogs (save/confirm/palette) copy the active PUI surface/text/font

@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.44.1
+ * docsify-isf v1.44.3
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.44.1";
+    var VERSION = "1.44.3";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3823,7 +3823,7 @@
             ".isf-editor-tabs{display:flex;gap:.2rem;flex:0 0 auto}",
             ".isf-tab{opacity:.75}",
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
-            ".isf-editor-actions .isf-editor-more{display:inline-flex;flex:0 0 auto}",
+            ".isf-editor-actions .isf-editor-more{display:inline-flex;flex:0 0 auto;position:relative}",
             ".isf-editor-actions .isf-editor-more .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
             ".isf-editor-actions .isf-editor-more .pui-menu-popup{inset-inline-start:0;inset-inline-end:auto;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
             ".isf-editor-actions .isf-editor-more .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
@@ -4452,6 +4452,11 @@
                                 style: "primary",
                                 inputs: [{name: "name", label: "Preset name", type: "text", required: true}]
                             },
+                            rename: {
+                                label: "Rename preset",
+                                call: "isf.presets.rename",
+                                inputs: [{name: "name", label: "New preset name", type: "text", required: true}]
+                            },
                             delete: {label: "Delete preset", call: "isf.presets.delete", confirm: true, style: "danger"}
                         }
                     }]
@@ -4535,6 +4540,7 @@
             callAction: function (name, args) {
                 if (name === "isf.presets.save") return viewer.savePreset(args && args.name);
                 if (name === "isf.presets.recall") return viewer.recallPreset(args && args.preset);
+                if (name === "isf.presets.rename") return viewer.renamePreset(args && args.name);
                 if (name === "isf.presets.delete") {
                     return viewer.deletePreset(args && (args.preset_id || (args.preset && args.preset.id)));
                 }
@@ -6899,6 +6905,20 @@
             storePresets(viewer);
             viewer.refreshParamControls();
             viewer.notify("success", "Preset loaded: " + String(preset.label || "Preset"));
+            return true;
+        };
+        viewer.renamePreset = function (name) {
+            var label = String(name || "").trim().replace(/\s+/g, " ");
+            if (!label) return false;
+            var preset = null;
+            for (var i = 0; i < viewer.presets.length; i++) {
+                if (viewer.presets[i].id === viewer.presetSelected) { preset = viewer.presets[i]; break; }
+            }
+            if (!preset) return false;
+            preset.label = label.slice(0, 80);
+            storePresets(viewer);
+            viewer.refreshParamControls();
+            viewer.notify("success", "Preset renamed: " + preset.label);
             return true;
         };
         viewer.deletePreset = function (id) {

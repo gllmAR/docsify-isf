@@ -450,8 +450,8 @@ Density decisions:
 - The Parameters tab is led by the host-owned **Presets** block implemented
   with PUI's `presets`/`storage` contract. Presets are named snapshots of
   non-media input values, persisted under `docsify-isf:presets:<shader-url>`
-  with the selected id. Save opens PUI's name form; recall selects and applies
-  the stored values; delete is confirmed. The host owns values and storage;
+  with the selected id. Save and rename open PUI's name form; recall selects
+  and applies the stored values; delete is confirmed. The host owns values and storage;
   PUI owns the list, forms and confirmation. The preset list stays local to the
   viewer but is copied to other mounted viewers of the same shader.
 - PUI dialogs are body-hosted; PUI 1.15.3 copies the active surface/text/font

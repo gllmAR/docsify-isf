@@ -51,8 +51,12 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
 - **Presets use PUI’s storage contract.** The host stores non-media values per
   shader URL and owns save/recall/delete semantics; PUI owns the preset list,
   name form and delete confirmation. Never persist media/event inputs in a
-  preset. Presets must stay titled/confirmed and survive both viewers of the
-  same shader.
+  preset. Presets must stay titled/confirmed, support rename, and survive both
+  viewers of the same shader.
+- **Popover geometry is a contract.** Anchor host popovers to their trigger and
+  keep them inside their pane/viewport. Tests that measure pane-relative
+  geometry must first assert the pane is open with non-zero width; CI can enter
+  the narrow one-pane mode.
 - **Tooltips are PUI-owned.** Flag icon-only controls with
   `data-pui-tooltip`; PUI 1.15.2 provides hover/focus/long-press labels, touch
   click suppression, theme-token copying and document/fullscreen hosting. Never

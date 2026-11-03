@@ -168,6 +168,22 @@ await sleep(350);
 const recalledLevel = levelNumber ? await levelNumber.evaluate((el) => el.value) : "";
 check("preset recall restores the saved value", recalledLevel === "1", recalledLevel);
 await capture("02d-preset-recall");
+check("rename preset opens a name form", await clickPresetAction("Rename preset"));
+await sleep(200);
+const renameDialog = await page.$("dialog.pui-dialog");
+if (renameDialog) {
+    const renameInput = await renameDialog.$('input[type="text"]');
+    if (renameInput) await renameInput.type("Look B");
+    const renameSave = await renameDialog.$('button[type="submit"]');
+    if (renameSave) await renameSave.click();
+}
+await sleep(350);
+const renamedPreset = await blockEval((block) => {
+    const preset = block.querySelector(".pui-preset");
+    return preset ? preset.textContent : "";
+});
+check("preset rename updates the selected label", renamedPreset === "Look B", renamedPreset);
+await capture("02e-preset-renamed");
 check("delete preset opens confirmation", await clickPresetAction("Delete preset"));
 await sleep(200);
 const deleteDialog = await page.$("dialog.pui-dialog");
@@ -178,7 +194,7 @@ if (deleteDialog) {
 await sleep(350);
 const remainingPresets = await blockEval((block) => block.querySelectorAll(".pui-preset").length);
 check("preset delete removes the preset", remainingPresets === 0, remainingPresets);
-await capture("02e-preset-delete");
+await capture("02f-preset-delete");
 for (const label of ["View", "Log", "Parameters"]) {
     await selectTab(label);
     await sleep(200);
@@ -449,6 +465,19 @@ await closeOverlay();
 await moreAction("Revert to file");
 await sleep(300);
 await capture("18d-editor-revert");
+// CI's viewport/contained workbench can leave the Source drawer collapsed;
+// the More menu only makes sense with its host pane open.
+await blockEval((block) => {
+    const left = block.querySelector('.pui-workbench-toggle[data-pui-region="left"]');
+    if (left && left.getAttribute("aria-expanded") !== "true") left.click();
+    return true;
+});
+await sleep(350);
+const sourceReadyForMore = await blockEval((block) => {
+    const pane = block.querySelector(".pui-workbench-pane.is-left");
+    return !!pane && !pane.classList.contains("is-collapsed") && pane.getBoundingClientRect().width > 1;
+});
+check("Source pane is open before the editor More bounds", sourceReadyForMore);
 const templateOpen = await blockEval((block) => {
     const trigger = block.querySelector(".isf-editor-more .pui-menu-trigger");
     if (!trigger) return false;
@@ -621,12 +650,17 @@ await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").len
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 await sleep(1500);
 await capture("26-mobile-initial");
-const tapRegion = async (region) => {
+const tapRegion = async (region, expected) => {
     const target = `${selector} .pui-workbench-toggle[data-pui-region="${region}"]`;
-    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), target);
-    await sleep(120);
-    await page.tap(target);
-    await sleep(400);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), target);
+        await sleep(120);
+        await page.tap(target);
+        await sleep(400);
+        if (expected === undefined) return;
+        const state = await mobileLayout();
+        if (!!state[region] === !!expected) return;
+    }
 };
 const mobileLayout = () => blockEval((block) => {
     const left = block.querySelector(".pui-workbench-pane.is-left");
@@ -644,19 +678,19 @@ const mobileLayout = () => blockEval((block) => {
         bottomHeight: Math.round(box(bottom).height)
     };
 });
-await tapRegion("left");
+await tapRegion("left", true);
 await capture("27-mobile-source");
 let phone = await mobileLayout();
 check("phone Source drawer is full-width and exclusive", phone.left && !phone.right && phone.leftWidth >= phone.bodyWidth - 2, phone);
-await tapRegion("right");
+await tapRegion("right", true);
 await capture("28-mobile-parameters");
 phone = await mobileLayout();
 check("phone Parameters drawer is full-width and exclusive", phone.right && !phone.left && phone.rightWidth >= phone.bodyWidth - 2, phone);
-await tapRegion("bottom");
+await tapRegion("bottom", false);
 await capture("29-mobile-playback-closed");
 phone = await mobileLayout();
 check("phone Playback toggle closes the strip", !phone.bottom, phone);
-await tapRegion("bottom");
+await tapRegion("bottom", true);
 await capture("29b-mobile-playback-open");
 phone = await mobileLayout();
 check("phone Playback strip stays visible", phone.bottom && phone.bottomHeight >= 60, phone);
