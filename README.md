@@ -232,6 +232,7 @@ All keys are optional and live under `window.$docsify.isf`:
 | `persistLayout` | `true` | Remember editor height, folded toolbar, workbench pane widths, Scale and Resolution across viewers and pages. |
 | `persistValues` | `true` | Remember parameter values per shader URL. |
 | `presets` | `true` | Named parameter presets per shader URL (save/recall/delete in the Parameters pane); requires `persistValues`. |
+| `paramGroups` | `"auto"` | Group ISF inputs into type disclosures: `"auto"` groups materials with 6+ inputs, `"always"` always groups, `false`/`"never"` keeps the flat list. Host `input.group`/`GROUP` overrides the type fallback. |
 | `share` | `true` | Show the share button: it copies a self-contained fullscreen URL for OBS browser sources (shader + current parameters + Resolution/Scale). |
 | `imageUrl` | `null` | Default image for image inputs (otherwise a built-in test pattern). |
 | `vertexShader` | `"auto"` | Fetch a same-name `.vs`; `false` disables. |

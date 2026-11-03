@@ -129,6 +129,14 @@ await capture("01-desktop-initial");
 await togglePane("right", true);
 await selectTab("Parameters");
 await capture("02-parameters");
+const paramGroups = await blockEval((block) => {
+    const groups = Array.from(block.querySelectorAll(".pui-disclosure"));
+    return {
+        labels: groups.map((group) => group.querySelector(".pui-disclosure-summary")?.textContent?.trim() || ""),
+        fields: block.querySelectorAll("[data-isf-param]").length
+    };
+});
+check("large materials group parameters by type", paramGroups.labels.length >= 3 && paramGroups.labels.some((label) => /Media|Color|Geometry|Values/.test(label)) && paramGroups.fields >= 8, paramGroups);
 
 // ── named presets: save, change a value, recall, delete
 const clickPresetAction = (re) => blockEval((block, [pattern]) => {
@@ -524,23 +532,27 @@ if (fold) {
     }, selector);
     check("folded editor follows the Source width", folded.wrapWidth >= folded.paneWidth - 8, folded);
     check("folded editor owns vertical scrolling", folded.scrollHeight > folded.clientHeight && folded.editorHeight <= folded.paneHeight, folded);
-    const resizePoint = await page.evaluate((s) => {
-        const r = document.querySelector(s + " .pui-workbench-resizer.is-left").getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    }, selector);
+    const dragResizer = async (dx) => {
+        const resizePoint = await page.evaluate((s) => {
+            const r = document.querySelector(s + " .pui-workbench-resizer.is-left").getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }, selector);
+        await page.mouse.move(resizePoint.x, resizePoint.y);
+        await page.mouse.down();
+        await page.mouse.move(resizePoint.x + dx, resizePoint.y, { steps: 8 });
+        await page.mouse.up();
+        await sleep(300);
+        return page.evaluate((s) => {
+            const block = document.querySelector(s);
+            const pane = block.querySelector(".pui-workbench-pane.is-left");
+            const wrap = block.querySelector(".isf-editor-wrap");
+            return { paneWidth: Math.round(pane.getBoundingClientRect().width), wrapWidth: Math.round(wrap.getBoundingClientRect().width) };
+        }, selector);
+    };
     const widthBeforeResize = folded.paneWidth;
-    await page.mouse.move(resizePoint.x, resizePoint.y);
-    await page.mouse.down();
-    await page.mouse.move(resizePoint.x + 70, resizePoint.y, { steps: 8 });
-    await page.mouse.up();
-    await sleep(300);
+    let resized = await dragResizer(70);
+    if (resized.paneWidth <= widthBeforeResize) resized = await dragResizer(110);
     await capture("22b-editor-resized");
-    const resized = await page.evaluate((s) => {
-        const block = document.querySelector(s);
-        const pane = block.querySelector(".pui-workbench-pane.is-left");
-        const wrap = block.querySelector(".isf-editor-wrap");
-        return { paneWidth: Math.round(pane.getBoundingClientRect().width), wrapWidth: Math.round(wrap.getBoundingClientRect().width) };
-    }, selector);
     check("folded editor follows a Source pane resize", resized.paneWidth > widthBeforeResize && resized.wrapWidth >= resized.paneWidth - 8, {before: widthBeforeResize, ...resized});
     await fold.click();
     await sleep(200);

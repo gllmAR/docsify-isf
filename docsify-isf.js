@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.3";
+    var VERSION = "1.45.4";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3940,6 +3940,7 @@
         persistLayout: true,        // remember editor height / side width
         persistValues: true,        // remember parameter values per shader URL
         presets: true,              // named parameter presets per shader URL
+        paramGroups: "auto",        // "auto" (6+ inputs), "always", or false
         share: true,                // show the copy-link button
         imageUrl: null,
         vertexShader: "auto",       // "auto" | false
@@ -6388,6 +6389,10 @@
             inputs: inputs,
             host: viewer.puiHost,
             rev: (viewer.puiRev = (viewer.puiRev || 0) + 1),
+            groupBy: viewer.config.paramGroups === false
+                ? false
+                : (viewer.config.paramGroups === "always" || viewer.config.paramGroups === true || (viewer.config.paramGroups !== "never" && viewer.config.paramGroups !== "off" && inputs.length >= 6))
+                    ? "type" : false,
             // Embedded panels keep only their accessible name; give every
             // viewer's parameter region a unique one.
             title: (viewer.title ? viewer.title + " inputs" : "Inputs"),
