@@ -62,7 +62,7 @@ Start with the root [`../AGENTS.md`](../AGENTS.md), then:
   geometry must first assert the pane is open with non-zero width; CI can enter
   the narrow one-pane mode.
 - **Tooltips are PUI-owned.** Flag icon-only controls with
-  `data-pui-tooltip`; PUI 1.18.6 provides hover/focus/long-press labels, touch
+  `data-pui-tooltip`; PUI 1.18.7 provides hover/focus/long-press labels, touch
   click suppression, theme-token copying and document/fullscreen hosting. Never
   add a second tooltip manager per viewer. A long press must not activate the
   control, and a following mouse/pen press must not stay suppressed.
