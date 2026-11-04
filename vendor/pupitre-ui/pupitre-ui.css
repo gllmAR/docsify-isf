@@ -749,7 +749,7 @@
 .pui-workbench-pane.is-left.is-collapsed, .pui-workbench-pane.is-right.is-collapsed { flex-basis: 0; width: 0; border: 0; }
 .pui-workbench-pane.is-bottom { flex: 0 0 auto; border-top: 1px solid var(--pui-border); max-height: 160px; }
 .pui-workbench-pane.is-bottom.is-collapsed { display: none; }
-.pui-workbench-pane-title { padding: 6px 8px; border-bottom: 1px solid var(--pui-border); color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); text-transform: uppercase; letter-spacing: 0.05em; }
+.pui-workbench-pane-title { position: relative; z-index: 5; padding: 6px 8px; border-bottom: 1px solid var(--pui-border); color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); text-transform: uppercase; letter-spacing: 0.05em; }
 .pui-workbench-pane-content { padding: 8px; overflow: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .pui-workbench-pane-content .pui-section { margin: 0; }
 .pui-workbench-resizer { flex: 0 0 5px; background: var(--pui-border); cursor: col-resize; touch-action: none; }
