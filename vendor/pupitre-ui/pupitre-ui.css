@@ -281,6 +281,7 @@
 .pui[data-density="compact"] .pui-preset-storage { flex: 1 1 100%; justify-content: flex-end; margin-inline-start: 0; }
 .pui[data-density="compact"] .pui-preset { min-height: 26px; padding: 2px 6px; }
 @media (pointer: coarse) { .pui[data-density="compact"] .pui-preset { min-height: var(--pui-touch); } }
+@media (pointer: coarse) { .pui-graph-color-popover .pui-graph-color-range, .pui-graph-color-popover .pui-graph-color-number { min-height: 32px; height: 32px; } .pui-graph-color-popover .pui-graph-color-popover-close { width: 32px; height: 32px; } }
 .pui[data-density="compact"] .pui-knob { width: 42px; height: 42px; }
 .pui[data-density="compact"] .pui-knob-value { font-size: calc(var(--pui-type-base) * 0.62); max-width: 30px; }
 .pui[data-density="comfortable"] { --pui-row-pad: 2px; --pui-type-base: 16px; }

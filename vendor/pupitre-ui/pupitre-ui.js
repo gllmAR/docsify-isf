@@ -4600,7 +4600,7 @@
     var currentValue = startValue;
     var parts = this.graphColorParts(startValue);
     var popoverId = "pui-color-popover-" + (++this.colorPickerSeq);
-    var panel = el("div", {id: popoverId, class: "pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
+    var panel = el("div", {id: popoverId, class: "pui pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
     if (anchor.setAttribute) {
       anchor.setAttribute("aria-haspopup", "dialog");
       anchor.setAttribute("aria-expanded", "true");
@@ -13511,9 +13511,31 @@
   Renderer.prototype.styleDialog = function (dialog) {
     if (!dialog || !this.root || typeof getComputedStyle !== "function") return;
     var styles = getComputedStyle(this.root);
-    ["--pui-bg", "--pui-surface", "--pui-surface-2", "--pui-text", "--pui-muted", "--pui-border",
-     "--pui-accent", "--pui-danger", "--pui-warning", "--pui-radius", "--pui-touch", "--pui-gap",
-     "--pui-type-base", "--pui-font"].forEach(function (name) {
+    var colorTokens = ["--pui-bg", "--pui-surface", "--pui-surface-2", "--pui-text", "--pui-muted", "--pui-border",
+     "--pui-accent", "--pui-danger", "--pui-warning"];
+    // Custom properties may contain var(--host-*) references. Resolve colour
+    // tokens through a probe so body-hosted dialogs keep the host accent
+    // instead of falling back to PUI's default blue.
+    var probe = null;
+    if (this.root.appendChild && global.document && global.document.createElement) {
+      probe = global.document.createElement("span");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = "position:absolute;width:0;height:0;visibility:hidden;pointer-events:none";
+      this.root.appendChild(probe);
+    }
+    colorTokens.forEach(function (name) {
+      var value = styles.getPropertyValue ? styles.getPropertyValue(name) : "";
+      if (!value) return;
+      var resolved = value;
+      if (probe) {
+        probe.style.color = "var(" + name + ")";
+        var computed = getComputedStyle(probe).color;
+        if (computed && computed !== "rgba(0, 0, 0, 0)") resolved = computed;
+      }
+      dialog.style.setProperty(name, resolved);
+    });
+    if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+    ["--pui-radius", "--pui-touch", "--pui-gap", "--pui-type-base", "--pui-font"].forEach(function (name) {
       var value = styles.getPropertyValue ? styles.getPropertyValue(name) : "";
       if (value) dialog.style.setProperty(name, value);
     });
@@ -14960,7 +14982,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.12",
+    version: "1.18.13",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
