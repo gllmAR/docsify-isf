@@ -1470,3 +1470,13 @@
     appearance: auto; -webkit-appearance: auto; background-image: none;
   }
 }
+
+/* Section heads: keep the title and help on one baseline and let static
+ * readout/note-only sections read as metadata instead of empty control cards. */
+.pui-section-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin: 0 0 4px; min-width: 0; }
+.pui-section-head h3 { margin: 0; }
+.pui-section-head .pui-help { margin: 0; }
+.pui-section.is-static { padding: 5px 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--pui-border) 55%, transparent); border-radius: 0; background: transparent; }
+.pui-section.is-static:last-child { border-bottom: 0; }
+.pui-section.is-static .pui-section-head { margin-bottom: 2px; }
+.pui-section.is-static .pui-section-head h3 { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }

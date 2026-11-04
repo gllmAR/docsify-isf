@@ -1558,15 +1558,18 @@
       toggle.addEventListener("click", function () { setFolded(!sectionBody.hidden); });
       sectionEl.appendChild(sectionBody);
     } else if (!embedded) {
-      sectionEl.appendChild(el("h3", {id: id, text: sectionTitle}));
+      var head = el("div", {class: "pui-section-head"});
+      head.appendChild(el("h3", {id: id, text: sectionTitle}));
+      sectionEl.appendChild(head);
       sectionEl.setAttribute("aria-labelledby", id);
     } else {
       sectionEl.setAttribute("aria-label", sectionTitle);
     }
     var sectionHelp = null;
+    var sectionHead = sectionEl.querySelector(".pui-section-head");
     if (section.help) {
       sectionHelp = el("p", {class: "pui-help", text: String(section.help)});
-      (sectionBody || sectionEl).appendChild(sectionHelp);
+      (sectionHead || sectionBody || sectionEl).appendChild(sectionHelp);
     }
     var body = el("div", {class: "pui-fields"});
     var columns = section.layout && section.layout.columns || 1;
@@ -1589,6 +1592,11 @@
     (sectionBody || sectionEl).appendChild(body);
     if (isArray(section.actions) && section.actions.length) (sectionBody || sectionEl).appendChild(this.buildActions(section.actions));
     if (isArray(section.presets) && section.presets.length) (sectionBody || sectionEl).appendChild(this.buildActions(section.presets, "preset"));
+    var interactiveKind = function (kind) { return ["note", "readout", "separator"].indexOf(String(kind || "field")) < 0; };
+    var hasInteractive = (section.blocks || []).some(function (block) { return isObject(block) && interactiveKind(block.kind); });
+    if (isArray(section.actions) && section.actions.length) hasInteractive = true;
+    if (isArray(section.presets) && section.presets.length) hasInteractive = true;
+    if (!hasInteractive) sectionEl.classList.add("is-static");
     this.sectionRecords.push({element: sectionEl, block: section, helpEl: sectionHelp, pageRecordIndex: this._pageRecordIndex, visible: true, enabled: true});
     return sectionEl;
   };
@@ -14982,7 +14990,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.14",
+    version: "1.18.15",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
