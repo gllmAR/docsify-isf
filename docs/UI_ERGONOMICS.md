@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.12 · **docsify-isf:** 1.45.16
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.13 · **docsify-isf:** 1.45.17
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -343,6 +343,16 @@ The second full capture review found and fixed:
   z-index rules.
 - Only docsify-specific alignment and trigger sizing remain in the host.
 - Refreshed the audit against PUI 1.18.12.
+
+## 4.14 Body-hosted PUI token scope (1.45.17)
+
+- PUI 1.18.13 gives the RGBA popover the `.pui` style scope and resolves
+  host `var(--host-*)` colour tokens before copying them to body-hosted
+  surfaces. The picker now uses docsify's accent, PUI range styling and 32 px
+  touch targets instead of native blue controls.
+- The popover still lives on the document/fullscreen top layer after 1.18.10;
+  only the styling scope moved with it.
+- Refreshed desktop/phone colour-picker captures.
 
 ## 4.3 Runtime cost controls
 
