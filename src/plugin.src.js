@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.15
+ * docsify-isf v1.45.16
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.15";
+    var VERSION = "1.45.16";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -3658,14 +3658,14 @@
             ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.editor\"]{padding:0;border:0;border-radius:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{padding:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-slot[data-pui-slot=\"isf.params\"]{padding:0;border:0;border-radius:0}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{position:relative;z-index:5;font-size:0;padding:3px 34px 3px 8px;min-height:24px}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{font-size:0;padding:3px 34px 3px 8px;min-height:24px}",
             ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto!important}",
             ".isf-workbench .isf-editor-wrap > .isf-resize-y{display:none}",
             ".isf-workbench .isf-editor-toolbar{flex-wrap:nowrap;padding:.22rem .35rem;gap:.22rem;min-height:34px}",
             ".isf-workbench .isf-editor-actions{flex:0 0 auto;flex-wrap:nowrap;max-width:none;gap:.2rem;margin-inline-start:auto}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);width:24px;min-width:24px;margin:0;z-index:50}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more > .pui{width:24px;flex:0 0 24px}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;background:var(--isf-surface);border:1px solid var(--isf-border);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-trigger{min-width:24px;min-height:24px;padding:1px 4px}",
             ".isf-workbench .isf-editor-tabs{gap:.15rem}",
             ".isf-workbench .isf-editor-actions .isf-btn{padding:.18rem .38rem}",
@@ -3846,10 +3846,7 @@
             ".isf-tab.is-active{opacity:1;background:var(--isf-accent);border-color:var(--isf-accent);color:var(--isf-accent-contrast)}",
             ".isf-editor-actions .isf-editor-more{display:inline-flex;flex:0 0 auto;position:relative}",
             ".isf-editor-actions .isf-editor-more .pui-menu-trigger{display:inline-flex;align-items:center;gap:.25rem;min-height:26px;padding:.2rem .5rem;border:1px solid var(--isf-border);border-radius:6px;background:var(--isf-bg);color:var(--isf-text);font-size:.72rem;font-weight:500;line-height:1}",
-            ".isf-editor-actions .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;min-width:200px;max-height:220px;overflow:auto;padding:5px;border:1px solid var(--isf-border);border-radius:8px;background:var(--isf-surface);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
-            ".isf-editor-actions .isf-editor-more .pui-menu-popup .pui-button{display:flex;align-items:center;min-height:30px;padding:.35rem .5rem;border:0;border-radius:5px;background:transparent;color:var(--isf-text);font-size:.74rem;text-align:left}",
-            ".isf-editor-actions .isf-editor-more .pui-menu-popup .pui-toolbar-label{color:var(--isf-text);font-size:.74rem;font-weight:400;padding:0;white-space:nowrap}",
-            ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .6rem;padding:.55rem .75rem .6rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 35%,transparent)}",
+                                                ".isf-view{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem .6rem;padding:.55rem .75rem .6rem;border-top:1px solid color-mix(in srgb,var(--isf-border) 70%,transparent);background:color-mix(in srgb,var(--isf-surface) 35%,transparent)}",
             ".isf-view-heading{flex:1 1 100%;font-size:.62rem;text-transform:uppercase;letter-spacing:.07em;color:var(--isf-muted);font-weight:650;margin-bottom:.05rem}",
             ".isf-view-row{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;color:var(--isf-muted)}",
             ".isf-view-label{text-transform:uppercase;letter-spacing:.04em;font-size:.62rem;color:var(--isf-muted)}",
@@ -3888,7 +3885,7 @@
             /* PUI bridge: loaded on demand, but the host palette is always
                available once the renderer mounts. */
             ".isf-pui{font-size:.8rem;line-height:1.35}",
-            ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:transparent;--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
+            ".isf-pui .pui{--pui-font:inherit;--pui-bg:transparent;--pui-surface:var(--isf-surface);--pui-surface-2:var(--isf-surface-2);--pui-text:var(--isf-text);--pui-muted:var(--isf-muted);--pui-border:var(--isf-border);--pui-accent:var(--isf-accent);--pui-accent-text:var(--isf-accent-contrast);--pui-danger:var(--isf-danger);--pui-radius:7px;font-family:inherit;font-size:.8rem}",
             ".isf-pui .pui output{display:inline;padding:0;margin:0;border:0;border-radius:0;position:static;background:none}",
             ".isf-pui .pui-caption{color:var(--isf-muted)}",
             ".isf-pui .pui-caption:hover{color:var(--isf-text)}",

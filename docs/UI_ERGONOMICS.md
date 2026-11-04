@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.10 · **docsify-isf:** 1.45.15
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.12 · **docsify-isf:** 1.45.16
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -332,6 +332,17 @@ The second full capture review found and fixed:
   PUI's bounded scrolling. Its first item and every row are hit-testable while
   the menu scrolls.
 - Added desktop and phone captures for both states.
+
+## 4.13 Upstream PUI surfaces and stacking (1.45.16)
+
+- The host no longer re-implements PUI menu backgrounds, borders, shadows,
+  scroll bounds or stacking. `.isf-pui .pui` maps `--pui-surface` to the opaque
+  docsify surface, so PUI menus use their own tokenized surface.
+- PUI 1.18.11/1.18.12 owns workbench pane-title stacking above pane content;
+  the Source More menu remains hit-testable over the editor without host
+  z-index rules.
+- Only docsify-specific alignment and trigger sizing remain in the host.
+- Refreshed the audit against PUI 1.18.12.
 
 ## 4.3 Runtime cost controls
 
