@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.14
+ * docsify-isf v1.45.15
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.14";
+    var VERSION = "1.45.15";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -5538,14 +5538,14 @@
             ".isf-workbench .pui-workbench-pane.is-left .pui-slot[data-pui-slot=\"isf.editor\"]{padding:0;border:0;border-radius:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-workbench-pane-content{padding:0}",
             ".isf-workbench .pui-workbench-pane.is-right .pui-slot[data-pui-slot=\"isf.params\"]{padding:0;border:0;border-radius:0}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{position:relative;font-size:0;padding:3px 34px 3px 8px;min-height:24px}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title{position:relative;z-index:5;font-size:0;padding:3px 34px 3px 8px;min-height:24px}",
             ".isf-workbench .isf-editor{height:auto!important;min-height:0;flex:1 1 auto!important}",
             ".isf-workbench .isf-editor-wrap > .isf-resize-y{display:none}",
             ".isf-workbench .isf-editor-toolbar{flex-wrap:nowrap;padding:.22rem .35rem;gap:.22rem;min-height:34px}",
             ".isf-workbench .isf-editor-actions{flex:0 0 auto;flex-wrap:nowrap;max-width:none;gap:.2rem;margin-inline-start:auto}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);width:24px;min-width:24px;margin:0;z-index:2}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);width:24px;min-width:24px;margin:0;z-index:50}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more > .pui{width:24px;flex:0 0 24px}",
-            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0}",
+            ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-popup{inset-inline-start:auto;inset-inline-end:0;background:var(--isf-surface);border:1px solid var(--isf-border);box-shadow:0 14px 32px rgba(0,0,0,.38);z-index:30}",
             ".isf-workbench .pui-workbench-pane.is-left .pui-workbench-pane-title .isf-editor-more .pui-menu-trigger{min-width:24px;min-height:24px;padding:1px 4px}",
             ".isf-workbench .isf-editor-tabs{gap:.15rem}",
             ".isf-workbench .isf-editor-actions .isf-btn{padding:.18rem .38rem}",

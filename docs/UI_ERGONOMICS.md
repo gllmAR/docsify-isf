@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.9 · **docsify-isf:** 1.45.14
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.10 · **docsify-isf:** 1.45.15
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -21,12 +21,16 @@ checked against established editor/workbench implementations.
 | Desktop, title bar compact (default) | ![desktop default](ui-audit/desktop-default.png) |
 | Desktop, light theme | ![desktop light](ui-audit/desktop-light.png) |
 | Desktop, forced colors | ![desktop forced colors](ui-audit/desktop-forced-colors.png) |
+| Desktop, RGBA picker | ![desktop color picker](ui-audit/desktop-color-picker.png) |
+| Desktop, Source More menu | ![desktop editor more](ui-audit/desktop-editor-more.png) |
 | Desktop, title bar expanded | ![desktop expanded](ui-audit/desktop-expanded.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
 | Desktop, fullscreen | ![desktop fullscreen](ui-audit/desktop-fullscreen.png) |
 | Tablet, Parameters | ![tablet default](ui-audit/tablet-default.png) |
 | Phone, Parameters | ![mobile parameters](ui-audit/mobile-parameters.png) |
+| Phone, RGBA picker | ![mobile color picker](ui-audit/mobile-color-picker.png) |
+| Phone, Source More menu | ![mobile editor more](ui-audit/mobile-editor-more.png) |
 | Phone, Source | ![mobile source](ui-audit/mobile-source.png) |
 | Phone, stage HUD | ![mobile stage](ui-audit/mobile-stage.png) |
 | Phone, long-press tooltip | ![mobile tooltip](ui-audit/mobile-tooltip.png) |
@@ -315,6 +319,19 @@ The second full capture review found and fixed:
 - The audit now emulates `forced-colors: active` through CDP (Puppeteer does not
   expose it) and captures the desktop workbench with system colours. Host chrome,
   Source/Parameters tabs, presets, transport and PUI fields remain legible.
+
+## 4.12 RGBA picker and Source menu (1.45.15)
+
+- The ISF colour swatch opens PUI's RGBA popover with independent R/G/B/A
+  ranges and number inputs, a hex field and a preview button that invokes the
+  native system picker. PUI 1.18.10 hosts it on the document/fullscreen top
+  layer, fixing the old container-relative position that opened it off-screen.
+- The field popover's live channel edits update the swatch immediately; the
+  close action commits one host value.
+- The Source More menu is raised above the editor, given an opaque surface and
+  PUI's bounded scrolling. Its first item and every row are hit-testable while
+  the menu scrolls.
+- Added desktop and phone captures for both states.
 
 ## 4.3 Runtime cost controls
 

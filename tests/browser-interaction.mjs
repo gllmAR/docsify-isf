@@ -138,6 +138,49 @@ const paramGroups = await blockEval((block) => {
 });
 check("large materials group parameters by type", paramGroups.labels.length >= 3 && paramGroups.labels.some((label) => /Media|Color|Geometry|Values/.test(label)) && paramGroups.fields >= 8, paramGroups);
 
+// ── RGBA field popover: four channels, native-picker preview, top-layer host
+const colorPopup = await page.evaluate(async (s) => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const block = document.querySelector(s);
+    const swatch = block.querySelector(".pui-color-swatch-button");
+    if (!swatch) return {missing: true};
+    swatch.click();
+    await wait(180);
+    const popover = document.querySelector(".pui-graph-color-popover");
+    if (!popover) return {missing: true};
+    const rect = popover.getBoundingClientRect();
+    return {
+        missing: false,
+        parent: popover.parentElement === document.body,
+        x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height),
+        viewport: [window.innerWidth, window.innerHeight],
+        ranges: popover.querySelectorAll(".pui-graph-color-range").length,
+        numbers: popover.querySelectorAll(".pui-graph-color-number").length,
+        preview: !!popover.querySelector(".pui-graph-color-preview")
+    };
+}, selector);
+check("RGBA picker is a top-layer popover with R/G/B/A and native preview", !!colorPopup && !colorPopup.missing && colorPopup.parent &&
+    colorPopup.x >= 0 && colorPopup.y >= 0 && colorPopup.x + colorPopup.width <= colorPopup.viewport[0] &&
+    colorPopup.y + colorPopup.height <= colorPopup.viewport[1] && colorPopup.ranges === 4 && colorPopup.numbers === 4 && colorPopup.preview, colorPopup);
+await page.screenshot({ path: path.join(artifacts, "02b-color-picker.png") });
+actions.push("02b-color-picker");
+const colorEdit = await page.evaluate(async (s) => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const block = document.querySelector(s);
+    const swatch = block.querySelector(".pui-color-swatch-button");
+    const popover = document.querySelector(".pui-graph-color-popover");
+    if (!popover || !swatch) return {missing: true};
+    const range = popover.querySelector('[data-channel="r"] input[type="range"]');
+    range.value = "10";
+    range.dispatchEvent(new Event("input", {bubbles: true}));
+    await wait(100);
+    const value = swatch.getAttribute("data-value");
+    popover.querySelector(".pui-graph-color-popover-close").click();
+    await wait(80);
+    return {missing: false, value, closed: !document.querySelector(".pui-graph-color-popover")};
+}, selector);
+check("RGBA channel edits reach the swatch and popover closes", !!colorEdit && !colorEdit.missing && /^#0a/.test(colorEdit.value || "") && colorEdit.closed, colorEdit);
+
 // ── named presets: save, change a value, recall, delete
 const clickPresetAction = (re) => blockEval((block, [pattern]) => {
     const presetBlock = block.querySelector(".pui-presets");
@@ -504,9 +547,21 @@ if (templateOpen) {
         const source = block.querySelector(".pui-workbench-pane.is-left");
         if (!popup || !source) return null;
         const p = popup.getBoundingClientRect(), s = source.getBoundingClientRect();
-        return {left: Math.round(p.left - s.left), right: Math.round(p.right - s.right)};
+        const item = popup.querySelector("[role=menuitem], .pui-button");
+        const ir = item && item.getBoundingClientRect();
+        const hit = ir && document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2);
+        return {
+            left: Math.round(p.left - s.left), right: Math.round(p.right - s.right),
+            height: Math.round(p.height), paneBottom: Math.round(s.bottom), popupBottom: Math.round(p.bottom),
+            scrollable: popup.scrollHeight > popup.clientHeight + 1,
+            itemHit: !!hit && popup.contains(hit),
+            background: getComputedStyle(popup).backgroundColor
+        };
     });
-    check("editor More menu stays inside the Source pane", !!moreBounds && moreBounds.left >= -1 && moreBounds.right <= 6, moreBounds);
+    check("editor More menu stays inside the Source pane", !!moreBounds && moreBounds.left >= -1 && moreBounds.right <= 6 &&
+        moreBounds.popupBottom <= moreBounds.paneBottom + 1, moreBounds);
+    check("editor More menu is above the editor and scrollable", !!moreBounds && moreBounds.itemHit && moreBounds.scrollable, moreBounds);
+    check("editor More menu has an opaque surface", !!moreBounds && !/rgba?\([^)]*,\s*0(\.0*)?\s*\)/.test(moreBounds.background || "") && moreBounds.background !== "transparent", moreBounds.background);
     await capture("21-templates");
     await editorMenu("float input");
     await sleep(300);

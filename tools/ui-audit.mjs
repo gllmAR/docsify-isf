@@ -95,6 +95,20 @@ await clickRegion("right");
 await sleep(300);
 await shot("desktop-default");
 
+// RGBA popover is body-hosted; capture the viewport, not the workbench block.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const swatch = block && block.querySelector(".pui-color-swatch-button");
+    if (swatch) swatch.click();
+});
+await sleep(350);
+await page.screenshot({ path: path.join(out, "desktop-color-picker.png") });
+await page.evaluate(() => {
+    const close = document.querySelector(".pui-graph-color-popover-close");
+    if (close) close.click();
+});
+await sleep(150);
+
 // Named preset: save the current look, capture it, then remove it so the
 // remaining captures start from a clean store.
 await page.evaluate(() => {
@@ -148,6 +162,18 @@ await page.waitForFunction(() => {
 }, { timeout: 2500 }).catch(() => {});
 await sleep(300);
 await shot("desktop-both-panes");
+
+// Open the Source menu while the editor is visible: it must sit above the
+// code and use PUI's bounded scrolling.
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const trigger = block && block.querySelector(".isf-editor-more .pui-menu-trigger");
+    if (trigger && trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+});
+await sleep(350);
+await shot("desktop-editor-more");
+await page.keyboard.press("Escape");
+await sleep(150);
 
 await clickTab("View");
 await page.waitForFunction(() => {
@@ -212,9 +238,30 @@ await sleep(1500);
 await clickRegion("right");
 await sleep(300);
 await shot("mobile-parameters");
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const swatch = block && block.querySelector(".pui-color-swatch-button");
+    if (swatch) swatch.click();
+});
+await sleep(350);
+await page.screenshot({ path: path.join(out, "mobile-color-picker.png") });
+await page.evaluate(() => {
+    const close = document.querySelector(".pui-graph-color-popover-close");
+    if (close) close.click();
+});
+await sleep(150);
 await clickRegion("left");
 await sleep(400);
 await shot("mobile-source");
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
+    const trigger = block && block.querySelector(".isf-editor-more .pui-menu-trigger");
+    if (trigger && trigger.getAttribute("aria-expanded") !== "true") trigger.click();
+});
+await sleep(350);
+await page.screenshot({ path: path.join(out, "mobile-editor-more.png") });
+await page.keyboard.press("Escape");
+await sleep(150);
 
 // Stage HUD at phone width: close Source and Playback, then tap the preview.
 // The HUD owns play/time/stats/capture/fullscreen without the bottom strip.
