@@ -4591,6 +4591,9 @@
     if (this.fieldColorRecord && this.fieldColorRecord !== rec && this.fieldColorRecord.colorPicker) this.graphCloseColorPicker(this.fieldColorRecord, false);
     if (rec.colorPicker) this.graphCloseColorPicker(rec, false);
     var self = this;
+    var dialog = anchor.closest ? anchor.closest("dialog[open]") : null;
+    var topLayer = global.document && (global.document.fullscreenElement || global.document.body);
+    var viewport = dialog || topLayer || rec.viewport;
     var paramId = String(param.id);
     var customMode = isObject(custom);
     var startValue = customMode ? (custom.value === undefined ? "#ffffff" : custom.value) : (isObject(node.params) && node.params[paramId] !== undefined ? node.params[paramId] : (param.default === undefined ? "#ffffff" : param.default));
@@ -4605,6 +4608,7 @@
     }
     panel.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
     panel.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); });
+    this.styleDialog(panel);
 
     var head = el("div", {class: "pui-graph-color-popover-head"});
     head.appendChild(el("strong", {text: String(param.label || param.id)}));
@@ -4717,11 +4721,11 @@
       applyHex();
     });
 
-    rec.viewport.appendChild(panel);
-    var fixed = customMode && custom.fixed;
-    if (fixed) panel.style.position = "fixed";
+    viewport.appendChild(panel);
+    var fixed = true;
+    panel.style.position = "fixed";
     panel.style.left = "8px"; panel.style.top = "8px";
-    var viewportRect = rec.viewport.getBoundingClientRect ? rec.viewport.getBoundingClientRect() : {left: 0, top: 0, width: 0, height: 0};
+    var viewportRect = viewport.getBoundingClientRect ? viewport.getBoundingClientRect() : {left: 0, top: 0, width: 0, height: 0};
     var anchorRect = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : {left: 0, top: 0, bottom: 0};
     var panelRect = panel.getBoundingClientRect ? panel.getBoundingClientRect() : {width: 236, height: 250};
     var maxWidth = fixed ? (global.innerWidth || 800) : viewportRect.width;
@@ -9979,7 +9983,8 @@
     if (!anchor) return false;
     var self = this;
     var dialog = anchor.closest ? anchor.closest("dialog[open]") : null;
-    var host = dialog || (this.mount && this.mount.querySelector ? (this.mount.querySelector(".pui") || this.mount) : this.mount);
+    var topLayer = global.document && (global.document.fullscreenElement || global.document.body);
+    var host = dialog || topLayer || (this.mount && this.mount.querySelector ? (this.mount.querySelector(".pui") || this.mount) : this.mount);
     var recColor = this.fieldColorRecord;
     if (recColor && recColor.colorPicker) this.graphCloseColorPicker(recColor, true);
     if (!recColor || recColor.viewport !== host) recColor = this.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
@@ -14955,7 +14960,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.9",
+    version: "1.18.10",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

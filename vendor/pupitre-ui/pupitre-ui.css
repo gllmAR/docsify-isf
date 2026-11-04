@@ -340,7 +340,7 @@
 .pui-toast-close { border: 0; background: transparent; color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 1); line-height: 1; cursor: pointer; padding: 0 2px; }
 .pui-toast-close:hover, .pui-toast-close:focus-visible { color: var(--pui-text); outline: none; }
 .pui-menu { position: relative; display: inline-flex; }
-.pui-menu-popup { position: absolute; z-index: 20; top: calc(100% + 4px); inset-inline-start: 0; min-width: 180px; max-width: min(320px, 90vw); padding: 4px; border: 1px solid var(--pui-border); border-radius: 6px; background: var(--pui-surface); box-shadow: 0 8px 22px rgba(0,0,0,0.22); }
+.pui-menu-popup { position: absolute; z-index: 20; top: calc(100% + 4px); inset-inline-start: 0; min-width: 180px; max-width: min(320px, 90vw); max-height: min(70vh, 420px); overflow: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--pui-border); border-radius: 6px; background: var(--pui-surface); box-shadow: 0 8px 22px rgba(0,0,0,0.22); }
 .pui-menu-popup[hidden] { display: none; }
 .pui-menu-popup.is-align-end { inset-inline-start: auto; inset-inline-end: 0; }
 .pui-menu-popup .pui-button { display: block; width: 100%; text-align: start; border-color: transparent; background: transparent; }
