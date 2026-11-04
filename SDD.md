@@ -51,8 +51,8 @@ built-in uniforms (`RENDERSIZE`, `TIME`, `TIMEDELTA`, `DATE`, `FRAMEINDEX`,
 `PASSINDEX`, `isf_FragNormCoord`).
 
 **Out of scope (v1):** MadMapper-only extensions that are not ISF
-(`materialColorForPixel`, `GENERATORS`, laser materials), live camera/mic
-capture, geometry/3D textures, GPU-accelerated 16/32-bit image inputs, and any
+(`materialColorForPixel`, `GENERATORS`, laser materials), geometry/3D
+textures, GPU-accelerated 16/32-bit image inputs, and any
 desktop GLSL feature WebGL rejects.
 
 ## 3. Link conversion
@@ -285,6 +285,10 @@ filters, transitions and sources all at 100 %.
 - **Microphone** capture for `audio`/`audioFFT` inputs (`getUserMedia` +
   `AnalyserNode`, time-domain and FFT data resampled to the declared `MAX`),
   with the synthetic source as fallback.
+- **Camera** capture for any `image` input, including transition `startImage`
+  and `endImage`. The PUI media action binds one live `MediaStream` to that
+  input; the runtime uploads the video frame every draw. Choosing a file stops
+  the camera binding and restores the image path.
 - **Drag & drop** an image onto the preview fills `inputImage` (or the first
   image input).
 - The error overlay lists every compiler message with click-to-line; a
@@ -328,8 +332,10 @@ frame (`runtime.events` is cleared after the pass loop).
   the reference ISF-JS-Renderer. `_<image>_flip` stays 0.
 - `IMPORTED` paths are resolved against the **answering** `.fs` URL and loaded
   with `crossOrigin="anonymous"`.
-- `audio`/`audioFFT` receive a synthetic 1×N byte texture updated every frame
-  (waveform / spectrum), so shaders keep animating without a microphone.
+- `audio`/`audioFFT` use a real microphone `AnalyserNode` when available; the
+  synthetic 1×N byte texture remains the fallback.
+- Camera streams become a video-backed image texture and are re-uploaded each
+  frame while active; they stop on toggle, file replacement and disposal.
 
 ### 6.4 Frame loop
 
@@ -409,7 +415,7 @@ the eyebrow and one-line description. Pane toggles carry decorative host glyphs 
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.18.13's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.18.14's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -448,7 +454,7 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
-- PUI compact density puts labels beside controls; PUI 1.18.13 stretches custom
+- PUI compact density puts labels beside controls; PUI 1.18.14 stretches custom
   slots to their container and flips menu popups at the viewport edge.
 - The Parameters tab is led by the host-owned **Presets** block implemented
   with PUI's `presets`/`storage` contract. Presets are named snapshots of
@@ -457,7 +463,7 @@ Density decisions:
   and applies the stored values; delete is confirmed. The host owns values and storage;
   PUI owns the list, forms and confirmation. The preset list stays local to the
   viewer but is copied to other mounted viewers of the same shader.
-- PUI dialogs are body-hosted; PUI 1.18.13 copies the active surface/text/font
+- PUI dialogs are body-hosted; PUI 1.18.14 copies the active surface/text/font
   tokens into them, and falls back to the nearest opaque ancestor surface when
   the host intentionally makes the embedded PUI root transparent. Action
   forms, confirmations and the command palette therefore stay opaque outside
@@ -501,7 +507,7 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
-- PUI 1.18.13 owns a delegated tooltip manager for flagged icon-only chrome:
+- PUI 1.18.14 owns a delegated tooltip manager for flagged icon-only chrome:
   titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
   host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
   450 ms touch long-press shows the label without activating the button. The
@@ -541,8 +547,8 @@ The PUI document maps every normalised ISF input:
 | `color` | `color` + alpha percent (RGBA, edited as `#RRGGBBAA`) |
 | `point2D` | two per-axis ranges (`…/x`, `…/y`) |
 | `floatRange` | two per-axis ranges (`…/min`, `…/max`) |
-| `image` | “Choose image…” action + drag & drop on the stage |
-| `audio`/`audioFFT` | source readout + one microphone action for all audio inputs |
+| `image` | “Choose image…” + “Use camera” actions + drag & drop on the stage |
+| `audio`/`audioFFT` | source readout + one microphone action for all audio inputs; real capture with synthetic fallback |
 | `generate_as_define` | read-only readout (the shader already baked the value) |
 
 Reset is PUI's per-field reset button (shown when the value differs from the
@@ -701,8 +707,9 @@ layer (skips with a message when Chrome or puppeteer-core is unavailable).
   textures) fail with a compile error. The corpus coverage is measured in
   `docs/isf-status.md` for the OBS engine; the browser viewer is intentionally
   narrower.
-- **No live media.** Camera/microphone inputs, video textures and real FFT
-  capture are not wired; audio is synthesised.
+- **Live media permissions.** Camera and microphone capture need a secure
+  context (HTTPS or localhost) and permission. One camera stream binds to one
+  image input at a time; audio falls back to synthetic data when unavailable.
 - **Vertex attributes.** Only `isf_position` exists; shaders needing more
   attributes cannot run.
 - **Cross-origin assets** need CORS.

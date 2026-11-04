@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.17
+ * docsify-isf v1.45.18
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.17";
+    var VERSION = "1.45.18";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -4508,7 +4508,9 @@
                     if (viewer.audioState) viewer.disableMicrophone();
                     else viewer.enableMicrophone();
                 },
-                audioActive: function () { return !!viewer.audioState; }
+                audioActive: function () { return !!viewer.audioState; },
+                useCamera: function (name) { viewer.toggleCamera(name); },
+                cameraName: function () { return viewer.cameraState ? viewer.cameraState.name : ""; }
             };
         }
         var adapter = PupitreISF.createAdapter({
@@ -5554,7 +5556,9 @@
             if (image.kind === "pass" || image.kind === "audio") continue;
             var source = this.inputSources[image.name];
             if (!source && image.kind === "input") source = this.defaultImageSource(image.input);
-            if (!source || this.uploaded[image.name] === source) continue;
+            var videoSource = !!(source && (source.tagName === "VIDEO" || source.videoWidth !== undefined));
+            if (videoSource && (source.readyState < 2 || !source.videoWidth)) continue;
+            if (!source || (!videoSource && this.uploaded[image.name] === source)) continue;
             var hints = image.import
                 ? { wrap: image.import.wrap, minFilter: image.import.minFilter, magFilter: image.import.magFilter }
                 : undefined;
@@ -5784,8 +5788,9 @@
             this.lastNow = now;
             return;
         }
-        if (!this.playing && !this.needsRender) return;
-        if (this.playing && this.maxFps > 0 && this._lastDrawAt && now - this._lastDrawAt < 1000 / this.maxFps) {
+        var liveCamera = !!(this.viewer && this.viewer.cameraState && this.viewer.cameraState.video);
+        if (!this.playing && !this.needsRender && !liveCamera) return;
+        if ((this.playing || liveCamera) && this.maxFps > 0 && this._lastDrawAt && now - this._lastDrawAt < 1000 / this.maxFps) {
             return; // capped frame rate; lastNow keeps the elapsed time for the next draw
         }
         this._lastDrawAt = now;
@@ -5998,6 +6003,7 @@
         viewer.source = "";
         viewer.lastErrorText = "";
         viewer.audioState = null;
+        viewer.cameraState = null;
         viewer.layout = loadLayout();
         viewer.urlFlags = readUrlFlags();
         viewer.resolutionChoice = (viewer.urlFlags && viewer.urlFlags.resolution) ||
@@ -7016,6 +7022,7 @@
         };
         viewer.setInputImage = function (name, file) {
             if (!file || !viewer.runtime) return;
+            if (viewer.cameraState && viewer.cameraState.name === name) viewer.disableCamera();
             var url = URL.createObjectURL(file);
             var image = new Image();
             image.onload = function () {
@@ -7028,6 +7035,75 @@
                 viewer.warn("Could not load " + (file.name || "image"));
             };
             image.src = url;
+        };
+        viewer.cameraActive = function (name) {
+            return !!viewer.cameraState && (!name || viewer.cameraState.name === name);
+        };
+        viewer.disableCamera = function (quiet) {
+            if (!viewer.cameraState) return;
+            var state = viewer.cameraState;
+            viewer.cameraState = null;
+            try {
+                state.stream.getTracks().forEach(function (track) { track.stop(); });
+                if (state.video) {
+                    state.video.pause();
+                    state.video.srcObject = null;
+                }
+            } catch (error) { /* stream may already be gone */ }
+            if (viewer.runtime) {
+                delete viewer.runtime.inputSources[state.name];
+                delete viewer.runtime.uploaded[state.name];
+                viewer.runtime.needsRender = true;
+            }
+            viewer.rebuildParams();
+            if (!quiet) viewer.notify("info", "Camera feed off");
+        };
+        viewer.enableCamera = function (name) {
+            if (!name || viewer.disposed) return;
+            if (viewer.cameraState) {
+                if (viewer.cameraState.name === name) { viewer.disableCamera(); return; }
+                viewer.disableCamera(true);
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                viewer.warn("Camera capture is not available in this browser");
+                return;
+            }
+            var constraints = { video: { facingMode: { ideal: "environment" } } };
+            navigator.mediaDevices.getUserMedia(constraints).catch(function (error) {
+                // Some desktop/browser setups reject facingMode but still have a camera.
+                if (error && /facing|constraint/i.test(String(error.name || "") + " " + String(error.message || ""))) {
+                    return navigator.mediaDevices.getUserMedia({ video: true });
+                }
+                throw error;
+            }).then(function (stream) {
+                if (viewer.disposed) {
+                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    return;
+                }
+                var video = document.createElement("video");
+                video.autoplay = true;
+                video.muted = true;
+                video.playsInline = true;
+                video.setAttribute("playsinline", "");
+                video.srcObject = stream;
+                var state = { stream: stream, video: video, name: name };
+                viewer.cameraState = state;
+                if (viewer.runtime) {
+                    viewer.runtime.inputSources[name] = video;
+                    viewer.runtime.uploaded[name] = null;
+                    viewer.runtime.needsRender = true;
+                }
+                var play = video.play();
+                if (play && play.catch) play.catch(function () { /* metadata still drives the texture */ });
+                viewer.rebuildParams();
+                viewer.notify("success", "Camera input enabled for " + name);
+            }).catch(function (error) {
+                viewer.warn("Camera unavailable: " + (error && error.message ? error.message : error));
+            });
+        };
+        viewer.toggleCamera = function (name) {
+            if (viewer.cameraState && viewer.cameraState.name === name) viewer.disableCamera();
+            else viewer.enableCamera(name);
         };
         viewer.enableMicrophone = function () {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -7046,6 +7122,7 @@
                     return;
                 }
                 var context = new Context();
+                if (context.state === "suspended" && context.resume) context.resume().catch(function () { /* gesture may be required */ });
                 var analyser = context.createAnalyser();
                 analyser.fftSize = 2048;
                 analyser.smoothingTimeConstant = 0.75;
@@ -7726,6 +7803,10 @@
             }
             viewer.runtime.qualityScale = viewer.qualityChoice;
             viewer.runtime.visible = viewer.visible;
+            if (viewer.cameraState && viewer.cameraState.video) {
+                viewer.runtime.inputSources[viewer.cameraState.name] = viewer.cameraState.video;
+                viewer.runtime.uploaded[viewer.cameraState.name] = null;
+            }
             viewer.runtime.start();
             viewer.state = "live";
             viewer.showOverlay("", false);
@@ -7946,6 +8027,13 @@
                     viewer.audioState.context.close();
                 } catch (err) { /* ignore */ }
                 viewer.audioState = null;
+            }
+            if (viewer.cameraState) {
+                try {
+                    viewer.cameraState.stream.getTracks().forEach(function (track) { track.stop(); });
+                    if (viewer.cameraState.video) viewer.cameraState.video.srcObject = null;
+                } catch (err) { /* ignore */ }
+                viewer.cameraState = null;
             }
             var viewerIndex = VIEWERS.indexOf(viewer);
             if (viewerIndex !== -1) VIEWERS.splice(viewerIndex, 1);

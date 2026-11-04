@@ -40,10 +40,10 @@ if (!fs.existsSync(executablePath)) {
 }
 const browser = await puppeteer.launch({
     executablePath, headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
 });
 const page = await browser.newPage();
-try { await browser.defaultBrowserContext().overridePermissions(url, []); } catch (error) { /* headless defaults */ }
+try { await browser.defaultBrowserContext().overridePermissions(url, ["camera", "microphone"]); } catch (error) { /* fake UI flags still allow */ }
 const errors = [];
 const actions = [];
 const checks = [];
@@ -399,14 +399,45 @@ if (imageButton) {
         await capture("13-image-input");
     } catch (error) { /* optional control */ }
 }
-const hasMicButton = await blockEval((block) => Array.from(block.querySelectorAll("button")).some((node) => /Use mic/i.test(node.textContent)));
-if (hasMicButton) {
+const micCamera = await blockEval((block) => {
+    const buttons = Array.from(block.querySelectorAll("button"));
+    return {
+        mic: buttons.some((node) => /Use mic/i.test(node.textContent)),
+        camera: buttons.some((node) => /Use camera/i.test(node.textContent))
+    };
+});
+if (micCamera.mic) {
     await blockEval((block) => {
         const button = Array.from(block.querySelectorAll("button")).find((node) => /Use mic/i.test(node.textContent));
         if (button) button.click();
     });
-    await sleep(500);
-    await capture("13b-microphone-attempt");
+    await sleep(1600);
+    await capture("13b-microphone");
+    const micState = await blockEval((block) => {
+        const buttons = Array.from(block.querySelectorAll("button"));
+        return {
+            on: buttons.some((node) => /Microphone on/i.test(node.textContent)),
+            source: block.textContent
+        };
+    });
+    check("real microphone capture reaches the host", micState.on && /microphone/i.test(micState.source), micState);
+}
+if (micCamera.camera) {
+    await blockEval((block) => {
+        const button = Array.from(block.querySelectorAll("button")).find((node) => /Use camera/i.test(node.textContent));
+        if (button) button.click();
+    });
+    await sleep(1400);
+    await capture("13c-camera");
+    const cameraOn = await blockEval((block) => Array.from(block.querySelectorAll("button")).some((node) => /Camera on/i.test(node.textContent)));
+    check("live camera capture reaches an image input", cameraOn, cameraOn);
+    await blockEval((block) => {
+        const button = Array.from(block.querySelectorAll("button")).find((node) => /Camera on/i.test(node.textContent));
+        if (button) button.click();
+    });
+    await sleep(400);
+    const cameraOff = await blockEval((block) => Array.from(block.querySelectorAll("button")).some((node) => /Use camera/i.test(node.textContent)));
+    check("camera input can be stopped", cameraOff, cameraOff);
 }
 
 // ── View and Log tabs own real host actions

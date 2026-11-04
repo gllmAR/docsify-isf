@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.13 · **docsify-isf:** 1.45.17
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.14 · **docsify-isf:** 1.45.18
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -353,6 +353,16 @@ The second full capture review found and fixed:
 - The popover still lives on the document/fullscreen top layer after 1.18.10;
   only the styling scope moved with it.
 - Refreshed desktop/phone colour-picker captures.
+
+## 4.15 Camera and microphone media inputs (1.45.18)
+
+- Image inputs now expose **Choose image…** and **Use camera** actions. The
+  camera binds a live stream to the selected image input, including transition
+  `startImage`/`endImage`, and is re-uploaded as a video texture each draw.
+- Microphone actions use real `getUserMedia` + `AnalyserNode` data for
+  `audio`/`audioFFT`; the synthetic waveform/spectrum remains the fallback.
+- Camera streams stop on toggle, file replacement and viewer disposal. Media
+  actions require a secure context (HTTPS or localhost) and browser permission.
 
 ## 4.3 Runtime cost controls
 

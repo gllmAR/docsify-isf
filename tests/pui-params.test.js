@@ -162,7 +162,8 @@ const expectations = {
     color: (input, built) => built.fields.some((field) => field.bind === "/isf/" + input.name && field.widget === "color"),
     point2D: (input, built) => ["x", "y"].every((axis) => built.fields.some((field) => field.bind === "/isf/" + input.name + "/" + axis)),
     floatRange: (input, built) => ["min", "max"].every((axis) => built.fields.some((field) => field.bind === "/isf/" + input.name + "/" + axis)),
-    image: (input, built) => built.actions.some((item) => item.call === "isf.choose_image" && item.args.name === input.name),
+    image: (input, built) => built.actions.some((item) => item.call === "isf.choose_image" && item.args.name === input.name) &&
+        built.actions.some((item) => item.call === "isf.use_camera" && item.args.name === input.name),
     // One microphone toggle covers every audio input; each input keeps its
     // own source readout.
     audio: (input, built) => built.actions.some((item) => item.call === "isf.toggle_microphone") &&
@@ -259,6 +260,7 @@ test("the plasma sample maps every control family it declares", () => {
     assert(fields.some((field) => field.widget === "button"), "event button");
     const media = blocksOf(PupitreISF.createDocument(sampleInputs("test-card.fs"), {}).document);
     assert(media.actions.some((item) => item.call === "isf.choose_image"), "image picker action");
+    assert(media.actions.some((item) => item.call === "isf.use_camera"), "camera action");
     assert(media.actions.filter((item) => item.call === "isf.toggle_microphone").length === 1, "one microphone action for both audio inputs");
     assert(media.readouts.length === 2, "audio/FFT source readouts");
 });
