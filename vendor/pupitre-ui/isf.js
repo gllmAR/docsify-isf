@@ -280,6 +280,15 @@
           call: "isf.choose_image",
           args: {name: input.name}
         });
+        if (media.camera !== false) {
+          actions.push({
+            id: "isf-camera-" + slug(input.name),
+            label: "Use camera",
+            help: "Use the live camera feed for " + label,
+            call: "isf.use_camera",
+            args: {name: input.name}
+          });
+        }
       } else if ((input.type === "audio" || input.type === "audioFFT") && media.audio !== false) {
         readouts.push({
           kind: "readout",
@@ -309,7 +318,7 @@
    * @param {Object} [options]
    * @param {(input: Object) => any} [options.valueOf] current host value
    * @param {boolean} [options.audioActive] microphone enabled
-   * @param {boolean|Object} [options.media] false or {image:false, audio:false}
+   * @param {boolean|Object} [options.media] false or {image:false, audio:false, camera:false}
    * @param {string} [options.title] panel title
    * @param {string} [options.sectionTitle]
    * @param {number} [options.rev]
@@ -422,6 +431,9 @@
           if (name) return Object.assign({}, item, {label: "Choose image…", help: "Current: " + name});
         }
       }
+      if (item.call === "isf.use_camera" && options.cameraName === item.args.name) {
+        return Object.assign({}, item, {label: "Camera on", help: "Stop the camera feed for this input"});
+      }
       return item;
     });
     if (actionItems.length) appendBlock(typeGroup({type: "audio"}), {kind: "actions", id: "isf-media-actions", items: actionItems});
@@ -495,7 +507,8 @@
           return value === undefined ? undefined : value;
         },
         audioActive: typeof host.audioActive === "function" ? !!host.audioActive() : false,
-        imageName: typeof host.imageName === "function" ? host.imageName : undefined
+        imageName: typeof host.imageName === "function" ? host.imageName : undefined,
+        cameraName: typeof host.cameraName === "function" ? host.cameraName() : undefined
       }));
       return current;
     }
@@ -588,6 +601,10 @@
         if (name === "isf.toggle_microphone") {
           if (typeof host.toggleMicrophone === "function") host.toggleMicrophone();
           return !!host.toggleMicrophone;
+        }
+        if (name === "isf.use_camera") {
+          if (typeof host.useCamera === "function") host.useCamera(args.name);
+          return !!host.useCamera;
         }
         return false;
       },
