@@ -636,7 +636,15 @@ const parametersBefore = await blockEval((block) => {
 });
 await page.keyboard.press("Escape");
 await sleep(120);
-await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+await page.evaluate(() => {
+    // The previous HUD-capture focus may leave its label visible; clear it so
+    // this test starts from a known tooltip state.
+    document.querySelectorAll(".pui-tooltip").forEach((tip) => {
+        tip.hidden = true;
+        tip.classList.remove("is-visible");
+    });
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+});
 await sleep(150);
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 await sleep(120);

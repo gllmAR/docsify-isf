@@ -49,7 +49,11 @@ const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
 });
 const page = await browser.newPage();
+const cdp = await page.createCDPSession();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const setForcedColors = (value) => cdp.send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }, { name: "forced-colors", value }]
+});
 const blockInfo = async () => page.evaluate(() => {
     const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Plasma/i.test(b.dataset.isfTitle || ""));
     block.scrollIntoView({ block: "center" });
@@ -318,6 +322,15 @@ await clickRegion("right");
 await sleep(300);
 await shot("desktop-light");
 await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+await sleep(300);
+
+// High-contrast mode: system colours must replace decorative host/PUI tokens.
+await setForcedColors("active");
+await sleep(500);
+await clickRegion("right");
+await sleep(300);
+await shot("desktop-forced-colors");
+await setForcedColors("none");
 await sleep(300);
 
 // Tablet width sits between desktop and phone: the workbench must still

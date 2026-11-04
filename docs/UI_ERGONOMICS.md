@@ -20,6 +20,7 @@ checked against established editor/workbench implementations.
 | Desktop, command palette | ![desktop palette](ui-audit/desktop-palette.png) |
 | Desktop, title bar compact (default) | ![desktop default](ui-audit/desktop-default.png) |
 | Desktop, light theme | ![desktop light](ui-audit/desktop-light.png) |
+| Desktop, forced colors | ![desktop forced colors](ui-audit/desktop-forced-colors.png) |
 | Desktop, title bar expanded | ![desktop expanded](ui-audit/desktop-expanded.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
@@ -311,6 +312,9 @@ The second full capture review found and fixed:
   tablet and phone captures were refreshed against those styles.
 - The native colour input is intentionally hidden and excluded from the target
   audit; the swatch button is the measured target.
+- The audit now emulates `forced-colors: active` through CDP (Puppeteer does not
+  expose it) and captures the desktop workbench with system colours. Host chrome,
+  Source/Parameters tabs, presets, transport and PUI fields remain legible.
 
 ## 4.3 Runtime cost controls
 
