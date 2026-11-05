@@ -5827,7 +5827,10 @@
   /** Normalise generated-code diagnostics. The host owns compilation; PUI
    * only maps each diagnostic to a line and a host target. */
   Renderer.prototype.codeDiagnostics = function (raw) {
-    var entries = Array.isArray(raw) ? raw : (isObject(raw) && Array.isArray(raw.entries) ? raw.entries : []);
+    var entries = Array.isArray(raw)
+      ? raw
+      : (isObject(raw) && Array.isArray(raw.diagnostics) ? raw.diagnostics
+        : (isObject(raw) && Array.isArray(raw.entries) ? raw.entries : []));
     return entries.filter(isObject).map(function (entry) {
       var start = Number(entry.line !== undefined ? entry.line : entry.start_line);
       if (!isFinite(start)) return null;
@@ -5899,6 +5902,13 @@
       meta.appendChild(diagnosticsLabel);
     }
     if (sourceMap.length || diagnostics.length) head.appendChild(meta);
+    var copy = el("button", {type: "button", class: "pui-button pui-code-copy", text: self.t("action.copy", "Copy")});
+    if (block.copy !== false) head.appendChild(copy);
+    var exportButton = null;
+    if (block.export) {
+      exportButton = el("button", {type: "button", class: "pui-button pui-code-export", text: String(block.export_label || self.t("action.export", "Export"))});
+      head.appendChild(exportButton);
+    }
     var apply = el("button", {type: "button", class: "pui-button pui-primary", text: self.t("action.save", "Apply")});
     apply.disabled = !!block.readonly;
     head.appendChild(apply);
@@ -5971,6 +5981,30 @@
       }
     });
     area.addEventListener("scroll", function () { highlight.scrollTop = area.scrollTop; highlight.scrollLeft = area.scrollLeft; gutter.scrollTop = area.scrollTop; });
+    copy.addEventListener("click", function () {
+      var done = function (message, error) { setStatus(message, !!error); };
+      var clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null;
+      if (clipboard && typeof clipboard.writeText === "function") {
+        clipboard.writeText(area.value).then(function () { done("Copied.", false); }, function (error) { done("Copy failed: " + String(error && error.message || error), true); });
+        return;
+      }
+      try {
+        area.focus();
+        area.select();
+        if (document.execCommand && document.execCommand("copy")) done("Copied.", false);
+        else done("Copy unavailable.", true);
+      } catch (error) {
+        done("Copy failed: " + String(error && error.message || error), true);
+      }
+    });
+    if (exportButton) exportButton.addEventListener("click", function () {
+      if (typeof self.adapter.codeAction !== "function") { setStatus("Export unavailable.", true); return; }
+      try {
+        self.adapter.codeAction({op: "code.export", path: path, language: language}, area.value, block);
+      } catch (error) {
+        self.adapter.announce("error", "Code action failed: " + String(error && error.message || error));
+      }
+    });
     apply.addEventListener("click", function () {
       var value = area.value;
       if (language === "json" || block.validate === "json") {
@@ -15155,7 +15189,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.19",
+    version: "1.18.20",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
