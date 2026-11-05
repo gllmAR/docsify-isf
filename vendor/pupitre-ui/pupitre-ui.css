@@ -945,9 +945,13 @@
 .pui-code-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .pui-code-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.85); }
 .pui-code-language { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); border: 1px solid var(--pui-border); border-radius: 999px; padding: 1px 6px; }
+.pui-code-source { margin-left: auto; color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.62); }
+.pui-code-source:empty { display: none; }
 .pui-code-editor { position: relative; overflow: hidden; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-bg); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .pui-code-gutter { position: absolute; inset-block: 0; left: 0; width: 42px; padding: 8px 6px; text-align: end; color: var(--pui-muted); background: var(--pui-surface); border-inline-end: 1px solid var(--pui-border); overflow: hidden; user-select: none; z-index: 2; }
 .pui-code-gutter span { display: block; }
+.pui-code-gutter span.is-mapped { color: var(--pui-accent); font-weight: 600; }
+.pui-code-gutter span.is-active { color: var(--pui-text); background: color-mix(in srgb, var(--pui-accent) 24%, transparent); border-radius: 3px; }
 .pui-code-highlight { position: absolute; inset: 0; margin: 0; padding: 8px 8px 8px 52px; white-space: pre; overflow: auto; color: var(--pui-text); pointer-events: none; z-index: 1; }
 .pui .pui-code-input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 8px 8px 8px 52px; border: 0; outline: none; resize: none; white-space: pre; overflow: auto; background: transparent; color: transparent; caret-color: var(--pui-text); -webkit-text-fill-color: transparent; font: inherit; z-index: 3; tab-size: 2; }
 .pui .pui-code-input::selection { background: color-mix(in srgb, var(--pui-accent) 35%, transparent); }

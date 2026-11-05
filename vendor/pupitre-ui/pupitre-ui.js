@@ -307,6 +307,7 @@
     this.uid = "pui" + (++NEXT_ID);
     this.writeSeq = 0;
     this.colorPickerSeq = 0;
+    this.codeSeq = 0;
     this.writeStats = {total: 0, pending: 0, acked: 0, failed: 0, lastId: null, lastPath: null, lastState: null, lastError: null};
     this.records = [];
     this.blockRecords = [];
@@ -5798,6 +5799,37 @@
     return out;
   };
 
+  /** Normalise a Program-panel source map. Entries are line ranges that point
+   * back to host graph addresses; PUI only routes selection, never compiles. */
+  Renderer.prototype.codeSourceMap = function (raw) {
+    var entries = Array.isArray(raw) ? raw : (isObject(raw) && Array.isArray(raw.entries) ? raw.entries : []);
+    var self = this;
+    return entries.filter(isObject).map(function (entry) {
+      var start = Number(entry.line !== undefined ? entry.line : entry.start_line);
+      if (!isFinite(start)) return null;
+      var line = Math.max(1, Math.floor(start));
+      var end = Number(entry.end_line !== undefined ? entry.end_line : entry.endLine);
+      var endLine = isFinite(end) ? Math.max(line, Math.floor(end)) : line;
+      var target = isObject(entry.target) ? entry.target : entry;
+      var label = entry.label || target.node || target.cable || target.param || ("Line " + line);
+      return {line: line, endLine: endLine, label: String(label), target: target, entry: entry};
+    }).filter(Boolean).sort(function (a, b) { return a.line - b.line || a.endLine - b.endLine; });
+  };
+
+  Renderer.prototype.codeSourceForLine = function (entries, line) {
+    var found = null;
+    (entries || []).forEach(function (entry) {
+      if (line >= entry.line && line <= entry.endLine && (!found || entry.line === line)) found = entry;
+    });
+    return found;
+  };
+
+  Renderer.prototype.codeLineAt = function (text, offset) {
+    var source = String(text || "");
+    var at = Math.max(0, Math.min(source.length, Number(offset) || 0));
+    return source.slice(0, at).split("\n").length;
+  };
+
   Renderer.prototype.buildCode = function (block) {
     var self = this;
     var path = String(block.bind || "");
@@ -5806,10 +5838,15 @@
     var text = initial === undefined || initial === null ? "" : (typeof initial === "string" ? initial : JSON.stringify(initial, null, 2));
     var label = String(block.label || block.id || "Editor");
     var language = String(block.language || "json").toLowerCase();
-    var root = el("section", {class: "pui-code", "data-pui-code": path});
+    var sourcePath = block.source_map_bind ? String(block.source_map_bind) : "";
+    var sourceMap = self.codeSourceMap(sourcePath ? this.adapter.getValue(sourcePath) : block.source_map);
+    var sourceId = "pui-code-source-" + (++this.codeSeq);
+    var root = el("section", {class: "pui-code", "data-pui-code": path, "data-source-map": sourceMap.length ? "true" : "false"});
     var head = el("div", {class: "pui-code-head"});
     head.appendChild(el("h4", {text: label}));
     head.appendChild(el("span", {class: "pui-code-language", text: language.toUpperCase()}));
+    var sourceLabel = el("span", {class: "pui-code-source", id: sourceId, role: "status", "aria-live": "polite"});
+    if (sourceMap.length) head.appendChild(sourceLabel);
     var apply = el("button", {type: "button", class: "pui-button pui-primary", text: self.t("action.save", "Apply")});
     apply.disabled = !!block.readonly;
     head.appendChild(apply);
@@ -5818,12 +5855,13 @@
     var gutter = el("div", {class: "pui-code-gutter", "aria-hidden": "true"});
     var highlight = el("pre", {class: "pui-code-highlight", "aria-hidden": "true"});
     var area = el("textarea", {class: "pui-code-input", spellcheck: "false", "aria-label": label, readonly: !!block.readonly});
+    if (sourceMap.length) area.setAttribute("aria-describedby", sourceId);
     area.value = text;
     editor.appendChild(gutter); editor.appendChild(highlight); editor.appendChild(area);
     root.appendChild(editor);
     var status = el("p", {class: "pui-code-status", role: "status", "aria-live": "polite"});
     root.appendChild(status);
-    var rec = {block: block, path: path, area: area, highlight: highlight, status: status, dirty: false, text: text, setHighlight: null, setStatus: null, liveTimer: null};
+    var rec = {block: block, path: path, language: language, area: area, highlight: highlight, gutter: gutter, status: status, sourceMap: sourceMap, sourceLabel: sourceLabel, activeLine: 0, activeEntry: null, dirty: false, text: text, setHighlight: null, setStatus: null, liveTimer: null};
     var setHighlight = function (value) {
       highlight.textContent = "";
       self.codeTokens(value, language).forEach(function (token) {
@@ -5832,7 +5870,13 @@
       highlight.appendChild(document.createTextNode("\n"));
       gutter.textContent = "";
       var lines = String(value).split("\n").length;
-      for (var i = 1; i <= lines; i++) gutter.appendChild(el("span", {text: String(i)}));
+      for (var i = 1; i <= lines; i++) {
+        var mapped = self.codeSourceForLine(sourceMap, i);
+        var lineEl = el("span", {text: String(i), "data-line": String(i), class: mapped ? "is-mapped" : ""});
+        if (mapped) lineEl.setAttribute("title", mapped.label);
+        if (i === rec.activeLine) lineEl.className = (lineEl.className + " is-active").trim();
+        gutter.appendChild(lineEl);
+      }
       highlight.scrollTop = area.scrollTop;
       highlight.scrollLeft = area.scrollLeft;
       gutter.scrollTop = area.scrollTop;
@@ -5880,6 +5924,27 @@
       if (typeof self.adapter.codeAction === "function") {
         try { self.adapter.codeAction({op: "code.apply", path: path, language: language}, value, block); } catch (error) { self.adapter.announce("error", "Code action failed: " + String(error && error.message || error)); }
       }
+    });
+    var selectSource = function () {
+      if (!sourceMap.length) return;
+      var line = self.codeLineAt(area.value, area.selectionStart);
+      var entry = self.codeSourceForLine(sourceMap, line);
+      if (!entry || (rec.activeLine === line && rec.activeEntry === entry)) return;
+      rec.activeLine = line;
+      rec.activeEntry = entry;
+      sourceLabel.textContent = "Line " + line + " · " + entry.label;
+      setHighlight(area.value);
+      if (typeof self.adapter.codeAction === "function") {
+        try {
+          self.adapter.codeAction({op: "code.select", path: path, language: language, line: line, target: entry.target}, area.value, block);
+        } catch (error) {
+          self.adapter.announce("error", "Code action failed: " + String(error && error.message || error));
+        }
+      }
+    };
+    area.addEventListener("click", selectSource);
+    area.addEventListener("keyup", function (event) {
+      if (String(event.key || "").indexOf("Arrow") === 0 || event.key === "Home" || event.key === "End" || event.key === "PageUp" || event.key === "PageDown") selectSource();
     });
     setHighlight(text);
     return root;
@@ -15025,7 +15090,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.17",
+    version: "1.18.18",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
