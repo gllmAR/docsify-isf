@@ -5824,6 +5824,39 @@
     return found;
   };
 
+  /** Normalise generated-code diagnostics. The host owns compilation; PUI
+   * only maps each diagnostic to a line and a host target. */
+  Renderer.prototype.codeDiagnostics = function (raw) {
+    var entries = Array.isArray(raw) ? raw : (isObject(raw) && Array.isArray(raw.entries) ? raw.entries : []);
+    return entries.filter(isObject).map(function (entry) {
+      var start = Number(entry.line !== undefined ? entry.line : entry.start_line);
+      if (!isFinite(start)) return null;
+      var line = Math.max(1, Math.floor(start));
+      var end = Number(entry.end_line !== undefined ? entry.end_line : entry.endLine);
+      var endLine = isFinite(end) ? Math.max(line, Math.floor(end)) : line;
+      var severity = String(entry.severity || entry.level || "info").toLowerCase();
+      if (severity === "warn") severity = "warning";
+      if (["error", "warning", "info"].indexOf(severity) < 0) severity = "info";
+      var target = isObject(entry.target) ? entry.target : entry;
+      return {
+        line: line, endLine: endLine, severity: severity,
+        message: String(entry.message || entry.msg || "Diagnostic"),
+        code: entry.code === undefined ? "" : String(entry.code),
+        target: target, entry: entry
+      };
+    }).filter(Boolean).sort(function (a, b) { return a.line - b.line || a.endLine - b.endLine; });
+  };
+
+  Renderer.prototype.codeDiagnosticForLine = function (entries, line) {
+    var rank = {error: 3, warning: 2, info: 1};
+    var found = null;
+    (entries || []).forEach(function (entry) {
+      if (line < entry.line || line > entry.endLine) return;
+      if (!found || rank[entry.severity] > rank[found.severity]) found = entry;
+    });
+    return found;
+  };
+
   Renderer.prototype.codeLineAt = function (text, offset) {
     var source = String(text || "");
     var at = Math.max(0, Math.min(source.length, Number(offset) || 0));
@@ -5840,13 +5873,32 @@
     var language = String(block.language || "json").toLowerCase();
     var sourcePath = block.source_map_bind ? String(block.source_map_bind) : "";
     var sourceMap = self.codeSourceMap(sourcePath ? this.adapter.getValue(sourcePath) : block.source_map);
+    var diagnosticsPath = block.diagnostics_bind ? String(block.diagnostics_bind) : "";
+    var diagnostics = self.codeDiagnostics(diagnosticsPath ? this.adapter.getValue(diagnosticsPath) : block.diagnostics);
     var sourceId = "pui-code-source-" + (++this.codeSeq);
-    var root = el("section", {class: "pui-code", "data-pui-code": path, "data-source-map": sourceMap.length ? "true" : "false"});
+    var diagnosticsId = "pui-code-diagnostics-" + this.codeSeq;
+    var root = el("section", {class: "pui-code", "data-pui-code": path, "data-source-map": sourceMap.length ? "true" : "false",
+      "data-diagnostics": diagnostics.length ? String(diagnostics.length) : "0"});
     var head = el("div", {class: "pui-code-head"});
     head.appendChild(el("h4", {text: label}));
     head.appendChild(el("span", {class: "pui-code-language", text: language.toUpperCase()}));
+    var meta = el("span", {class: "pui-code-meta"});
     var sourceLabel = el("span", {class: "pui-code-source", id: sourceId, role: "status", "aria-live": "polite"});
-    if (sourceMap.length) head.appendChild(sourceLabel);
+    var diagnosticsLabel = el("span", {class: "pui-code-diagnostics", id: diagnosticsId});
+    if (sourceMap.length || diagnostics.length) meta.appendChild(sourceLabel);
+    if (diagnostics.length) {
+      var counts = {error: 0, warning: 0, info: 0};
+      diagnostics.forEach(function (entry) { counts[entry.severity] += 1; });
+      var parts = [];
+      if (counts.error) parts.push(counts.error + " error" + (counts.error === 1 ? "" : "s"));
+      if (counts.warning) parts.push(counts.warning + " warning" + (counts.warning === 1 ? "" : "s"));
+      if (counts.info) parts.push(counts.info + " info");
+      diagnosticsLabel.textContent = parts.join(" · ");
+      diagnosticsLabel.className += counts.error ? " is-error" : (counts.warning ? " is-warning" : "");
+      diagnosticsLabel.setAttribute("aria-label", "Generated-code diagnostics: " + diagnosticsLabel.textContent);
+      meta.appendChild(diagnosticsLabel);
+    }
+    if (sourceMap.length || diagnostics.length) head.appendChild(meta);
     var apply = el("button", {type: "button", class: "pui-button pui-primary", text: self.t("action.save", "Apply")});
     apply.disabled = !!block.readonly;
     head.appendChild(apply);
@@ -5855,13 +5907,16 @@
     var gutter = el("div", {class: "pui-code-gutter", "aria-hidden": "true"});
     var highlight = el("pre", {class: "pui-code-highlight", "aria-hidden": "true"});
     var area = el("textarea", {class: "pui-code-input", spellcheck: "false", "aria-label": label, readonly: !!block.readonly});
-    if (sourceMap.length) area.setAttribute("aria-describedby", sourceId);
+    var describedBy = [];
+    if (sourceMap.length) describedBy.push(sourceId);
+    if (diagnostics.length) describedBy.push(diagnosticsId);
+    if (describedBy.length) area.setAttribute("aria-describedby", describedBy.join(" "));
     area.value = text;
     editor.appendChild(gutter); editor.appendChild(highlight); editor.appendChild(area);
     root.appendChild(editor);
     var status = el("p", {class: "pui-code-status", role: "status", "aria-live": "polite"});
     root.appendChild(status);
-    var rec = {block: block, path: path, language: language, area: area, highlight: highlight, gutter: gutter, status: status, sourceMap: sourceMap, sourceLabel: sourceLabel, activeLine: 0, activeEntry: null, dirty: false, text: text, setHighlight: null, setStatus: null, liveTimer: null};
+    var rec = {block: block, path: path, language: language, area: area, highlight: highlight, gutter: gutter, status: status, sourceMap: sourceMap, sourceLabel: sourceLabel, diagnostics: diagnostics, activeLine: 0, activeEntry: null, activeDiagnostic: null, dirty: false, text: text, setHighlight: null, setStatus: null, liveTimer: null};
     var setHighlight = function (value) {
       highlight.textContent = "";
       self.codeTokens(value, language).forEach(function (token) {
@@ -5872,9 +5927,14 @@
       var lines = String(value).split("\n").length;
       for (var i = 1; i <= lines; i++) {
         var mapped = self.codeSourceForLine(sourceMap, i);
-        var lineEl = el("span", {text: String(i), "data-line": String(i), class: mapped ? "is-mapped" : ""});
-        if (mapped) lineEl.setAttribute("title", mapped.label);
-        if (i === rec.activeLine) lineEl.className = (lineEl.className + " is-active").trim();
+        var diagnostic = self.codeDiagnosticForLine(diagnostics, i);
+        var classes = [];
+        if (mapped) classes.push("is-mapped");
+        if (diagnostic) classes.push("has-" + diagnostic.severity);
+        if (i === rec.activeLine) classes.push("is-active");
+        var lineEl = el("span", {text: String(i), "data-line": String(i), class: classes.join(" ")});
+        if (diagnostic) lineEl.setAttribute("title", diagnostic.message);
+        else if (mapped) lineEl.setAttribute("title", mapped.label);
         gutter.appendChild(lineEl);
       }
       highlight.scrollTop = area.scrollTop;
@@ -5926,17 +5986,22 @@
       }
     });
     var selectSource = function () {
-      if (!sourceMap.length) return;
+      if (!sourceMap.length && !diagnostics.length) return;
       var line = self.codeLineAt(area.value, area.selectionStart);
       var entry = self.codeSourceForLine(sourceMap, line);
-      if (!entry || (rec.activeLine === line && rec.activeEntry === entry)) return;
+      var diagnostic = self.codeDiagnosticForLine(diagnostics, line);
+      if (!entry && !diagnostic) return;
+      if (rec.activeLine === line && rec.activeEntry === entry && rec.activeDiagnostic === diagnostic) return;
       rec.activeLine = line;
       rec.activeEntry = entry;
-      sourceLabel.textContent = "Line " + line + " · " + entry.label;
+      rec.activeDiagnostic = diagnostic;
+      var target = entry ? entry.target : diagnostic.target;
+      var targetLabel = entry ? entry.label : (target.node || target.cable || target.param || diagnostic.message);
+      sourceLabel.textContent = "Line " + line + " · " + targetLabel + (diagnostic ? " · " + diagnostic.severity : "");
       setHighlight(area.value);
       if (typeof self.adapter.codeAction === "function") {
         try {
-          self.adapter.codeAction({op: "code.select", path: path, language: language, line: line, target: entry.target}, area.value, block);
+          self.adapter.codeAction({op: "code.select", path: path, language: language, line: line, target: target, diagnostic: diagnostic ? diagnostic.entry : null}, area.value, block);
         } catch (error) {
           self.adapter.announce("error", "Code action failed: " + String(error && error.message || error));
         }
@@ -15090,7 +15155,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.18",
+    version: "1.18.19",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
