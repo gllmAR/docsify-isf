@@ -2527,11 +2527,13 @@
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
       var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
       var cableFlow = Graph.cableFlow(cable, cableType);
+      var targetParam = Graph.paramPorts(typeMap[String(toNode.type)]).find(function (port) { return String(port.id) === to.port; });
       var path = svgEl("path", {
-        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : "") + " is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-"),
+        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : "") + " is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-") + (targetParam ? " is-param-target" : ""),
         "data-cable-flow": cableFlow,
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
+        "data-cable-target": targetParam ? "param" : "port",
         "data-cross-type": crossType,
         d: Graph.routePathData(route)
       });
@@ -15023,7 +15025,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.16",
+    version: "1.18.17",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
