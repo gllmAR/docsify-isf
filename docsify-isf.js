@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.19
+ * docsify-isf v1.45.20
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -3884,7 +3884,7 @@
     }
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.19";
+    var VERSION = "1.45.20";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";

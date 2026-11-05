@@ -292,6 +292,7 @@
       commitTransaction: options.commitTransaction || null,
       abortTransaction: options.abortTransaction || null,
       graphInspector: options.graphInspector || null,
+      graphEditNode: options.graphEditNode || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: function (level, text) {
@@ -1843,6 +1844,27 @@
     return true;
   };
 
+  /** Optional host-owned node editor seam (e.g. a Blockly overlay). PUI does
+   * not interpret the editor payload or execute it; it only routes the gesture
+   * and keeps ports/selection intact while the host edits. */
+  Renderer.prototype.graphRequestNodeEditor = function (rec, node) {
+    if (!rec || !node || typeof this.adapter.graphEditNode !== "function") return false;
+    var type = rec.typeMap[String(node.type)] || null;
+    var self = this;
+    try {
+      var result = this.adapter.graphEditNode(node, type, rec.block, this);
+      if (result && typeof result.then === "function") {
+        result.catch(function (error) {
+          self.adapter.announce("error", "Node editor failed: " + String(error && error.message || error));
+        });
+      }
+      return result !== false;
+    } catch (error) {
+      this.adapter.announce("error", "Node editor failed: " + String(error && error.message || error));
+      return false;
+    }
+  };
+
   /** Read-only G-2 graph renderer: DOM nodes + SVG cables + frames + outline.
    * The host owns the graph value and edits; this renderer owns geometry,
    * pan/zoom, focus and the accessible outline. */
@@ -2464,18 +2486,29 @@
         });
         nodeElement.addEventListener("dblclick", function (event) {
           var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
-          if (!node || typeof node.subgraph !== "string" || !node.subgraph) return;
-          if (event.target && event.target.closest && event.target.closest(".pui-graph-open-subgraph, .pui-graph-gop-enter")) return;
-          if (event.preventDefault) event.preventDefault();
-          self.graphOpenSubgraph(rec, node);
+          if (!node) return;
+          if (event.target && event.target.closest && event.target.closest("button, input, select, textarea, .pui-graph-open-subgraph, .pui-graph-gop-enter")) return;
+          if (typeof node.subgraph === "string" && node.subgraph) {
+            if (event.preventDefault) event.preventDefault();
+            self.graphOpenSubgraph(rec, node);
+          } else if (typeof self.adapter.graphEditNode === "function") {
+            if (event.preventDefault) event.preventDefault();
+            self.graphRequestNodeEditor(rec, node);
+          }
         });
         nodeElement.addEventListener("keydown", function (event) {
           if (String(event.key || "") !== "Enter") return;
           var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
-          if (!node || typeof node.subgraph !== "string" || !node.subgraph) return;
-          if (event.preventDefault) event.preventDefault();
-          if (event.stopPropagation) event.stopPropagation();
-          self.graphOpenSubgraph(rec, node);
+          if (!node) return;
+          if (typeof node.subgraph === "string" && node.subgraph) {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            self.graphOpenSubgraph(rec, node);
+          } else if (typeof self.adapter.graphEditNode === "function") {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            self.graphRequestNodeEditor(rec, node);
+          }
         });
       })(id, nodeEl);
     });
@@ -14990,7 +15023,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.15",
+    version: "1.18.16",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
