@@ -38,9 +38,22 @@ const executablePath = process.env.CHROME_PATH || "/Applications/Google Chrome.a
 if (!fs.existsSync(executablePath)) {
     console.log("browser-interaction: Chrome not found — skipping"); process.exit(0);
 }
+// A known non-silent microphone source for the fake capture device.
+const fakeMicPath = path.join(artifacts, "fake-mic.wav");
+{
+    const rate = 48000, seconds = 2, count = rate * seconds, dataSize = count * 2;
+    const wav = Buffer.alloc(44 + dataSize);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + dataSize, 4); wav.write("WAVE", 8);
+    wav.write("fmt ", 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(1, 22); wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28);
+    wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write("data", 36);
+    wav.writeUInt32LE(dataSize, 40);
+    for (let i = 0; i < count; i++) wav.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * i / rate) * 12000), 44 + i * 2);
+    fs.writeFileSync(fakeMicPath, wav);
+}
 const browser = await puppeteer.launch({
     executablePath, headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--use-file-for-fake-audio-capture=" + fakeMicPath]
 });
 const page = await browser.newPage();
 try { await browser.defaultBrowserContext().overridePermissions(url, ["camera", "microphone"]); } catch (error) { /* fake UI flags still allow */ }
@@ -421,6 +434,34 @@ if (micCamera.mic) {
         };
     });
     check("real microphone capture reaches the host", micState.on && /microphone/i.test(micState.source), micState);
+    const micSignal = await page.evaluate(() => {
+        const viewer = window.__isfActiveInspector;
+        const audio = viewer && viewer.audioState;
+        if (!audio || !audio.analyser) return null;
+        const data = audio.data;
+        audio.analyser.getByteTimeDomainData(data);
+        let min = 255, max = 0, changed = 0;
+        for (let i = 0; i < data.length; i++) {
+            min = Math.min(min, data[i]); max = Math.max(max, data[i]);
+            if (data[i] < 124 || data[i] > 132) changed++;
+        }
+        return {min, max, changed, size: data.length};
+    });
+    check("known microphone waveform reaches the ISF analyser", !!micSignal && micSignal.changed > 8 && micSignal.max - micSignal.min > 8, micSignal);
+    const micTexture = await page.evaluate(() => {
+        const viewer = window.__isfActiveInspector;
+        const canvas = viewer && viewer.runtime && viewer.runtime.audioCanvases && viewer.runtime.audioCanvases.wave;
+        if (!canvas) return null;
+        const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, 1).data;
+        let min = 255, max = 0, changed = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+            const value = pixels[i];
+            min = Math.min(min, value); max = Math.max(max, value);
+            if (value < 124 || value > 132) changed++;
+        }
+        return {min, max, changed, width: canvas.width};
+    });
+    check("microphone waveform reaches the shader audio texture", !!micTexture && micTexture.changed > 8 && micTexture.max - micTexture.min > 8, micTexture);
 }
 if (micCamera.camera) {
     await blockEval((block) => {
