@@ -6380,6 +6380,7 @@
     }
     var ast = isObject(raw) && isObject(raw.ast) ? raw.ast : raw;
     var body = isArray(ast) ? ast : (isObject(ast) && isArray(ast.body) ? ast.body : []);
+    var Logic = global.PupitreLogic || null;
     var label = String(block.label || block.id || "Logic");
     var root = el("section", {class: "pui-logic", "data-pui-logic": path, role: "group", "aria-label": label});
     var head = el("div", {class: "pui-logic-head"});
@@ -6398,7 +6399,7 @@
         if (!isObject(statement) || seen.indexOf(statement) >= 0 || depth > 24) return;
         seen.push(statement);
         var item = el("li", {class: "pui-logic-block", "data-block-id": String(statement.id || ""), "data-block-type": String(statement.type || statement.kind || "")});
-        var title = String(statement.label || self.logicStatementTitle(statement));
+        var title = String(statement.label || (Logic ? Logic.statementTitle(statement) : self.logicStatementTitle(statement)));
         var button = el("button", {type: "button", class: "pui-logic-block-title", text: title, "aria-label": title});
         if (statement.id !== undefined) button.setAttribute("data-block-id", String(statement.id));
         button.addEventListener("click", function (event) {
@@ -15579,7 +15580,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.26",
+    version: "1.18.27",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
