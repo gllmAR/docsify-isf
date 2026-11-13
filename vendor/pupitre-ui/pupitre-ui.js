@@ -293,6 +293,7 @@
       abortTransaction: options.abortTransaction || null,
       graphInspector: options.graphInspector || null,
       graphEditNode: options.graphEditNode || null,
+      logicAction: options.logicAction || null,
       subscribe: options.subscribe || function () { return function () {}; },
       translate: options.translate || function (_key, fallback) { return fallback; },
       announce: function (level, text) {
@@ -1662,6 +1663,7 @@
     if (kind === "canvas") return this.buildCanvas(block);
     if (kind === "workflow") return this.buildWorkflow(block);
     if (kind === "code") return this.buildCode(block);
+    if (kind === "logic") return this.buildLogic(block);
     if (kind === "curve") return this.buildCurve(block);
     if (kind === "drawer") return this.buildDrawer(block);
     if (kind === "macros") return this.buildMacros(block);
@@ -6320,6 +6322,120 @@
       if (String(event.key || "").indexOf("Arrow") === 0 || event.key === "Home" || event.key === "End" || event.key === "PageUp" || event.key === "PageDown") selectSource();
     });
     setHighlight(text);
+    return root;
+  };
+
+  /** Format a typed logic expression for the portable read-only outline.
+   * This is a view serialiser, not an evaluator: host IR/type checking owns
+   * the meaning and Blockly/host editors own mutation. */
+  Renderer.prototype.logicExpression = function (expr, depth) {
+    var self = this;
+    depth = depth || 0;
+    if (depth > 16) return "…";
+    if (expr === undefined || expr === null) return "—";
+    if (typeof expr !== "object" || Array.isArray(expr)) return JSON.stringify(expr);
+    if (expr.ref || expr.kind === "input" || expr.kind === "var" && expr.name) {
+      var ref = String(expr.ref || expr.kind || "var");
+      var name = String(expr.name || expr.id || "");
+      if (ref === "input") return "input " + name;
+      if (ref === "var") return "$" + name;
+      return ref + " " + name;
+    }
+    if (expr.call) return String(expr.call) + "(" + (Array.isArray(expr.args) ? expr.args.map(function (arg) { return self.logicExpression(arg, depth + 1); }).join(", ") : "") + ")";
+    if (expr.op) {
+      var left = expr.left !== undefined ? self.logicExpression(expr.left, depth + 1) : "";
+      var right = expr.right !== undefined ? self.logicExpression(expr.right, depth + 1) : "";
+      return left ? "(" + left + " " + String(expr.op) + " " + right + ")" : String(expr.op) + " " + right;
+    }
+    if (expr.args && Array.isArray(expr.args)) return "(" + expr.args.map(function (arg) { return self.logicExpression(arg, depth + 1); }).join(", ") + ")";
+    if (expr.value !== undefined) {
+      if (typeof expr.value === "string") return JSON.stringify(expr.value);
+      return String(expr.value);
+    }
+    if (expr.name) return String(expr.name);
+    try { return JSON.stringify(expr); } catch (error) { return "…"; }
+  };
+
+  Renderer.prototype.logicStatementTitle = function (statement) {
+    var type = String(statement && (statement.type || statement.kind) || "block");
+    if (type === "if") return "if " + this.logicExpression(statement.condition);
+    if (type === "else") return "else";
+    if (type === "repeat" || type === "for") return "repeat " + this.logicExpression(statement.count !== undefined ? statement.count : statement.times);
+    if (type === "while") return "while " + this.logicExpression(statement.condition);
+    if (type === "return") return "return" + (statement.value === undefined ? "" : " " + this.logicExpression(statement.value));
+    if (type === "let" || type === "set" || type === "var") return type + " " + String(statement.name || "value") + " = " + this.logicExpression(statement.value);
+    if (type === "expression") return this.logicExpression(statement.value);
+    return String(statement.label || type) + (statement.value === undefined ? "" : " " + this.logicExpression(statement.value));
+  };
+
+  /** Portable logic fallback: a nested semantic outline for a host-owned typed
+   * AST. Blockly (or a native editor) can edit the same AST behind a host
+   * overlay; PUI never interprets or executes the blocks. */
+  Renderer.prototype.buildLogic = function (block) {
+    var self = this;
+    var path = String(block.bind || "");
+    var raw = path ? this.adapter.getValue(path) : null;
+    if (typeof raw === "string") {
+      try { raw = JSON.parse(raw); } catch (error) { raw = null; }
+    }
+    var ast = isObject(raw) && isObject(raw.ast) ? raw.ast : raw;
+    var body = isArray(ast) ? ast : (isObject(ast) && isArray(ast.body) ? ast.body : []);
+    var label = String(block.label || block.id || "Logic");
+    var root = el("section", {class: "pui-logic", "data-pui-logic": path, role: "group", "aria-label": label});
+    var head = el("div", {class: "pui-logic-head"});
+    head.appendChild(el("h4", {text: label}));
+    head.appendChild(el("span", {class: "pui-logic-count", text: body.length + " block" + (body.length === 1 ? "" : "s")}));
+    if (isObject(ast) && ast.version !== undefined) head.appendChild(el("span", {class: "pui-logic-version", text: "v" + String(ast.version)}));
+    root.appendChild(head);
+    if (!body.length) {
+      root.appendChild(el("p", {class: "pui-logic-empty", text: "No logic blocks."}));
+      return root;
+    }
+    var seen = [];
+    var list = el("ol", {class: "pui-logic-blocks"});
+    var renderStatements = function (statements, parent, depth) {
+      (isArray(statements) ? statements : []).forEach(function (statement) {
+        if (!isObject(statement) || seen.indexOf(statement) >= 0 || depth > 24) return;
+        seen.push(statement);
+        var item = el("li", {class: "pui-logic-block", "data-block-id": String(statement.id || ""), "data-block-type": String(statement.type || statement.kind || "")});
+        var title = String(statement.label || self.logicStatementTitle(statement));
+        var button = el("button", {type: "button", class: "pui-logic-block-title", text: title, "aria-label": title});
+        if (statement.id !== undefined) button.setAttribute("data-block-id", String(statement.id));
+        button.addEventListener("click", function (event) {
+          if (event.stopPropagation) event.stopPropagation();
+          item.classList.add("is-selected");
+          if (typeof self.adapter.logicAction === "function") {
+            try { self.adapter.logicAction({op: "block.select", id: statement.id === undefined ? null : String(statement.id), type: String(statement.type || statement.kind || ""), block: statement}, ast, block); }
+            catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
+          }
+        });
+        button.addEventListener("dblclick", function (event) {
+          if (event.preventDefault) event.preventDefault();
+          if (typeof self.adapter.logicAction === "function") {
+            try { self.adapter.logicAction({op: "block.edit", id: statement.id === undefined ? null : String(statement.id), type: String(statement.type || statement.kind || ""), block: statement}, ast, block); }
+            catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
+          }
+        });
+        item.appendChild(button);
+        var children = [];
+        if (isArray(statement.then)) children.push({label: "", items: statement.then});
+        if (isArray(statement.else)) children.push({label: "else", items: statement.else});
+        if (isArray(statement.body)) children.push({label: "", items: statement.body});
+        if (isArray(statement.statements)) children.push({label: "", items: statement.statements});
+        if (isArray(statement.children)) children.push({label: "", items: statement.children});
+        children.forEach(function (branch) {
+          var branchEl = el("div", {class: "pui-logic-branch"});
+          if (branch.label) branchEl.appendChild(el("span", {class: "pui-logic-branch-label", text: branch.label}));
+          var childList = el("ol", {class: "pui-logic-blocks"});
+          renderStatements(branch.items, childList, depth + 1);
+          if (childList.childNodes.length) branchEl.appendChild(childList);
+          item.appendChild(branchEl);
+        });
+        parent.appendChild(item);
+      });
+    };
+    renderStatements(body, list, 0);
+    root.appendChild(list);
     return root;
   };
 
@@ -15463,7 +15579,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.25",
+    version: "1.18.26",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

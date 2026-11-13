@@ -968,6 +968,18 @@
 .pui-workflow-capture { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
 .pui-workflow-capture-status { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); text-transform: uppercase; }
 .pui-switch-reset { position: absolute; inset-inline-end: 0; inset-block-start: 50%; transform: translateY(-50%); }
+.pui-logic { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px 10px; }
+.pui-logic-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.pui-logic-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.85); }
+.pui-logic-count, .pui-logic-version { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); }
+.pui-logic-blocks { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pui-logic-block { border-inline-start: 2px solid var(--pui-border); padding-inline-start: 8px; }
+.pui-logic-block-title { display: block; width: 100%; min-height: 28px; padding: 3px 6px; border: 1px solid transparent; border-radius: 4px; background: var(--pui-bg); color: var(--pui-text); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: start; cursor: pointer; }
+.pui-logic-block-title:hover, .pui-logic-block-title:focus-visible { border-color: var(--pui-accent); outline: none; }
+.pui-logic-block.is-selected > .pui-logic-block-title { border-color: var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 12%, var(--pui-bg)); }
+.pui-logic-branch { margin: 3px 0 0 10px; }
+.pui-logic-branch-label { display: block; margin: 0 0 2px 4px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.64); text-transform: uppercase; letter-spacing: 0.04em; }
+.pui-logic-empty { margin: 4px 0 0; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.72); }
 .pui-code { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px; }
 .pui-code-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .pui-code-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.85); }
