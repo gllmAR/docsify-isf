@@ -501,6 +501,8 @@
 .pui-graph-port-dot.is-mod-input { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pui-accent) 55%, transparent); }
 .pui-graph-cable.is-tex-param-target { stroke-dasharray: 4 2; }
 .pui-graph-contributions { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 8px; }
+.pui-graph-param-line.is-modulated .pui-graph-param-key { color: var(--pui-accent); }
+.pui-graph-param-mod { color: var(--pui-accent); font-size: 0.78em; font-weight: 700; letter-spacing: -0.04em; }
 .pui-graph-contribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 4px 6px; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-bg); color: var(--pui-text); text-align: left; font: inherit; font-size: calc(var(--pui-type-base) * 0.68); cursor: pointer; }
 .pui-graph-contribution:hover, .pui-graph-contribution:focus-visible { border-color: var(--pui-accent); }
 .pui-graph-contribution-param { font-weight: 600; }

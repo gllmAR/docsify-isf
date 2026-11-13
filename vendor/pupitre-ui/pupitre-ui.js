@@ -2121,11 +2121,24 @@
     if (paramDefs.length) {
       var paramsEl = el("div", {class: "pui-graph-params"});
       var paramEls = [];
+      var modulation = {};
+      (rec.graph.cables || []).forEach(function (cable) {
+        var info = Graph.cableTargetInfo(cable, type);
+        if (!info || String(info.node) !== id) return;
+        if (info.kind === "param" && info.param) modulation[String(info.param)] = (modulation[String(info.param)] || 0) + 1;
+        if (info.kind === "tex_param") (info.params || []).forEach(function (paramId) { modulation[String(paramId)] = (modulation[String(paramId)] || 0) + 1; });
+      });
       paramDefs.forEach(function (param) {
         var raw = isObject(node.params) ? node.params[param.id] : undefined;
         var shown = raw === undefined ? (param.default === undefined ? "—" : param.default) : raw;
-        var line = el("div", {class: "pui-graph-param-line"});
+        var line = el("div", {class: "pui-graph-param-line" + (modulation[String(param.id)] ? " is-modulated" : "")});
         line.appendChild(el("span", {class: "pui-graph-param-key", text: String(param.label || param.id) + ": "}));
+        if (modulation[String(param.id)]) {
+          var modCount = modulation[String(param.id)];
+          var modBadge = el("span", {class: "pui-graph-param-mod", text: "↔" + modCount, "data-modulations": String(modCount), title: modCount + " parameter edge" + (modCount === 1 ? "" : "s")});
+          modBadge.setAttribute("aria-label", modCount + " parameter edge" + (modCount === 1 ? "" : "s"));
+          line.appendChild(modBadge);
+        }
         var numeric = ["float", "int", "f", "i"].indexOf(String(param.type || "float")) >= 0;
         var paramType = String(param.type || "float");
         var displayValue = self.graphParamText(param, shown);
@@ -15249,7 +15262,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.22",
+    version: "1.18.23",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
