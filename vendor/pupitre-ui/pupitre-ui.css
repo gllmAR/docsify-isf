@@ -64,6 +64,10 @@
   font: inherit; cursor: pointer;
 }
 .pui-tab[aria-selected="true"] { color: var(--pui-text); background: var(--pui-surface); border-color: var(--pui-border); }
+@media (max-width: 640px) {
+  .pui-page-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; overscroll-behavior-inline: contain; scroll-snap-type: inline proximity; padding-bottom: 1px; }
+  .pui-page-tabs .pui-tab { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+}
 .pui-page { display: flex; flex-direction: column; gap: var(--pui-gap); }
 .pui [hidden] { display: none !important; }
 .pui-page[hidden] { display: none; }
@@ -525,6 +529,8 @@
 .pui-graph-wire { fill: none; stroke: var(--pui-accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .pui-graph-marquee { position: absolute; border: 1px solid var(--pui-accent); background: color-mix(in srgb, var(--pui-accent) 14%, transparent); pointer-events: none; }
 .pui-graph-add-button { margin-inline-start: 4px; }
+.pui-graph-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.pui-graph-actions .pui-graph-add-button { margin-inline-start: 0; }
 .pui-graph-add-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
 .pui-graph-add-option { min-height: var(--pui-touch); padding: 6px 8px; text-align: start; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .pui-graph-add-option:hover, .pui-graph-add-option:focus-visible { border-color: var(--pui-accent); background: var(--pui-surface-2); outline: none; }
@@ -1023,6 +1029,15 @@
 }
 @media (max-width: 480px) {
   .pui-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .pui-page-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--pui-border); scrollbar-width: thin; overscroll-behavior-inline: contain; scroll-snap-type: inline proximity; padding-bottom: 1px; }
+  .pui-page-tabs .pui-tab { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+  .pui-graph-actions { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: thin; }
+  .pui-graph-actions .pui-graph-add-button { flex: 0 0 auto; }
+  .pui-graph-presets { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .pui-graph-presets > * { flex: 0 0 auto; }
+  .pui-graph-preset-name { width: 132px; }
 }
 .pui .pui-curve-field input,
 .pui .pui-xypad-input input { width: 5.4em; max-width: 6.5em; }

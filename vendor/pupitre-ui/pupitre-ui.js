@@ -879,7 +879,7 @@
     }
     var tablist = null;
     if (pages.length > 1) {
-      tablist = el("div", {class: "pui-tabs", role: "tablist"});
+      tablist = el("div", {class: "pui-tabs pui-page-tabs", role: "tablist"});
       panelEl.appendChild(tablist);
     }
     for (var p = 0; p < pages.length; p++) {
@@ -976,6 +976,14 @@
         rec.tab.setAttribute("aria-selected", i === index ? "true" : "false");
         rec.tab.tabIndex = i === index ? 0 : -1;
       }
+    }
+    // Keep the active page tab visible when the strip scrolls horizontally on
+    // a narrow screen; this is presentation only and must not move the page.
+    var activeTab = panelRecord.pages[index] && panelRecord.pages[index].tab;
+    var tabStrip = activeTab && activeTab.parentNode;
+    if (activeTab && tabStrip && tabStrip.scrollWidth > tabStrip.clientWidth + 1 && tabStrip.scrollTo) {
+      var left = activeTab.offsetLeft - (tabStrip.clientWidth - activeTab.offsetWidth) / 2;
+      tabStrip.scrollTo({left: Math.max(0, left), behavior: "smooth"});
     }
     // Host graph bodies on a previously hidden page now have a layout box.
     if (this.root && this.root.parentNode) this.graphLayoutBodies();
@@ -2347,32 +2355,33 @@
       var outLabels = isArray(graph.interface.outputs) ? graph.interface.outputs.map(function (port) { return String(port.label || port.id || ""); }).filter(Boolean) : [];
       head.appendChild(el("span", {class: "pui-graph-interface", text: "Boundary: " + (inLabels.length ? "in " + inLabels.join(", ") : "no inputs") + " · " + (outLabels.length ? "out " + outLabels.join(", ") : "no outputs")}));
     }
+    var actionBar = el("div", {class: "pui-graph-actions", role: "group", "aria-label": "Graph actions"});
     if (!block.readonly) {
       var addButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Add node"});
       addButton.addEventListener("click", function () { self.openGraphAdd(rec); });
-      head.appendChild(addButton);
+      actionBar.appendChild(addButton);
       var addFrame = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Add frame"});
       addFrame.addEventListener("click", function () { self.graphAddFrame(rec); });
-      head.appendChild(addFrame);
+      actionBar.appendChild(addFrame);
       var groupButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Group selection"});
       groupButton.addEventListener("click", function () { self.graphGroupSelection(rec); });
-      head.appendChild(groupButton);
+      actionBar.appendChild(groupButton);
       var bookmarkButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Bookmark view"});
       bookmarkButton.addEventListener("click", function () { self.graphSaveBookmark(rec); });
-      head.appendChild(bookmarkButton);
+      actionBar.appendChild(bookmarkButton);
       var duplicateButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Duplicate"});
       duplicateButton.addEventListener("click", function () { self.graphDuplicate(rec); });
-      head.appendChild(duplicateButton);
+      actionBar.appendChild(duplicateButton);
       if (nav.length > 1 && typeof this.adapter.graphOnParentAction === "function") {
         var setRoi = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Set parent ROI"});
         setRoi.addEventListener("click", function () { self.graphSetParentRoi(rec); });
-        head.appendChild(setRoi);
+        actionBar.appendChild(setRoi);
         var clearRoi = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Clear ROI"});
         clearRoi.addEventListener("click", function () { self.graphClearParentRoi(rec); });
-        head.appendChild(clearRoi);
+        actionBar.appendChild(clearRoi);
         var expose = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Expose selected"});
         expose.addEventListener("click", function () { self.graphExposeSelected(rec); });
-        head.appendChild(expose);
+        actionBar.appendChild(expose);
       }
     }
     if (nav.length > 1) {
@@ -2380,11 +2389,12 @@
       upButton.title = "Back to the parent graph (Escape)";
       upButton.setAttribute("aria-label", "Back to the parent graph");
       upButton.addEventListener("click", function () { self.graphNavigate(rec, nav.length - 2); });
-      head.appendChild(upButton);
+      actionBar.appendChild(upButton);
     }
     var fitButton = el("button", {type: "button", class: "pui-button pui-graph-add-button", text: "Fit"});
     fitButton.addEventListener("click", function () { self.graphFit(rec); });
-    head.appendChild(fitButton);
+    actionBar.appendChild(fitButton);
+    head.appendChild(actionBar);
     var countEl = el("span", {class: "pui-graph-count", text: nodes.length + " nodes · " + cables.length + " links"});
     head.appendChild(countEl);
     if (issues.length) {
@@ -15262,7 +15272,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.23",
+    version: "1.18.24",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
