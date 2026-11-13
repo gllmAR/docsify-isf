@@ -4881,24 +4881,36 @@
       if (global.setTimeout) global.setTimeout(focusAnchor, 0); else focusAnchor();
     }
     if (picker.custom) {
-      if (cancel) { if (picker.custom.onCancel) picker.custom.onCancel(); }
-      else if (String(picker.currentValue) !== String(picker.startValue) && picker.custom.onCommit) picker.custom.onCommit(picker.currentValue);
+      if (cancel) {
+        this.finishHostTransaction(picker.transaction, false);
+        if (picker.custom.onCancel) picker.custom.onCancel();
+      } else {
+        if (String(picker.currentValue) !== String(picker.startValue) && picker.custom.onCommit) picker.custom.onCommit(picker.currentValue);
+        this.finishHostTransaction(picker.transaction, true);
+      }
       restoreFocus();
       return true;
     }
     var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(picker.nodeId); });
-    if (!node) { restoreFocus(); return true; }
+    if (!node) { this.finishHostTransaction(picker.transaction, !cancel); restoreFocus(); return true; }
     node.params = isObject(node.params) ? node.params : {};
     if (cancel) {
       node.params[picker.paramId] = picker.startValue;
       this.updateGraphDom(rec, [picker.nodeId]);
+      if (picker.lastSent !== null && String(picker.lastSent) !== String(picker.startValue)) {
+        this.writeGraph(rec, {op: "node.param", ids: [String(picker.nodeId)], param: String(picker.paramId), value: picker.startValue});
+      }
+      this.finishHostTransaction(picker.transaction, false);
       restoreFocus();
       return true;
     }
     if (String(node.params[picker.paramId]) !== String(picker.startValue)) {
       this.graphPushUndo(rec, picker.startGraph);
-      this.writeGraph(rec, {op: "node.param", ids: [String(picker.nodeId)], param: String(picker.paramId), value: node.params[picker.paramId]});
+      if (picker.lastSent === null || String(picker.lastSent) !== String(node.params[picker.paramId])) {
+        this.writeGraph(rec, {op: "node.param", ids: [String(picker.nodeId)], param: String(picker.paramId), value: node.params[picker.paramId]});
+      }
     }
+    this.finishHostTransaction(picker.transaction, true);
     restoreFocus();
     return true;
   };
@@ -4917,6 +4929,8 @@
     var customMode = isObject(custom);
     var startValue = customMode ? (custom.value === undefined ? "#ffffff" : custom.value) : (isObject(node.params) && node.params[paramId] !== undefined ? node.params[paramId] : (param.default === undefined ? "#ffffff" : param.default));
     var currentValue = startValue;
+    var colorTransaction = customMode ? (custom.transaction || null) : this.beginHostTransaction("graph.color", {op: "node.param", nodeId: String(node.id), param: String(paramId), source: "color"});
+    var liveWrites = false;
     var parts = this.graphColorParts(startValue);
     var popoverId = "pui-color-popover-" + (++this.colorPickerSeq);
     var panel = el("div", {id: popoverId, class: "pui pui-graph-color-popover", role: "dialog", "aria-modal": "false", "aria-label": String(param.label || param.id) + " colour picker"});
@@ -4997,10 +5011,15 @@
       if (rec.colorPicker) rec.colorPicker.currentValue = currentValue;
       if (customMode) {
         if (custom.onLive) custom.onLive(currentValue);
+        if (liveWrites && custom.onLiveWrite) custom.onLiveWrite(currentValue);
       } else {
         node.params = isObject(node.params) ? node.params : {};
         node.params[paramId] = currentValue;
         self.updateGraphDom(rec, [String(node.id)]);
+        if (liveWrites) {
+          self.writeGraph(rec, {op: "node.param", ids: [String(node.id)], param: String(paramId), value: currentValue});
+          if (rec.colorPicker) rec.colorPicker.lastSent = currentValue;
+        }
       }
     };
     // The closure above runs before `paint` is initialized only if an event
@@ -5059,8 +5078,9 @@
     panel.style.left = Math.max(8, left) + "px";
     panel.style.top = Math.max(8, top) + "px";
 
-    var picker = {panel: panel, anchor: anchor, nodeId: String(node.id), paramId: paramId, startValue: startValue, currentValue: currentValue, startGraph: customMode ? null : deepClone(rec.graph), custom: customMode ? custom : null, outside: null, keyHandler: null};
+    var picker = {panel: panel, anchor: anchor, nodeId: String(node.id), paramId: paramId, startValue: startValue, currentValue: currentValue, lastSent: null, transaction: colorTransaction, startGraph: customMode ? null : deepClone(rec.graph), custom: customMode ? custom : null, outside: null, keyHandler: null};
     rec.colorPicker = picker;
+    liveWrites = true;
     var outside = function (event) {
       if (!rec.colorPicker) return;
       if (panel.contains(event.target) || anchor.contains(event.target)) return;
@@ -10577,7 +10597,7 @@
   /** Open the compact RGBA editor for any independent colour control. The
    * popover follows an open dialog into the top layer; the caller owns the
    * resulting value. */
-  Renderer.prototype.openColorFieldPopover = function (anchor, label, value, onLive, onCommit) {
+  Renderer.prototype.openColorFieldPopover = function (anchor, label, value, onLive, onCommit, onLiveWrite) {
     if (!anchor) return false;
     var self = this;
     var dialog = anchor.closest ? anchor.closest("dialog[open]") : null;
@@ -10588,10 +10608,14 @@
     if (!recColor || recColor.viewport !== host) recColor = this.fieldColorRecord = {viewport: host, colorPicker: null, graph: {nodes: []}, typeMap: {}};
     if (dialog) dialog.addEventListener("close", function () { if (recColor.colorPicker) self.graphCloseColorPicker(recColor, true); }, {once: true});
     (this.graphRecords || []).forEach(function (graphRec) { if (graphRec.colorPicker) self.graphCloseColorPicker(graphRec, false); });
+    var transaction = onLiveWrite ? this.beginHostTransaction("field.color", {op: "field.set", label: String(label || "colour"), source: "color"}) : null;
     return this.graphOpenColorPicker(recColor, {id: ""}, {id: "field-color", label: label, type: "color"}, anchor, {
       fixed: true,
       value: value,
+      transaction: transaction,
       onLive: onLive,
+      onLiveWrite: onLiveWrite,
+      onCancel: function () { if (onLive) onLive(value); if (onLiveWrite) onLiveWrite(value); },
       onCommit: onCommit
     });
   };
@@ -11093,7 +11117,7 @@
       color.addEventListener("change", commitColor);
       swatch.addEventListener("click", function (event) {
         if (event.stopPropagation) event.stopPropagation();
-        self.openColorFieldPopover(swatch, label, self.value(rec), function (hex) { paintColor(hex); }, function (hex) { self.writeRecord(rec, hex); });
+        self.openColorFieldPopover(swatch, label, self.value(rec), function (hex) { paintColor(hex); }, function (hex) { self.writeRecord(rec, hex); }, function (hex) { self.writeRecord(rec, hex); });
       });
       var wrap = el("span", {class: "pui-color-control"});
       wrap.appendChild(swatch);
@@ -15580,7 +15604,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.27",
+    version: "1.18.28",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
