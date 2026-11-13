@@ -401,6 +401,85 @@ caps the render buffer (Default/SD/HD/FHD/Native), `Scale` multiplies it
 persist with the layout and can be overridden from the URL (`isf-res`,
 `isf-quality`).
 
+## Live camera and microphone
+
+Media inputs are ordinary ISF inputs; the host maps a live stream onto the
+matching texture. The built-in [Input-type test card](./samples/test-card.fs)
+is the quickest way to verify both paths.
+
+### 1. Serve from a secure context
+
+`getUserMedia` requires **HTTPS or localhost** and browser permission. It is
+not available from `file://`, a plain-HTTP LAN address, or an iframe without
+`allow="camera; microphone"`. OBS browser sources may also block media capture;
+use OBS capture sources when running inside OBS.
+
+### 2. Connect the webcam
+
+1. Open **Parameters → Media**.
+2. Find the image input (for example `inputImage`, or transition
+   `startImage`/`endImage`).
+3. Click **Use camera** and allow camera access.
+4. The action changes to **Camera on**; click it again to stop.
+5. **Choose image…** replaces the camera binding with a local file and stops
+   the camera for that input.
+
+One live camera stream is active per viewer. It can be bound to any image
+input; selecting another image input moves the binding.
+
+### 3. Connect the microphone
+
+1. Open **Parameters → Media**.
+2. Click **Use mic** and allow microphone access.
+3. The action changes to **Microphone on**; the audio source readout changes
+   from `synthetic` to `microphone`.
+4. Click **Microphone on** to return to the synthetic fallback.
+
+One microphone stream feeds every `audio`/`audioFFT` input in the material.
+
+### 4. Shader contract
+
+Declare the media inputs normally and sample them with the ISF texture helpers:
+
+```json
+"INPUTS": [
+  { "NAME": "inputImage", "TYPE": "image",   "LABEL": "Webcam" },
+  { "NAME": "wave",       "TYPE": "audio",   "LABEL": "Waveform", "MAX": 256 },
+  { "NAME": "spectrum",   "TYPE": "audioFFT","LABEL": "Spectrum", "MAX": 256 }
+]
+```
+
+```glsl
+void main()
+{
+    vec2 uv = isf_FragNormCoord;
+
+    // Live webcam texture.
+    vec3 camera = IMG_NORM_PIXEL(inputImage, uv).rgb;
+
+    // Audio textures are 1×N: sample across x, use the centre row.
+    float waveform = IMG_NORM_PIXEL(wave, vec2(uv.x, 0.5)).r;
+    float level    = IMG_NORM_PIXEL(spectrum, vec2(uv.x, 0.5)).r;
+
+    gl_FragColor = vec4(camera * (0.65 + 0.35 * level) + waveform * 0.1, 1.0);
+}
+```
+
+`audio` carries byte time-domain samples; `audioFFT` carries byte frequency
+bins. `MAX` controls the texture width (the JS host resamples the analyser to
+that width). Without a microphone, both inputs receive the synthetic
+waveform/spectrum shown by the test card.
+
+### Troubleshooting
+
+The media action now reports its failure as a PUI toast:
+
+- **Permission denied** — allow camera/microphone in the browser site settings.
+- **Requires HTTPS or localhost** — serve the page from a secure origin.
+- **No camera/microphone found** — check OS privacy/device availability.
+- **Already in use** — close the application holding the device.
+- **No media action visible** — the shader has no `image` or `audio` input.
+
 ## UI/UX notes
 
 - Every control respects the ISF constraints: sliders, pickers and typed
