@@ -383,6 +383,7 @@
   }
 
   Renderer.prototype.render = function (doc) {
+    this.closeGraphContextMenu(false);
     var renderStarted = Date.now();
     doc = expandTemplates(doc);
     // Structural re-renders replace every control. Remember the focused item
@@ -2439,6 +2440,7 @@
         class: "pui-graph-frame" + (isArray(frame.members) ? " is-group" : "") + (frame.text ? " is-note" : "") + (frame.collapsed === true ? " is-collapsed" : ""),
         "data-frame-id": String(frame.id || ""),
         role: frame.text ? "note" : "group",
+        tabindex: "0",
         style: "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;"
       });
       frameEl.appendChild(el("span", {class: "pui-graph-frame-title", text: String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "")}));
@@ -2449,6 +2451,20 @@
         frameToggle.addEventListener("click", function (event) { if (event.stopPropagation) event.stopPropagation(); self.graphToggleFrame(rec, frame); });
         frameEl.appendChild(frameToggle);
       }
+      frameEl.addEventListener("contextmenu", function (event) {
+        if (event.preventDefault) event.preventDefault();
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphSelectFrame(rec, frame);
+        self.openGraphContextMenu(rec, {kind: "frame", frame: frame}, {x: event.clientX, y: event.clientY}, frameEl);
+      });
+      frameEl.addEventListener("keydown", function (event) {
+        if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") {
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphSelectFrame(rec, frame);
+          self.openGraphContextMenu(rec, {kind: "frame", frame: frame}, null, frameEl);
+        }
+      });
       frameEl.addEventListener("pointerdown", function (event) {
         if (event.target && event.target.closest && event.target.closest(".pui-graph-frame-resize, .pui-graph-frame-toggle")) return;
         if (event.button !== undefined && event.button !== 0) return;
@@ -2523,7 +2539,24 @@
             self.graphRequestNodeEditor(rec, node);
           }
         });
+        nodeElement.addEventListener("contextmenu", function (event) {
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+          var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+          if (!node) return;
+          self.graphSelect(rec, nodeId, false);
+          self.openGraphContextMenu(rec, {kind: "node", node: node}, {x: event.clientX, y: event.clientY}, nodeElement);
+        });
         nodeElement.addEventListener("keydown", function (event) {
+          if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
+            if (!node) return;
+            self.graphSelect(rec, nodeId, false);
+            self.openGraphContextMenu(rec, {kind: "node", node: node}, null, nodeElement);
+            return;
+          }
           if (String(event.key || "") !== "Enter") return;
           var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(nodeId); });
           if (!node) return;
@@ -2569,6 +2602,9 @@
         "data-cable-target": targetKind,
         "data-mod-params": targetInfo.params ? targetInfo.params.join(" ") : "",
         "data-cross-type": crossType,
+        tabindex: "0",
+        role: "button",
+        "aria-label": "Cable from " + String(cable.from) + " to " + String(cable.to),
         d: Graph.routePathData(route)
       });
       if (targetInfo.kind === "tex_param") path.setAttribute("title", "Texture modulates " + targetInfo.params.join(", ") + " · " + targetInfo.mode);
@@ -2576,6 +2612,23 @@
       path.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
         self.graphSelectCable(rec, cable);
+      });
+      path.addEventListener("contextmenu", function (event) {
+        if (event.preventDefault) event.preventDefault();
+        if (event.stopPropagation) event.stopPropagation();
+        self.graphSelectCable(rec, cable);
+        self.openGraphContextMenu(rec, {kind: "cable", cable: cable}, {x: event.clientX, y: event.clientY}, path);
+      });
+      path.addEventListener("keydown", function (event) {
+        if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") {
+          if (event.preventDefault) event.preventDefault();
+          if (event.stopPropagation) event.stopPropagation();
+          self.graphSelectCable(rec, cable);
+          self.openGraphContextMenu(rec, {kind: "cable", cable: cable}, null, path);
+        } else if (event.key === "Enter") {
+          if (event.preventDefault) event.preventDefault();
+          self.graphSelectCable(rec, cable);
+        }
       });
       cableGroup.appendChild(path);
       var labelEl = null;
@@ -2937,6 +2990,11 @@
     });
     viewport.addEventListener("keydown", function (event) {
       var key = String(event.key || "");
+      if ((key === "F10" && event.shiftKey) || key === "ContextMenu") {
+        event.preventDefault();
+        self.openGraphContextMenu(rec, {kind: "empty"}, null, viewport);
+        return;
+      }
       if (key === "Enter") {
         var selectedIds = Object.keys(rec.selected || {});
         var selectedNode = selectedIds.length === 1 ? (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(selectedIds[0]); }) : null;
@@ -2979,6 +3037,11 @@
         event.preventDefault();
         self.graphDuplicate(rec);
       }
+    });
+    viewport.addEventListener("contextmenu", function (event) {
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      self.openGraphContextMenu(rec, {kind: "empty"}, {x: event.clientX, y: event.clientY}, viewport);
     });
     // Accessible graph outline is a first-class view, not a hidden fallback.
     var outline = el("details", {class: "pui-graph-outline"});
@@ -4323,6 +4386,133 @@
     });
   };
 
+  /** Close the graph context menu, optionally returning focus to the target
+   * that opened it. Menus are transient view chrome; graph commands still go
+   * through the same host intents as the toolbar and keyboard. */
+  Renderer.prototype.closeGraphContextMenu = function (restoreFocus) {
+    var menu = this._graphContextMenu;
+    if (!menu) return;
+    this._graphContextMenu = null;
+    if (typeof document !== "undefined") {
+      document.removeEventListener("pointerdown", menu.outside, true);
+      document.removeEventListener("keydown", menu.escape, true);
+    }
+    if (menu.el && menu.el.parentNode) menu.el.parentNode.removeChild(menu.el);
+    var target = menu.returnFocus;
+    if (restoreFocus !== false && target && target.isConnected !== false && target.focus) {
+      try { target.focus(); } catch (error) { /* removed during rebuild */ }
+    }
+  };
+
+  Renderer.prototype.openGraphContextMenu = function (rec, context, point, returnFocus) {
+    if (!rec || !context) return false;
+    this.closeGraphContextMenu(false);
+    var self = this;
+    var readonly = !!rec.block.readonly;
+    var items = [];
+    function add(label, action, disabled, reason) {
+      items.push({label: label, action: action, disabled: !!disabled, reason: reason || ""});
+    }
+    var title = "Graph menu";
+    if (context.kind === "node") {
+      var node = context.node;
+      var nodeType = node && rec.typeMap[String(node.type)];
+      var nodeLabel = String(node && (node.label || (nodeType && nodeType.label) || node.id) || "Node");
+      title = nodeLabel + " menu";
+      add("Inspect", function () { self.graphSelect(rec, node.id, false); });
+      add("Edit label", function () {
+        self.graphSelect(rec, node.id, false);
+        var input = rec.inspector && rec.inspector.querySelector ? rec.inspector.querySelector('input[aria-label="Node label"]') : null;
+        if (input) { input.focus(); if (input.select) input.select(); }
+      });
+      add("Duplicate", function () { self.graphDuplicate(rec); }, readonly, "Read-only graph");
+      add("Group selection", function () { self.graphGroupSelection(rec); }, readonly, "Read-only graph");
+      add("Add frame", function () { self.graphAddFrame(rec); }, readonly, "Read-only graph");
+      add("Delete", function () { self.graphDelete(rec); }, readonly, "Read-only graph");
+    } else if (context.kind === "cable") {
+      title = "Cable menu";
+      add("Inspect", function () { self.graphSelectCable(rec, context.cable); });
+      add("Disconnect", function () { self.graphDelete(rec); }, readonly, "Read-only graph");
+    } else if (context.kind === "frame") {
+      title = String(context.frame && (context.frame.title || context.frame.id) || "Frame") + " menu";
+      add("Inspect", function () { self.graphSelectFrame(rec, context.frame); });
+      add(context.frame && context.frame.collapsed ? "Expand" : "Collapse", function () { self.graphToggleFrame(rec, context.frame); }, readonly, "Read-only graph");
+      add("Fit to contents", function () { self.graphFitFrame(rec, context.frame); });
+      add("Delete frame", function () { self.graphDelete(rec); }, readonly, "Read-only graph");
+    } else {
+      add("Add node", function () { self.openGraphAdd(rec); }, readonly, "Read-only graph");
+      add("Add frame", function () { self.graphAddFrame(rec); }, readonly, "Read-only graph");
+      add("Fit graph", function () { self.graphFit(rec); });
+      add("Bookmark view", function () { self.graphSaveBookmark(rec); }, readonly, "Read-only graph");
+    }
+    if (!items.length) return false;
+    var menu = el("div", {class: "pui-context-menu", role: "menu", "aria-label": title, tabindex: "-1"});
+    menu.appendChild(el("div", {class: "pui-context-menu-label", text: title, role: "presentation"}));
+    var buttons = [];
+    items.forEach(function (item) {
+      var button = el("button", {type: "button", role: "menuitem", class: "pui-context-menu-item" + (item.disabled ? " is-disabled" : ""), text: item.label, "aria-disabled": item.disabled ? "true" : "false"});
+      if (item.disabled) button.disabled = true;
+      if (item.reason) button.title = item.reason;
+      button.addEventListener("click", function (event) {
+        if (event.stopPropagation) event.stopPropagation();
+        if (item.disabled) return;
+        self.closeGraphContextMenu(false);
+        item.action();
+      });
+      menu.appendChild(button);
+      if (!item.disabled) buttons.push(button);
+    });
+    var x = Number(point && point.x) || 0;
+    var y = Number(point && point.y) || 0;
+    if (!point && returnFocus && returnFocus.getBoundingClientRect) {
+      var rect = returnFocus.getBoundingClientRect();
+      x = rect.left + Math.min(24, Math.max(0, rect.width / 2));
+      y = rect.top + 24;
+    }
+    menu.style.left = x + "px";
+    menu.style.top = y + "px";
+    if (typeof document !== "undefined" && document.body) document.body.appendChild(menu);
+    var box = menu.getBoundingClientRect ? menu.getBoundingClientRect() : {width: 0, height: 0};
+    var viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1024;
+    var viewportHeight = typeof window !== "undefined" ? window.innerHeight : 768;
+    menu.style.left = Math.max(6, Math.min(x, viewportWidth - (box.width || 180) - 6)) + "px";
+    menu.style.top = Math.max(6, Math.min(y, viewportHeight - (box.height || 100) - 6)) + "px";
+    var closeOnOutside = function (event) {
+      if (menu.contains && menu.contains(event.target)) return;
+      self.closeGraphContextMenu(false);
+    };
+    var closeOnEscape = function (event) {
+      if (String(event.key || "") !== "Escape") return;
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      self.closeGraphContextMenu(true);
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("pointerdown", closeOnOutside, true);
+      document.addEventListener("keydown", closeOnEscape, true);
+    }
+    menu.addEventListener("keydown", function (event) {
+      var key = String(event.key || "");
+      var index = buttons.indexOf(document.activeElement);
+      if (key === "ArrowDown" || key === "ArrowUp") {
+        if (event.preventDefault) event.preventDefault();
+        var next = key === "ArrowDown" ? index + 1 : index - 1;
+        if (next < 0) next = buttons.length - 1;
+        if (next >= buttons.length) next = 0;
+        if (buttons[next]) buttons[next].focus();
+      } else if (key === "Home" || key === "End") {
+        if (event.preventDefault) event.preventDefault();
+        var target = key === "Home" ? buttons[0] : buttons[buttons.length - 1];
+        if (target) target.focus();
+      } else if (key === "Tab") {
+        self.closeGraphContextMenu(false);
+      }
+    });
+    this._graphContextMenu = {el: menu, outside: closeOnOutside, escape: closeOnEscape, returnFocus: returnFocus || null};
+    if (buttons[0]) buttons[0].focus();
+    return true;
+  };
+
   Renderer.prototype.graphSetNodeVisibility = function (rec, node, kind, id, visible) {
     if (rec.block.readonly) return false;
     var start = deepClone(rec.graph);
@@ -5347,6 +5537,7 @@
   };
 
   Renderer.prototype.rebuildGraph = function (rec, focusId, navStack, reveal) {
+    this.closeGraphContextMenu(false);
     if (!rec.root || !rec.root.parentNode) return;
     this.graphCloseColorPicker(rec, false);
     this.graphUnbindEscape(rec);
@@ -15272,7 +15463,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.24",
+    version: "1.18.25",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

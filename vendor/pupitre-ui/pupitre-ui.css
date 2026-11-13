@@ -818,6 +818,11 @@
 .pui-tree-menu { position: absolute; right: 8px; top: 32px; z-index: 6; min-width: 150px; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-surface); box-shadow: 0 6px 18px rgba(0,0,0,0.24); padding: 4px; }
 .pui-tree-menu-item { display: block; width: 100%; border: 0; background: transparent; color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.74); text-align: start; padding: 5px 8px; border-radius: 3px; cursor: pointer; }
 .pui-tree-menu-item:hover, .pui-tree-menu-item:focus-visible { background: var(--pui-accent); color: var(--pui-bg); outline: none; }
+.pui-context-menu { position: fixed; z-index: 80; min-width: 180px; max-width: min(280px, 92vw); padding: 4px; border: 1px solid var(--pui-border); border-radius: 6px; background: var(--pui-surface); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.pui-context-menu-label { padding: 4px 8px 6px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-context-menu-item { display: block; width: 100%; min-height: var(--pui-touch); padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.76); text-align: start; cursor: pointer; }
+.pui-context-menu-item:hover, .pui-context-menu-item:focus-visible { background: var(--pui-accent); color: var(--pui-bg); outline: none; }
+.pui-context-menu-item.is-disabled, .pui-context-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
 .pui-commandlog { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px; }
 .pui-commandlog-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .pui-commandlog-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.85); }
