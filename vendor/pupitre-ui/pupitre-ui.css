@@ -500,6 +500,12 @@
 .pui-graph-port-dot.param { width: 9px; height: 9px; background: var(--pui-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pui-warning) 30%, transparent); z-index: 3; }
 .pui-graph-port-dot.is-mod-input { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pui-accent) 55%, transparent); }
 .pui-graph-cable.is-tex-param-target { stroke-dasharray: 4 2; }
+.pui-graph-contributions { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 8px; }
+.pui-graph-contribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 4px 6px; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-bg); color: var(--pui-text); text-align: left; font: inherit; font-size: calc(var(--pui-type-base) * 0.68); cursor: pointer; }
+.pui-graph-contribution:hover, .pui-graph-contribution:focus-visible { border-color: var(--pui-accent); }
+.pui-graph-contribution-param { font-weight: 600; }
+.pui-graph-contribution-source { grid-column: 1; color: var(--pui-muted); font-size: 0.92em; }
+.pui-graph-contribution-kind { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--pui-accent); font-size: 0.9em; white-space: nowrap; }
 .pui-graph-port-dot.vstream { background: #c792ea; }
 .pui-graph-params { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-variant-numeric: tabular-nums; }
 .pui-graph-outline { margin-top: 2px; font-size: calc(var(--pui-type-base) * 0.75); }

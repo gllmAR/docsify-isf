@@ -2531,25 +2531,25 @@
       var cableType = Graph.portTypeOf(typeMap[String(fromNode.type)], from.port, false) || "tex";
       var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
       var cableFlow = Graph.cableFlow(cable, cableType);
-      var targetParam = Graph.paramPorts(typeMap[String(toNode.type)]).find(function (port) { return String(port.id) === to.port; });
-      var targetTextureMod = !targetParam && Graph.textureModPorts(typeMap[String(toNode.type)]).find(function (port) { return String(port.id) === to.port; });
-      var targetKind = targetParam ? "param" : (targetTextureMod ? "tex_param" : "port");
+      var targetInfo = Graph.cableTargetInfo(cable, typeMap[String(toNode.type)]) || {kind: "flow"};
+      var targetKind = targetInfo.kind === "param" ? "param" : (targetInfo.kind === "tex_param" ? "tex_param" : "port");
       var cableClasses = ["pui-graph-cable", "is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-")];
       if (crossType === "pack" || crossType === "luma") cableClasses.push("is-cross-type");
       cableClasses.push("is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-"));
-      if (targetParam) cableClasses.push("is-param-target");
-      if (targetTextureMod) cableClasses.push("is-tex-param-target");
+      if (targetInfo.kind === "param") cableClasses.push("is-param-target");
+      if (targetInfo.kind === "tex_param") cableClasses.push("is-tex-param-target");
       var path = svgEl("path", {
         class: cableClasses.join(" "),
         "data-cable-flow": cableFlow,
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
         "data-cable-target": targetKind,
-        "data-mod-params": targetTextureMod ? targetTextureMod.params.join(" ") : "",
+        "data-mod-params": targetInfo.params ? targetInfo.params.join(" ") : "",
         "data-cross-type": crossType,
         d: Graph.routePathData(route)
       });
-      if (targetTextureMod) path.setAttribute("title", "Texture modulates " + targetTextureMod.params.join(", ") + " · " + targetTextureMod.mode);
+      if (targetInfo.kind === "tex_param") path.setAttribute("title", "Texture modulates " + targetInfo.params.join(", ") + " · " + targetInfo.mode);
+      else if (targetInfo.kind === "param") path.setAttribute("title", "Parameter " + targetInfo.param + " · " + targetInfo.mode);
       path.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
         self.graphSelectCable(rec, cable);
@@ -4148,20 +4148,25 @@
     }
     var selected = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
     if (!selected.length) {
-      var selectedTextureMod = null;
+      var selectedTargetInfo = null;
       var Graph = global.PupitreGraph;
       if (rec.selectedCable && Graph) {
         var selectedTo = Graph.parseRef(rec.selectedCable.to);
         if (selectedTo) {
-          var selectedTarget = (rec.graph.nodes || []).find(function (node) { return String(node.id) === selectedTo.node; });
-          var selectedType = selectedTarget ? rec.typeMap[String(selectedTarget.type)] : null;
-          selectedTextureMod = Graph.textureModPorts(selectedType).find(function (port) { return String(port.id) === selectedTo.port; }) || null;
+          var selectedTargetNode = (rec.graph.nodes || []).find(function (node) { return String(node.id) === selectedTo.node; });
+          var selectedType = selectedTargetNode ? rec.typeMap[String(selectedTargetNode.type)] : null;
+          selectedTargetInfo = Graph.cableTargetInfo(rec.selectedCable, selectedType);
         }
       }
-      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? (selectedTextureMod ? "Texture parameter" : "Cable") : "Inspector"}));
+      var cableHeading = "Cable";
+      if (selectedTargetInfo && selectedTargetInfo.kind === "param") cableHeading = "Parameter edge";
+      else if (selectedTargetInfo && selectedTargetInfo.kind === "tex_param") cableHeading = "Texture parameter";
+      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? cableHeading : "Inspector"}));
       rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: rec.selectedCable ? (rec.selectedCable.from + " → " + rec.selectedCable.to) : "Select a node or cable."}));
-      if (selectedTextureMod) {
-        rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: "Modulates " + selectedTextureMod.params.join(", ") + " · " + selectedTextureMod.mode + " · shader-side"}));
+      if (selectedTargetInfo && selectedTargetInfo.kind === "param") {
+        rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: "Modulates " + selectedTargetInfo.param + " · " + selectedTargetInfo.mode + (selectedTargetInfo.amount !== undefined ? " · amount " + selectedTargetInfo.amount : "")}));
+      } else if (selectedTargetInfo && selectedTargetInfo.kind === "tex_param") {
+        rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: "Modulates " + selectedTargetInfo.params.join(", ") + " · " + selectedTargetInfo.mode + " · shader-side"}));
       }
       return;
     }
@@ -4256,6 +4261,36 @@
       });
       visibility.appendChild(visibilityList);
       rec.inspector.appendChild(visibility);
+    }
+    if (selected.length === 1 && firstType && global.PupitreGraph) {
+      var Graph = global.PupitreGraph;
+      var contributionNode = selected[0];
+      var contributions = [];
+      (firstType.params || []).forEach(function (param) {
+        (Graph.paramEdges(rec.graph, rec.types, contributionNode.id, param.id) || []).forEach(function (edge) {
+          var cable = (rec.graph.cables || []).find(function (item) { return String(item.id) === String(edge.id); });
+          if (cable) contributions.push({param: param, edge: edge, cable: cable});
+        });
+      });
+      if (contributions.length) {
+        rec.inspector.appendChild(el("h6", {text: "Parameter edges · " + contributions.length}));
+        var contributionList = el("div", {class: "pui-graph-contributions"});
+        contributions.forEach(function (entry) {
+          var source = (rec.graph.nodes || []).find(function (node) { return String(node.id) === entry.edge.fromNode; });
+          var sourceType = source ? rec.typeMap[String(source.type)] : null;
+          var sourceLabel = String((source && (source.label || (sourceType && sourceType.label))) || entry.edge.fromNode);
+          var paramLabel = String(entry.param.label || entry.param.id);
+          var kind = entry.edge.texture ? "texture" : "control";
+          var button = el("button", {type: "button", class: "pui-graph-contribution", "data-param-id": String(entry.param.id), "data-cable-id": String(entry.cable.id || "")});
+          button.appendChild(el("span", {class: "pui-graph-contribution-param", text: paramLabel}));
+          button.appendChild(el("span", {class: "pui-graph-contribution-source", text: "← " + sourceLabel}));
+          button.appendChild(el("span", {class: "pui-graph-contribution-kind", text: kind + " · " + entry.edge.mode + (entry.edge.amount !== undefined ? " · " + entry.edge.amount + "×" : "")}));
+          button.setAttribute("aria-label", "Select " + kind + " edge from " + sourceLabel + " to " + paramLabel);
+          button.addEventListener("click", function () { self.graphSelectCable(rec, entry.cable); });
+          contributionList.appendChild(button);
+        });
+        rec.inspector.appendChild(contributionList);
+      }
     }
     var issues = rec.issues || (global.PupitreGraph ? global.PupitreGraph.validateGraph(rec.graph, rec.types) : []);
     rec.inspector.appendChild(el("h6", {text: "Issues"}));
@@ -15214,7 +15249,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.21",
+    version: "1.18.22",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
