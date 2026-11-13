@@ -5,12 +5,26 @@
  */
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const out = path.join(root, "docs", "ui-audit");
+// Deterministic fake microphone for the live-media showcase capture.
+const fakeMic = path.join(os.tmpdir(), "docsify-isf-showcase-mic.wav");
+{
+    const rate = 48000, seconds = 2, count = rate * seconds, dataSize = count * 2;
+    const wav = Buffer.alloc(44 + dataSize);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + dataSize, 4); wav.write("WAVE", 8);
+    wav.write("fmt ", 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(1, 22); wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28);
+    wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write("data", 36);
+    wav.writeUInt32LE(dataSize, 40);
+    for (let i = 0; i < count; i++) wav.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * i / rate) * 12000), 44 + i * 2);
+    fs.writeFileSync(fakeMic, wav);
+}
 const MIME = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -46,7 +60,7 @@ fs.mkdirSync(out, { recursive: true });
 
 const browser = await puppeteer.launch({
     executablePath, headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--use-file-for-fake-audio-capture=" + fakeMic]
 });
 const page = await browser.newPage();
 const cdp = await page.createCDPSession();
@@ -360,6 +374,34 @@ await page.evaluate(async () => {
     if (exit) await exit.call(document);
 });
 await sleep(500);
+
+// Live media showcase: deterministic fake camera + microphone.
+await page.evaluate(async () => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Live camera/i.test(b.dataset.isfTitle || ""));
+    if (!block) return;
+    block.scrollIntoView({ block: "center" });
+    const toggle = block.querySelector('.pui-workbench-toggle[data-pui-region="right"]');
+    if (toggle && toggle.getAttribute("aria-expanded") !== "true") toggle.click();
+    await wait(500);
+    const camera = Array.from(block.querySelectorAll("button")).find((node) => /Use camera/i.test(node.textContent));
+    if (camera) camera.click();
+    await wait(900);
+    const mic = Array.from(block.querySelectorAll("button")).find((node) => /Use mic/i.test(node.textContent));
+    if (mic) mic.click();
+    await wait(1200);
+});
+const live = await page.$('.isf-block[data-isf-title="Live camera + microphone showcase"]');
+if (live) await live.screenshot({ path: path.join(out, "live-media-showcase.png") });
+await page.evaluate(() => {
+    const block = Array.from(document.querySelectorAll(".isf-block")).find((b) => /Live camera/i.test(b.dataset.isfTitle || ""));
+    if (!block) return;
+    const camera = Array.from(block.querySelectorAll("button")).find((node) => /Camera on/i.test(node.textContent));
+    if (camera) camera.click();
+    const mic = Array.from(block.querySelectorAll("button")).find((node) => /Microphone on/i.test(node.textContent));
+    if (mic) mic.click();
+});
+await sleep(300);
 
 // Light theme: the same workbench must remain readable when docsify loads its
 // light addon instead of the dark one.

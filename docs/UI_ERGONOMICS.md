@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.24 · **docsify-isf:** 1.45.29
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.25 · **docsify-isf:** 1.45.31
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -23,6 +23,7 @@ checked against established editor/workbench implementations.
 | Desktop, forced colors | ![desktop forced colors](ui-audit/desktop-forced-colors.png) |
 | Desktop, RGBA picker | ![desktop color picker](ui-audit/desktop-color-picker.png) |
 | Desktop, Source More menu | ![desktop editor more](ui-audit/desktop-editor-more.png) |
+| Live media showcase | ![live camera and microphone showcase](ui-audit/live-media-showcase.png) |
 | Desktop, title bar expanded | ![desktop expanded](ui-audit/desktop-expanded.png) |
 | Desktop, shortcuts help | ![desktop help](ui-audit/desktop-help.png) |
 | Desktop, Focus preview | ![desktop focus](ui-audit/desktop-focus.png) |
@@ -365,6 +366,16 @@ The second full capture review found and fixed:
   actions require a secure context (HTTPS or localhost) and browser permission.
 - Permission denial, insecure-origin, missing-device and device-in-use failures
   are shown as actionable PUI toasts; the action remains available for retry.
+
+## 4.16 Live media showcase (1.45.31)
+
+- Added `samples/live-media.fs`: camera/image input, microphone waveform and
+  spectrum, an audio-reactive camera pulse, spectrum floor and waveform trace.
+- The UI audit now launches fake camera and microphone devices (a generated
+  440 Hz WAV) and captures the live showcase, so the committed audit proves
+  the camera stream and real audio texture path visually.
+- Without devices or permission, the sample remains animated with the built-in
+  test pattern and synthetic audio fallback.
 
 ## 4.3 Runtime cost controls
 

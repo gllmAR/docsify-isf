@@ -54,6 +54,15 @@ test pattern, your own file via **Choose image…**, or a live **Use camera**
 feed; the audio inputs use the microphone when available and fall back to a
 synthetic waveform/spectrum.
 
+### Live camera + microphone showcase
+
+[Live camera + microphone showcase](./samples/live-media.fs)
+
+Open **Parameters → Media** and click **Use camera** and **Use mic**. The camera
+feeds the ISF image input; the microphone drives the spectrum floor, waveform
+trace and camera color pulse. Without permission or devices, the test pattern
+and synthetic waveform/spectrum keep the shader alive.
+
 ### Filter — `inputImage`
 
 [Kaleidoscope filter](./samples/kaleidoscope.fs)
@@ -404,8 +413,9 @@ persist with the layout and can be overridden from the URL (`isf-res`,
 ## Live camera and microphone
 
 Media inputs are ordinary ISF inputs; the host maps a live stream onto the
-matching texture. The built-in [Input-type test card](./samples/test-card.fs)
-is the quickest way to verify both paths.
+matching texture. The [Live camera + microphone
+showcase](./samples/live-media.fs) and the built-in [Input-type test
+card](./samples/test-card.fs) are the quickest ways to verify both paths.
 
 ### 1. Serve from a secure context
 
