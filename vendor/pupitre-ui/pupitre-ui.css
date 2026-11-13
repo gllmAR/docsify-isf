@@ -273,6 +273,12 @@
 .pui[data-density="compact"] .pui-status { margin-inline-start: 0; }
 .pui[data-density="compact"] .pui-workbench-pane-title { padding: 4px 8px; }
 .pui[data-density="compact"] .pui-pane-tabs { padding-bottom: 3px; margin-bottom: 3px; }
+/* Compact is a desktop density: keep the 44 px target on coarse pointers but
+   tighten pane tabs for a mouse. The tab strip is navigation, not a form. */
+@media (pointer: fine) {
+  .pui[data-density="compact"] .pui-pane-tab { min-height: 30px; padding: 2px 7px; }
+  .pui[data-density="compact"] .pui-pane-tabs { gap: 1px; }
+}
 .pui[data-density="compact"] .pui-workbench-toolbar { gap: 4px; }
 .pui[data-density="compact"] .pui-presets { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; }
 .pui[data-density="compact"] .pui-presets-title { margin: 0; flex: 0 0 auto; font-size: calc(var(--pui-type-base) * 0.9); }
@@ -492,6 +498,8 @@
 .pui-graph-port-dot.trigger { background: var(--pui-danger); }
 .pui-graph-port-dot.control { background: var(--pui-accent); }
 .pui-graph-port-dot.param { width: 9px; height: 9px; background: var(--pui-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pui-warning) 30%, transparent); z-index: 3; }
+.pui-graph-port-dot.is-mod-input { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pui-accent) 55%, transparent); }
+.pui-graph-cable.is-tex-param-target { stroke-dasharray: 4 2; }
 .pui-graph-port-dot.vstream { background: #c792ea; }
 .pui-graph-params { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.62); font-variant-numeric: tabular-nums; }
 .pui-graph-outline { margin-top: 2px; font-size: calc(var(--pui-type-base) * 0.75); }

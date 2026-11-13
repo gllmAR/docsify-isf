@@ -848,14 +848,16 @@
     this._collectionRecordIndex = -1;
     var embedded = panel.embedded === true;
     this._pageEmbedded = embedded;
+    var showHeader = panel.header !== false;
     var panelEl = el("section", {class: "pui-panel", role: "region"});
     var panelRecord = {element: panelEl, pages: [], active: 0, pageBind: String(panel.page_bind || "")};
     this.panelRecords.push(panelRecord);
     var title = String(panel.title || panel.id || "Pupitre");
     var headingId = this.id("panel-title");
-    if (embedded) {
-      // Embedded panels are placed inside host chrome (dock, drawer, sidebar):
-      // the host owns the visible title, PUI keeps the accessible name.
+    if (embedded || !showHeader) {
+      // Embedded/host-chrome panels own their title; PUI keeps the accessible
+      // name. `header: false` is for a full workbench whose titlebar already
+      // names the app: it removes only the duplicate header, not section chrome.
       panelEl.setAttribute("aria-label", title);
     } else {
       var head = el("header", {class: "pui-header"});
@@ -2076,9 +2078,10 @@
       var portType = String(port.type || "tex");
       var dotTop = rec.metrics.headerHeight + index * rec.metrics.portRowHeight + rec.metrics.portRowHeight / 2 - 5;
       var portMeta = Graph.portMeta(type, port.id, true) || port;
-      var dot = el("span", {class: "pui-graph-port-dot " + portType, style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, "data-port-channel": String(portMeta.channel || ""), "data-port-scale": String(portMeta.scale !== undefined ? portMeta.scale : ""), tabindex: "0", role: "button"});
-      dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (portMeta.channel ? ", channel " + portMeta.channel : ""));
-      dot.title = "Input · " + portType + (portMeta.channel ? " · " + portMeta.channel : "") + (portMeta.scale !== undefined ? " · ×" + portMeta.scale : "");
+      var textureMod = Graph.textureModPorts(type).find(function (entry) { return entry.id === String(port.id); });
+      var dot = el("span", {class: "pui-graph-port-dot " + portType + (textureMod ? " is-mod-input" : ""), style: "left:-5px;top:" + dotTop + "px;", "data-node-id": id, "data-port-id": String(port.id), "data-port-kind": "input", "data-port-type": portType, "data-port-channel": String(portMeta.channel || ""), "data-port-scale": String(portMeta.scale !== undefined ? portMeta.scale : ""), "data-mod-params": textureMod ? textureMod.params.join(" ") : "", tabindex: "0", role: "button"});
+      dot.setAttribute("aria-label", "Input " + String(port.label || port.id) + " on " + nodeLabel + ", type " + portType + (portMeta.channel ? ", channel " + portMeta.channel : "") + (textureMod ? ", modulates " + textureMod.params.join(", ") + " (" + textureMod.mode + ")" : ""));
+      dot.title = "Input · " + portType + (portMeta.channel ? " · " + portMeta.channel : "") + (portMeta.scale !== undefined ? " · ×" + portMeta.scale : "") + (textureMod ? " · texture-mod " + textureMod.params.join(", ") + " (" + textureMod.mode + ")" : "");
       rec.portEls[id + ":input:" + String(port.id)] = {el: dot, type: portType, isInput: true};
       dot.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
@@ -2529,15 +2532,24 @@
       var crossType = Graph.crossType(cableType, Graph.portTypeOf(typeMap[String(toNode.type)], to.port, true));
       var cableFlow = Graph.cableFlow(cable, cableType);
       var targetParam = Graph.paramPorts(typeMap[String(toNode.type)]).find(function (port) { return String(port.id) === to.port; });
+      var targetTextureMod = !targetParam && Graph.textureModPorts(typeMap[String(toNode.type)]).find(function (port) { return String(port.id) === to.port; });
+      var targetKind = targetParam ? "param" : (targetTextureMod ? "tex_param" : "port");
+      var cableClasses = ["pui-graph-cable", "is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-")];
+      if (crossType === "pack" || crossType === "luma") cableClasses.push("is-cross-type");
+      cableClasses.push("is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-"));
+      if (targetParam) cableClasses.push("is-param-target");
+      if (targetTextureMod) cableClasses.push("is-tex-param-target");
       var path = svgEl("path", {
-        class: "pui-graph-cable is-" + String(cableType).replace(/[^a-z0-9_-]/gi, "-") + (crossType === "pack" || crossType === "luma" ? " is-cross-type" : "") + " is-flow-" + String(cableFlow).replace(/[^a-z0-9_-]/gi, "-") + (targetParam ? " is-param-target" : ""),
+        class: cableClasses.join(" "),
         "data-cable-flow": cableFlow,
         "data-cable-id": String(cable.id || ""),
         "data-cable-type": String(cableType),
-        "data-cable-target": targetParam ? "param" : "port",
+        "data-cable-target": targetKind,
+        "data-mod-params": targetTextureMod ? targetTextureMod.params.join(" ") : "",
         "data-cross-type": crossType,
         d: Graph.routePathData(route)
       });
+      if (targetTextureMod) path.setAttribute("title", "Texture modulates " + targetTextureMod.params.join(", ") + " · " + targetTextureMod.mode);
       path.addEventListener("pointerdown", function (event) {
         if (event.stopPropagation) event.stopPropagation();
         self.graphSelectCable(rec, cable);
@@ -4136,8 +4148,21 @@
     }
     var selected = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
     if (!selected.length) {
-      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? "Cable" : "Inspector"}));
+      var selectedTextureMod = null;
+      var Graph = global.PupitreGraph;
+      if (rec.selectedCable && Graph) {
+        var selectedTo = Graph.parseRef(rec.selectedCable.to);
+        if (selectedTo) {
+          var selectedTarget = (rec.graph.nodes || []).find(function (node) { return String(node.id) === selectedTo.node; });
+          var selectedType = selectedTarget ? rec.typeMap[String(selectedTarget.type)] : null;
+          selectedTextureMod = Graph.textureModPorts(selectedType).find(function (port) { return String(port.id) === selectedTo.port; }) || null;
+        }
+      }
+      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? (selectedTextureMod ? "Texture parameter" : "Cable") : "Inspector"}));
       rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: rec.selectedCable ? (rec.selectedCable.from + " → " + rec.selectedCable.to) : "Select a node or cable."}));
+      if (selectedTextureMod) {
+        rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: "Modulates " + selectedTextureMod.params.join(", ") + " · " + selectedTextureMod.mode + " · shader-side"}));
+      }
       return;
     }
     var firstType = rec.typeMap[String(selected[0].type)] || null;
@@ -15189,7 +15214,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.20",
+    version: "1.18.21",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
