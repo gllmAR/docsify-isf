@@ -415,7 +415,7 @@ the eyebrow and one-line description. Pane toggles carry decorative host glyphs 
 tooltips; labels stay visually hidden at every width. Collapsing hides the
 eyebrow/description and
 keeps a compact one-line title; the Menu, Source, Parameters and Playback
-buttons remain. This is PUI 1.18.24's `layout.titlebar` contract; the
+buttons remain. This is PUI 1.18.26's `layout.titlebar` contract; the
 host only supplies the title/description and the page's workbench document.
 The buttons are the show/hide controls for the Source and Parameters sections.
 
@@ -454,7 +454,7 @@ Density decisions:
 - The right pane's tab bar is its heading; the stage's "Preview" label is
   redundant too. Both pane titles are visually hidden but kept for accessible
   names.
-- PUI compact density puts labels beside controls; PUI 1.18.24 stretches custom
+- PUI compact density puts labels beside controls; PUI 1.18.26 stretches custom
   slots to their container and flips menu popups at the viewport edge.
 - The Parameters tab is led by the host-owned **Presets** block implemented
   with PUI's `presets`/`storage` contract. Presets are named snapshots of
@@ -463,7 +463,7 @@ Density decisions:
   and applies the stored values; delete is confirmed. The host owns values and storage;
   PUI owns the list, forms and confirmation. The preset list stays local to the
   viewer but is copied to other mounted viewers of the same shader.
-- PUI dialogs are body-hosted; PUI 1.18.24 copies the active surface/text/font
+- PUI dialogs are body-hosted; PUI 1.18.26 copies the active surface/text/font
   tokens into them, and falls back to the nearest opaque ancestor surface when
   the host intentionally makes the embedded PUI root transparent. Action
   forms, confirmations and the command palette therefore stay opaque outside
@@ -507,7 +507,7 @@ Density decisions:
 - Active pane toggles use the PUI accent border and the selected Parameters/
   View/Log tab uses an accent underline; the titlebar collapse keeps a compact
   title and removes the description only.
-- PUI 1.18.24 owns a delegated tooltip manager for flagged icon-only chrome:
+- PUI 1.18.26 owns a delegated tooltip manager for flagged icon-only chrome:
   titlebar collapse/pane/action/header-menu triggers, PUI menu triggers, the
   host HUD and the fold control. Hover waits 320 ms, focus is immediate, and a
   450 ms touch long-press shows the label without activating the button. The
