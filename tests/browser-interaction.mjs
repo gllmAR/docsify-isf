@@ -481,6 +481,28 @@ if (micCamera.camera) {
     check("camera input can be stopped", cameraOff, cameraOff);
 }
 
+// Permission failure must explain itself, not silently leave the action unchanged.
+await blockEval((block) => {
+    const button = Array.from(block.querySelectorAll("button")).find((node) => /Microphone on/i.test(node.textContent));
+    if (button) button.click();
+});
+await sleep(350);
+const permissionMessage = await page.evaluate(async () => {
+    const media = navigator.mediaDevices;
+    const original = media.getUserMedia.bind(media);
+    media.getUserMedia = () => Promise.reject(new DOMException("Permission denied", "NotAllowedError"));
+    const block = document.querySelector('.isf-block[data-isf-title="Input-type test card"]');
+    const button = block && Array.from(block.querySelectorAll("button")).find((node) => /Use mic/i.test(node.textContent));
+    if (button) button.click();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const text = Array.from(document.querySelectorAll(".pui-toast")).map((node) => node.textContent).join(" ");
+    media.getUserMedia = original;
+    return text;
+});
+check("media permission failure is explained to the user", /permission was denied/i.test(permissionMessage), permissionMessage);
+await page.screenshot({ path: path.join(artifacts, "13d-media-permission.png") });
+actions.push("13d-media-permission");
+
 // ── View and Log tabs own real host actions
 await selectTab("View");
 await sleep(250);

@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.14 · **docsify-isf:** 1.45.18
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.24 · **docsify-isf:** 1.45.29
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -363,6 +363,8 @@ The second full capture review found and fixed:
   `audio`/`audioFFT`; the synthetic waveform/spectrum remains the fallback.
 - Camera streams stop on toggle, file replacement and viewer disposal. Media
   actions require a secure context (HTTPS or localhost) and browser permission.
+- Permission denial, insecure-origin, missing-device and device-in-use failures
+  are shown as actionable PUI toasts; the action remains available for retry.
 
 ## 4.3 Runtime cost controls
 

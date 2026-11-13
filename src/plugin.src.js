@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.28
+ * docsify-isf v1.45.29
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.28";
+    var VERSION = "1.45.29";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -4350,6 +4350,29 @@
         return true;
     }
 
+    function mediaCaptureError(kind, error) {
+        if (!error) {
+            if (typeof window !== "undefined" && window.isSecureContext === false) {
+                return kind + " capture requires HTTPS or localhost. Open this page from a secure origin and allow permission.";
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                return "This browser does not expose " + kind.toLowerCase() + " capture. Use a supported browser over HTTPS or localhost.";
+            }
+            return "";
+        }
+        var name = String(error.name || "");
+        var detail = String(error.message || "").trim();
+        if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError") {
+            return kind + " permission was denied. Allow it in the browser's site settings and try again.";
+        }
+        if (name === "NotFoundError" || name === "DevicesNotFoundError") return "No " + kind.toLowerCase() + " device was found.";
+        if (name === "NotReadableError" || name === "TrackStartError") {
+            return "The " + kind.toLowerCase() + " is already in use by another application.";
+        }
+        if (name === "OverconstrainedError") return "The selected " + kind.toLowerCase() + " does not support the requested media constraints.";
+        return kind + " unavailable" + (detail ? ": " + detail : ".");
+    }
+
     function notify(level, text) {
         var message = String(text === undefined || text === null ? "" : text);
         if (!message || typeof document === "undefined" || !puiAvailable()) return false;
@@ -7064,14 +7087,12 @@
                 if (viewer.cameraState.name === name) { viewer.disableCamera(); return; }
                 viewer.disableCamera(true);
             }
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                viewer.warn("Camera capture is not available in this browser");
-                return;
-            }
+            var unavailable = mediaCaptureError("Camera");
+            if (unavailable) { viewer.warn(unavailable); viewer.notify("error", unavailable); return; }
             var constraints = { video: { facingMode: { ideal: "environment" } } };
             navigator.mediaDevices.getUserMedia(constraints).catch(function (error) {
                 // Some desktop/browser setups reject facingMode but still have a camera.
-                if (error && /facing|constraint/i.test(String(error.name || "") + " " + String(error.message || ""))) {
+                if (error && /overconstrained|constraint/i.test(String(error.name || "") + " " + String(error.message || ""))) {
                     return navigator.mediaDevices.getUserMedia({ video: true });
                 }
                 throw error;
@@ -7098,7 +7119,9 @@
                 viewer.rebuildParams();
                 viewer.notify("success", "Camera input enabled for " + name);
             }).catch(function (error) {
-                viewer.warn("Camera unavailable: " + (error && error.message ? error.message : error));
+                var message = mediaCaptureError("Camera", error);
+                viewer.warn(message);
+                viewer.notify("error", message);
             });
         };
         viewer.toggleCamera = function (name) {
@@ -7106,10 +7129,8 @@
             else viewer.enableCamera(name);
         };
         viewer.enableMicrophone = function () {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                viewer.warn("Microphone capture is not available in this browser");
-                return;
-            }
+            var unavailable = mediaCaptureError("Microphone");
+            if (unavailable) { viewer.warn(unavailable); viewer.notify("error", unavailable); return; }
             navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
                 if (viewer.disposed) {
                     stream.getTracks().forEach(function (track) { track.stop(); });
@@ -7132,7 +7153,9 @@
                 if (viewer.runtime) { viewer.runtime.needsRender = true; BUDGET.touch(viewer); }
                 viewer.notify("success", "Microphone input enabled");
             }).catch(function (error) {
-                viewer.warn("Microphone unavailable: " + (error && error.message ? error.message : error));
+                var message = mediaCaptureError("Microphone", error);
+                viewer.warn(message);
+                viewer.notify("error", message);
             });
         };
         viewer.disableMicrophone = function () {
