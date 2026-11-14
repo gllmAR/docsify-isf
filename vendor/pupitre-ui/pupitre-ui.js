@@ -1704,6 +1704,21 @@
     ]);
   };
 
+  /** A frame with members is a grouping frame; a frame with text and no
+   * members is a free-text note. A group's text is a header note badge, never
+   * body copy that can be obscured by its own nodes. */
+  Renderer.prototype.graphFrameMeta = function (frame) {
+    var isGroup = isObject(frame) && isArray(frame.members);
+    var text = isObject(frame) && frame.text !== undefined && frame.text !== null ? String(frame.text) : "";
+    return {
+      isGroup: isGroup,
+      isNote: !isGroup && !!text,
+      hasNoteBadge: isGroup && !!text,
+      memberCount: isGroup ? frame.members.length : 0,
+      text: text
+    };
+  };
+
   Renderer.prototype.graphFrameState = function (frame) {
     if (!isObject(frame)) return "";
     return JSON.stringify([Number(frame.x) || 0, Number(frame.y) || 0, Number(frame.w) || 0, Number(frame.h) || 0, String(frame.title || ""), String(frame.text || ""), frame.collapsed === true]);
@@ -2439,15 +2454,21 @@
     }
     frames.forEach(function (frame) {
       if (!isObject(frame)) return;
+      var frameMeta = self.graphFrameMeta(frame);
       var frameEl = el("div", {
-        class: "pui-graph-frame" + (isArray(frame.members) ? " is-group" : "") + (frame.text ? " is-note" : "") + (frame.collapsed === true ? " is-collapsed" : ""),
+        class: "pui-graph-frame" + (frameMeta.isGroup ? " is-group" : "") + (frameMeta.isNote ? " is-note" : "") + (frame.collapsed === true ? " is-collapsed" : ""),
         "data-frame-id": String(frame.id || ""),
-        role: frame.text ? "note" : "group",
+        role: frameMeta.isNote ? "note" : "group",
         tabindex: "0",
         style: "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;"
       });
-      frameEl.appendChild(el("span", {class: "pui-graph-frame-title", text: String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "")}));
-      if (frame.text) frameEl.appendChild(el("p", {class: "pui-graph-frame-text", text: String(frame.text)}));
+      frameEl.appendChild(el("span", {class: "pui-graph-frame-title", text: String(frame.title || "Frame") + (frameMeta.isGroup ? " · " + frameMeta.memberCount : "")}));
+      if (frameMeta.isNote) frameEl.appendChild(el("p", {class: "pui-graph-frame-text", text: frameMeta.text}));
+      if (frameMeta.hasNoteBadge) {
+        var noteBadge = el("span", {class: "pui-graph-frame-note", text: "note", title: "Note: " + frameMeta.text});
+        noteBadge.setAttribute("aria-label", "Frame note: " + frameMeta.text);
+        frameEl.appendChild(noteBadge);
+      }
       if (!block.readonly) {
         var frameToggle = el("button", {type: "button", class: "pui-graph-frame-toggle", text: frame.collapsed === true ? "+" : "−", "aria-label": (frame.collapsed === true ? "Expand" : "Collapse") + " frame " + String(frame.title || frame.id || ""), "aria-expanded": frame.collapsed === true ? "false" : "true"});
         frameToggle.addEventListener("pointerdown", function (event) { if (event.stopPropagation) event.stopPropagation(); });
@@ -5464,16 +5485,39 @@
       if (!isObject(frame)) return;
       var id = String(frame.id || "");
       if (!updateAll && !(dirtyFrames && dirtyFrames[id])) return;
+      var frameMeta = self.graphFrameMeta(frame);
       var frameEl = rec.frameEls[id];
       if (frameEl && frameEl.setAttribute) frameEl.setAttribute("style", "left:" + (Number(frame.x) || 0) + "px;top:" + (Number(frame.y) || 0) + "px;width:" + (Number(frame.w) || 0) + "px;height:" + (Number(frame.h) || 0) + "px;");
       var frameTitle = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-title") : null;
-      if (frameTitle) frameTitle.textContent = String(frame.title || "Frame") + (isArray(frame.members) ? " · " + frame.members.length : "");
+      if (frameTitle) frameTitle.textContent = String(frame.title || "Frame") + (frameMeta.isGroup ? " · " + frameMeta.memberCount : "");
       if (frameEl && frameEl.classList) {
-        frameEl.classList.toggle("is-note", !!frame.text);
+        frameEl.classList.toggle("is-group", frameMeta.isGroup);
+        frameEl.classList.toggle("is-note", frameMeta.isNote);
         frameEl.classList.toggle("is-collapsed", frame.collapsed === true);
       }
       var frameText = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-text") : null;
-      if (frameText) frameText.textContent = String(frame.text || "");
+      var noteBadge = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-note") : null;
+      if (frameMeta.isNote) {
+        if (!frameText && frameEl && frameEl.appendChild) {
+          frameText = el("p", {class: "pui-graph-frame-text"});
+          frameEl.insertBefore ? frameEl.insertBefore(frameText, frameEl.querySelector(".pui-graph-frame-toggle")) : frameEl.appendChild(frameText);
+        }
+        if (frameText) frameText.textContent = frameMeta.text;
+        if (noteBadge && noteBadge.parentNode) noteBadge.parentNode.removeChild(noteBadge);
+      } else if (frameMeta.hasNoteBadge) {
+        if (frameText && frameText.parentNode) frameText.parentNode.removeChild(frameText);
+        if (!noteBadge && frameEl && frameEl.appendChild) {
+          noteBadge = el("span", {class: "pui-graph-frame-note", text: "note"});
+          frameEl.insertBefore ? frameEl.insertBefore(noteBadge, frameEl.querySelector(".pui-graph-frame-toggle")) : frameEl.appendChild(noteBadge);
+        }
+        if (noteBadge) {
+          noteBadge.title = "Note: " + frameMeta.text;
+          noteBadge.setAttribute("aria-label", "Frame note: " + frameMeta.text);
+        }
+      } else {
+        if (frameText && frameText.parentNode) frameText.parentNode.removeChild(frameText);
+        if (noteBadge && noteBadge.parentNode) noteBadge.parentNode.removeChild(noteBadge);
+      }
       var frameToggle = frameEl && frameEl.querySelector ? frameEl.querySelector(".pui-graph-frame-toggle") : null;
       if (frameToggle) {
         frameToggle.textContent = frame.collapsed === true ? "+" : "−";
@@ -15719,7 +15763,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.30",
+    version: "1.18.31",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

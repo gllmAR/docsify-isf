@@ -476,7 +476,10 @@
 .pui-graph-content { position: absolute; inset: 0; transform-origin: 0 0; }
 .pui-graph-cables { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .pui-graph-cable { fill: none; stroke: var(--pui-muted); stroke-width: 2; opacity: 0.62; }
-.pui-graph-frame { position: absolute; border: 1px dashed var(--pui-border); border-radius: 8px; background: color-mix(in srgb, var(--pui-accent) 4%, transparent); pointer-events: auto; cursor: move; }
+.pui-graph-frame { position: absolute; z-index: 0; border: 1px dashed var(--pui-border); border-radius: 8px; background: color-mix(in srgb, var(--pui-accent) 4%, transparent); pointer-events: auto; cursor: move; }
+.pui-graph-cables { z-index: 1; }
+.pui-graph-node { z-index: 2; }
+.pui-graph-frame-note { position: absolute; top: 4px; right: 30px; max-width: 45%; padding: 0 5px; border: 1px solid color-mix(in srgb, var(--pui-warning) 50%, var(--pui-border)); border-radius: 999px; background: var(--pui-surface); color: var(--pui-warning); font-size: calc(var(--pui-type-base) * 0.58); line-height: 1.35; text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 .pui-graph-frame.is-selected { border-color: var(--pui-accent); box-shadow: 0 0 0 2px var(--pui-accent); }
 .pui-graph-frame.is-note { border-style: solid; background: color-mix(in srgb, var(--pui-warning) 9%, transparent); }
 .pui-graph-frame.is-collapsed { height: 26px !important; overflow: hidden; background: color-mix(in srgb, var(--pui-accent) 8%, var(--pui-surface)); }
