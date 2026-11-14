@@ -2418,7 +2418,7 @@
     var rec = {block: block, root: root, graph: graph, rootGraph: rootGraph, graphPath: graphPath,
       rootPath: rootPath, navStack: nav, types: types, typeMap: typeMap,
       nodeEls: {}, nodeById: {}, cableRefs: [], cableRefsByNode: {}, selected: selected, undo: [], redo: [], dragging: null,
-      wiring: null, marquee: null, selectedCable: null, graphOptions: graphOptions,
+      wiring: null, marquee: null, selectedCable: null, pinned: null, graphOptions: graphOptions,
       recentTypes: [], favoriteTypes: {}, paramEls: {}, portEls: {}, frameEls: {}, selectedFrame: null,
       collapsedNodes: {}, collapsedBodies: {}, collapsedGops: {}, materializedNodes: {}, countEl: countEl, rerouteEls: {},
       viewport: viewport, content: content, cableGroup: cableGroup,
@@ -3217,15 +3217,17 @@
     if (rec.inspector) this.renderGraphInspector(rec);
   };
 
-  Renderer.prototype.graphSetFrameField = function (rec, field, value) {
-    if (!rec.selectedFrame) return false;
+  Renderer.prototype.graphSetFrameField = function (rec, field, value, frame) {
+    var pinned = this.graphPinnedTarget(rec);
+    frame = frame || (pinned && pinned.kind === "frame" ? pinned.frame : rec.selectedFrame);
+    if (!frame) return false;
     var start = deepClone(rec.graph);
-    rec.selectedFrame[field] = value;
+    frame[field] = value;
     this.graphPushUndo(rec, start);
     var frameDirty = {};
-    frameDirty[String(rec.selectedFrame.id || "")] = true;
+    frameDirty[String(frame.id || "")] = true;
     this.updateGraphDom(rec, {frames: frameDirty});
-    this.writeGraph(rec, {op: "frame." + field, id: rec.selectedFrame.id, value: value});
+    this.writeGraph(rec, {op: "frame." + field, id: frame.id, value: value});
     return true;
   };
 
@@ -3274,9 +3276,9 @@
     }
   };
 
-  Renderer.prototype.graphFitFrame = function (rec) {
+  Renderer.prototype.graphFitFrame = function (rec, frame) {
     var self = this;
-    var frame = rec.selectedFrame;
+    frame = frame || rec.selectedFrame;
     if (!frame) return false;
     var Graph = global.PupitreGraph;
     var nodes = this.graphFrameNodes(rec, frame);
@@ -3731,9 +3733,10 @@
     return frame.id;
   };
 
-  Renderer.prototype.graphSelectFrameMembers = function (rec) {
-    if (!rec.selectedFrame) return false;
-    var ids = this.graphFrameNodes(rec, rec.selectedFrame).map(function (node) { return String(node.id); });
+  Renderer.prototype.graphSelectFrameMembers = function (rec, frame) {
+    frame = frame || rec.selectedFrame;
+    if (!frame) return false;
+    var ids = this.graphFrameNodes(rec, frame).map(function (node) { return String(node.id); });
     rec.selected = {};
     ids.forEach(function (id) { rec.selected[id] = true; });
     rec.selectedFrame = null;
@@ -4041,11 +4044,13 @@
   };
 
   Renderer.prototype.graphSetParam = function (rec, paramId, value) {
-    var ids = Object.keys(rec.selected);
+    var ids = this.graphInspectorNodeIds(rec);
     if (!ids.length) return false;
+    var selected = {};
+    ids.forEach(function (id) { selected[String(id)] = true; });
     var start = deepClone(rec.graph);
     rec.graph.nodes.forEach(function (node) {
-      if (!rec.selected[String(node.id)]) return;
+      if (!selected[String(node.id)]) return;
       var type = rec.typeMap[String(node.type)];
       if (!type || !(type.params || []).some(function (param) { return String(param.id) === String(paramId); })) return;
       node.params = isObject(node.params) ? node.params : {};
@@ -4059,11 +4064,13 @@
   };
 
   Renderer.prototype.graphSetNodeField = function (rec, field, value) {
-    var ids = Object.keys(rec.selected);
+    var ids = this.graphInspectorNodeIds(rec);
     if (!ids.length) return false;
+    var selected = {};
+    ids.forEach(function (id) { selected[String(id)] = true; });
     var start = deepClone(rec.graph);
     rec.graph.nodes.forEach(function (node) {
-      if (rec.selected[String(node.id)]) node[field] = value;
+      if (selected[String(node.id)]) node[field] = value;
     });
     this.graphPushUndo(rec, start);
     this.updateGraphDom(rec, ids);
@@ -4073,11 +4080,11 @@
   };
 
   Renderer.prototype.graphSetArity = function (rec, arity) {
-    var ids = Object.keys(rec.selected);
+    var ids = this.graphInspectorNodeIds(rec);
     if (ids.length !== 1) return false;
     var start = deepClone(rec.graph);
     rec.graph.nodes.forEach(function (node) {
-      if (rec.selected[String(node.id)]) node.arity = Math.max(1, Math.round(Number(arity) || 1));
+      if (String(node.id) === String(ids[0])) node.arity = Math.max(1, Math.round(Number(arity) || 1));
     });
     this.graphPushUndo(rec, start);
     this.writeGraph(rec, {op: "node.arity", ids: ids, value: Number(arity)});
@@ -4171,18 +4178,90 @@
     return line;
   };
 
+  /** Resolve the pinned inspector target against the current graph. A missing
+   * target silently falls back to normal selection-following behavior. */
+  Renderer.prototype.graphPinnedTarget = function (rec) {
+    if (!rec || !rec.pinned) return null;
+    if (rec.pinned.kind === "node") {
+      var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === String(rec.pinned.id); });
+      if (node) return {kind: "node", node: node, type: rec.typeMap[String(node.type)] || null};
+    } else if (rec.pinned.kind === "cable") {
+      var cable = (rec.graph.cables || []).find(function (item) { return String(item.id) === String(rec.pinned.id); });
+      if (cable) return {kind: "cable", cable: cable};
+    } else if (rec.pinned.kind === "frame") {
+      var frame = (rec.graph.frames || []).find(function (item) { return String(item.id) === String(rec.pinned.id); });
+      if (frame) return {kind: "frame", frame: frame};
+    }
+    rec.pinned = null;
+    return null;
+  };
+
+  Renderer.prototype.graphSelectionTarget = function (rec) {
+    if (rec.selectedFrame) return {kind: "frame", frame: rec.selectedFrame};
+    if (rec.selectedCable) return {kind: "cable", cable: rec.selectedCable};
+    var ids = Object.keys(rec.selected || {});
+    if (ids.length === 1) {
+      var node = (rec.graph.nodes || []).find(function (item) { return String(item.id) === ids[0]; });
+      if (node) return {kind: "node", node: node, type: rec.typeMap[String(node.type)] || null};
+    }
+    return null;
+  };
+
+  Renderer.prototype.graphSetPinned = function (rec, target) {
+    rec.pinned = target ? {kind: target.kind, id: target.kind === "node" ? String(target.node.id) : target.kind === "cable" ? String(target.cable.id) : String(target.frame.id)} : null;
+    this.renderGraphInspector(rec);
+    return true;
+  };
+
+  Renderer.prototype.graphPinTargetLabel = function (target) {
+    if (!target) return "";
+    if (target.kind === "node") return String(target.node.label || (target.type && target.type.label) || target.node.id);
+    if (target.kind === "cable") return String(target.cable.label || target.cable.from + " → " + target.cable.to);
+    return String(target.frame.title || target.frame.id || "Frame");
+  };
+
+  Renderer.prototype.graphPinBar = function (rec, pinned, selectionTarget) {
+    var self = this;
+    var bar = el("div", {class: "pui-graph-pin-bar" + (pinned ? " is-pinned" : "")});
+    if (pinned) {
+      bar.appendChild(el("span", {class: "pui-graph-pin-label", text: "Pinned · " + this.graphPinTargetLabel(pinned)}));
+      var unpin = el("button", {type: "button", class: "pui-graph-pin-button", text: "Unpin", "aria-label": "Unpin inspector from " + this.graphPinTargetLabel(pinned)});
+      unpin.addEventListener("click", function () { self.graphSetPinned(rec, null); });
+      bar.appendChild(unpin);
+    } else if (selectionTarget) {
+      var pin = el("button", {type: "button", class: "pui-graph-pin-button", text: "Pin inspector", "aria-label": "Pin inspector to " + this.graphPinTargetLabel(selectionTarget)});
+      pin.addEventListener("click", function () { self.graphSetPinned(rec, selectionTarget); });
+      bar.appendChild(pin);
+    }
+    return bar;
+  };
+
+  /** Node ids the inspector should edit: the pinned node wins over selection. */
+  Renderer.prototype.graphInspectorNodeIds = function (rec) {
+    var pinned = this.graphPinnedTarget(rec);
+    if (pinned && pinned.kind === "node") return [String(pinned.node.id)];
+    return Object.keys(rec.selected || {});
+  };
+
   Renderer.prototype.renderGraphInspector = function (rec) {
     var self = this;
     if (!rec.inspector) return;
     rec.inspector.textContent = "";
+    var pinned = this.graphPinnedTarget(rec);
+    var selectionTarget = this.graphSelectionTarget(rec);
+    var pinBar = this.graphPinBar(rec, pinned, selectionTarget);
+    if (pinned || selectionTarget) rec.inspector.appendChild(pinBar);
     if (rec.graphOptions && rec.graphOptions.inspector === "host" && typeof this.adapter.graphInspector === "function") {
       var selectedNodes = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
+      var hostNodes = pinned && pinned.kind === "node" ? [pinned.node] : selectedNodes;
       var context = {
-        node: selectedNodes.length === 1 ? selectedNodes[0] : null,
-        type: selectedNodes.length === 1 ? (rec.typeMap[String(selectedNodes[0].type)] || null) : null,
-        selected: selectedNodes,
-        frame: rec.selectedFrame || null,
-        cable: rec.selectedCable || null
+        node: pinned && pinned.kind === "node" ? pinned.node : (selectedNodes.length === 1 ? selectedNodes[0] : null),
+        type: pinned && pinned.kind === "node" ? pinned.type : (selectedNodes.length === 1 ? (rec.typeMap[String(selectedNodes[0].type)] || null) : null),
+        selected: hostNodes,
+        frame: pinned && pinned.kind === "frame" ? pinned.frame : (rec.selectedFrame || null),
+        cable: pinned && pinned.kind === "cable" ? pinned.cable : (rec.selectedCable || null),
+        pinned: !!pinned,
+        pinnedTarget: pinned ? {kind: pinned.kind, id: pinned.kind === "node" ? pinned.node.id : pinned.kind === "cable" ? pinned.cable.id : pinned.frame.id} : null
       };
       try {
         var made = this.adapter.graphInspector(rec.inspector, context, rec.block, this);
@@ -4197,8 +4276,8 @@
         return;
       }
     }
-    if (rec.selectedFrame) {
-      var frame = rec.selectedFrame;
+    if (pinned && pinned.kind === "frame" || rec.selectedFrame) {
+      var frame = pinned && pinned.kind === "frame" ? pinned.frame : rec.selectedFrame;
       rec.inspector.appendChild(el("h5", {text: String(frame.title || "Frame")}));
       rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: isArray(frame.members) ? "Group · " + frame.members.length + " members" : "Frame"}));
       var frameTitleRow = el("div", {class: "pui-graph-param"});
@@ -4222,24 +4301,25 @@
       var frameActions = el("div", {class: "pui-graph-inspector-actions"});
       if (isArray(frame.members)) {
         var selectMembers = el("button", {type: "button", class: "pui-button", text: "Select members"});
-        selectMembers.addEventListener("click", function () { self.graphSelectFrameMembers(rec); });
+        selectMembers.addEventListener("click", function () { self.graphSelectFrameMembers(rec, frame); });
         frameActions.appendChild(selectMembers);
       }
       var fit = el("button", {type: "button", class: "pui-button", text: "Fit to contents"});
-      fit.addEventListener("click", function () { self.graphFitFrame(rec); });
+      fit.addEventListener("click", function () { self.graphFitFrame(rec, frame); });
       var remove = el("button", {type: "button", class: "pui-button pui-danger", text: "Delete frame"});
-      remove.addEventListener("click", function () { self.graphDelete(rec); });
+      remove.addEventListener("click", function () { self.graphSelectFrame(rec, frame); self.graphDelete(rec); });
       frameActions.appendChild(fit);
       frameActions.appendChild(remove);
       rec.inspector.appendChild(frameActions);
       return;
     }
-    var selected = (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
+    var selected = pinned && pinned.kind === "node" ? [pinned.node] : (rec.graph.nodes || []).filter(function (node) { return rec.selected[String(node.id)]; });
     if (!selected.length) {
       var selectedTargetInfo = null;
+      var selectedCable = pinned && pinned.kind === "cable" ? pinned.cable : rec.selectedCable;
       var Graph = global.PupitreGraph;
-      if (rec.selectedCable && Graph) {
-        var selectedTo = Graph.parseRef(rec.selectedCable.to);
+      if (selectedCable && Graph) {
+        var selectedTo = Graph.parseRef(selectedCable.to);
         if (selectedTo) {
           var selectedTargetNode = (rec.graph.nodes || []).find(function (node) { return String(node.id) === selectedTo.node; });
           var selectedType = selectedTargetNode ? rec.typeMap[String(selectedTargetNode.type)] : null;
@@ -4249,8 +4329,8 @@
       var cableHeading = "Cable";
       if (selectedTargetInfo && selectedTargetInfo.kind === "param") cableHeading = "Parameter edge";
       else if (selectedTargetInfo && selectedTargetInfo.kind === "tex_param") cableHeading = "Texture parameter";
-      rec.inspector.appendChild(el("h5", {text: rec.selectedCable ? cableHeading : "Inspector"}));
-      rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: rec.selectedCable ? (rec.selectedCable.from + " → " + rec.selectedCable.to) : "Select a node or cable."}));
+      rec.inspector.appendChild(el("h5", {text: selectedCable ? cableHeading : "Inspector"}));
+      rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-empty", text: selectedCable ? (selectedCable.from + " → " + selectedCable.to) : "Select a node or cable."}));
       if (selectedTargetInfo && selectedTargetInfo.kind === "param") {
         rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: "Modulates " + selectedTargetInfo.param + " · " + selectedTargetInfo.mode + (selectedTargetInfo.amount !== undefined ? " · amount " + selectedTargetInfo.amount : "")}));
       } else if (selectedTargetInfo && selectedTargetInfo.kind === "tex_param") {
@@ -4259,7 +4339,8 @@
       return;
     }
     var firstType = rec.typeMap[String(selected[0].type)] || null;
-    rec.inspector.appendChild(el("h5", {text: selected.length > 1 ? selected.length + " nodes" : String(selected[0].label || (firstType && firstType.label) || selected[0].type)}));
+    var headingText = selected.length > 1 ? selected.length + " nodes" : String(selected[0].label || (firstType && firstType.label) || selected[0].type);
+    rec.inspector.appendChild(el("h5", {text: headingText + (pinned ? " · pinned" : "")}));
     if (firstType) rec.inspector.appendChild(el("p", {class: "pui-graph-inspector-type", text: String(firstType.label || firstType.id)}));
     var labelRow = el("div", {class: "pui-graph-param"});
     labelRow.appendChild(el("label", {text: "Label", for: rec.id ? "" : ""}));
@@ -5576,6 +5657,7 @@
       } else {
         newRec.undo = rec.undo;
         newRec.redo = rec.redo;
+        newRec.pinned = rec.pinned ? Object.assign({}, rec.pinned) : null;
         newRec.selected = rec.selected;
         newRec.selectedFrame = rec.selectedFrame;
         newRec.recentTypes = rec.recentTypes;
@@ -5596,6 +5678,7 @@
     if (newRec) {
       this.updateGraphDom(newRec);
       this.graphLayoutGraphBodies(newRec);
+      this.renderGraphInspector(newRec);
     }
     if (index >= 0) this.graphRecords.splice(index, 1);
     if (newRec && reveal) {
@@ -15604,7 +15687,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.28",
+    version: "1.18.29",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

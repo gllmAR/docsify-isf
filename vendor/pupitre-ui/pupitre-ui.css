@@ -538,6 +538,11 @@
 .pui-graph-body { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 8px; align-items: start; }
 .pui-graph-inspector { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); max-height: min(58vh, 520px); overflow: auto; }
 .pui-graph-inspector-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.pui-graph-pin-bar { display: flex; align-items: center; gap: 6px; min-height: 26px; margin-bottom: 2px; }
+.pui-graph-pin-label { flex: 1 1 auto; min-width: 0; color: var(--pui-accent); font-size: calc(var(--pui-type-base) * 0.68); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pui-graph-pin-button { flex: 0 0 auto; min-height: 28px; padding: 3px 7px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-bg); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.66); cursor: pointer; }
+.pui-graph-pin-button:hover, .pui-graph-pin-button:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
+.pui-graph-pin-bar.is-pinned { border-inline-start: 2px solid var(--pui-accent); padding-inline-start: 6px; }
 .pui-graph-frame-size { grid-template-columns: 76px 1fr 1fr; }
 .pui-graph-inspector h6 { margin: 2px 0; }
 .pui-graph-inspector h5 { font-size: calc(var(--pui-type-base) * 0.82); }
