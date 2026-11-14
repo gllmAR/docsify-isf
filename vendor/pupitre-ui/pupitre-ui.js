@@ -632,7 +632,8 @@
       this.applyFieldMeta(rec, next);
       if (rec.labelTextEl) rec.labelTextEl.textContent = this.labelText(next);
       if (rec.helpEl) {
-        if (next.help) rec.helpEl.textContent = String(next.help);
+        var helpText = rec.helpEl.querySelector ? rec.helpEl.querySelector(".pui-field-help") : rec.helpEl;
+        if (helpText && next.help) helpText.textContent = String(next.help);
         rec.helpEl.hidden = !next.help;
       }
       this.a11y(rec.control, next, rec.label, rec.inputs);
@@ -14356,8 +14357,39 @@
   Renderer.prototype.helpEl = function (field, id) {
     var textValue = String(field.help || "");
     if (!textValue) return null;
-    var node = el("p", {class: "pui-field-help", id: id + "-help", text: textValue});
-    return node;
+    var wrap = el("span", {class: "pui-field-help-wrap"});
+    var help = el("span", {class: "pui-field-help", id: id + "-help", text: textValue});
+    var toggle = el("button", {type: "button", class: "pui-help-toggle", text: "?", "aria-label": "Show help for " + this.labelText(field), "aria-expanded": "false", "aria-controls": id + "-help"});
+    var close = function () {
+      wrap.classList.remove("is-open");
+      toggle.setAttribute("aria-expanded", "false");
+      if (typeof global.document !== "undefined") global.document.removeEventListener("pointerdown", outside, true);
+      if (typeof global.document !== "undefined") global.document.removeEventListener("keydown", onKey, true);
+    };
+    var outside = function (event) {
+      if (wrap.contains && wrap.contains(event.target)) return;
+      close();
+    };
+    var onKey = function (event) {
+      if (String(event.key || "") !== "Escape") return;
+      close();
+      if (toggle.focus) toggle.focus();
+    };
+    toggle.addEventListener("click", function (event) {
+      if (event.stopPropagation) event.stopPropagation();
+      var open = !wrap.classList.contains("is-open");
+      wrap.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        if (typeof global.document !== "undefined") {
+          global.document.addEventListener("pointerdown", outside, true);
+          global.document.addEventListener("keydown", onKey, true);
+        }
+      } else close();
+    });
+    wrap.appendChild(toggle);
+    wrap.appendChild(help);
+    return wrap;
   };
 
   Renderer.prototype.labelText = function (field) {
@@ -15687,7 +15719,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.29",
+    version: "1.18.30",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

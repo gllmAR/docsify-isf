@@ -86,13 +86,16 @@
 .pui-field:last-child { border-bottom: 0; }
 .pui-field[hidden] { display: none; }
 .pui-caption { grid-column: 1; font-size: calc(var(--pui-type-base) * 0.76); font-weight: 500; color: var(--pui-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pui-field-help { grid-column: 1 / -1; margin: 0 0 2px 158px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
+.pui-field-help-wrap { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 4px; margin: 0 0 2px 158px; }
+.pui-field-help { margin: 0; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.68); }
+.pui-help-toggle { display: none; align-items: center; justify-content: center; flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 1px solid var(--pui-border); border-radius: 50%; background: var(--pui-bg); color: var(--pui-muted); font: inherit; font-size: calc(var(--pui-type-base) * 0.66); font-weight: 700; cursor: pointer; }
+.pui-help-toggle:hover, .pui-help-toggle:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
 .pui-status { grid-column: 1 / -1; margin: 0 0 2px 158px; font-size: calc(var(--pui-type-base) * 0.68); }
 .pui-control-row { grid-column: 2 / 4; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .pui-field.is-vertical { display: flex; flex-direction: column; align-items: center; max-width: 300px; width: 100%; justify-self: center; text-align: center; }
 .pui-field.is-vertical .pui-caption { white-space: normal; }
 .pui-field.is-vertical .pui-control-row { width: 100%; justify-content: center; }
-.pui-field.is-vertical .pui-field-help, .pui-field.is-vertical .pui-status { margin-left: 0; text-align: center; }
+.pui-field.is-vertical .pui-field-help-wrap, .pui-field.is-vertical .pui-field-help, .pui-field.is-vertical .pui-status { margin-left: 0; text-align: center; }
 .pui-field.pui-big-slider.is-vertical { max-width: 340px; }
 .pui-control-row > :first-child { flex: 1 1 auto; min-width: 0; }
 .pui input, .pui select, .pui textarea, .pui button {
@@ -269,6 +272,12 @@
 .pui[data-density="compact"] { --pui-row-pad: 1px; --pui-gap: 6px; --pui-type-base: 14px; font-size: 13px; }
 /* Compact inspectors use the label/control/value row; stacked fields remain
    for touch or very narrow panels. */
+.pui[data-density="compact"] .pui-field-help-wrap { position: absolute; z-index: 2; top: 50%; left: max(6px, calc(32% - 26px)); transform: translateY(-50%); margin: 0; }
+.pui[data-density="compact"] .pui-field:not(:has(.pui-caption)) .pui-field-help-wrap { left: max(6px, calc(150px - 26px)); }
+.pui[data-density="compact"] .pui-field:has(.pui-field-help-wrap) .pui-caption { padding-inline-end: 24px; }
+.pui[data-density="compact"] .pui-help-toggle { display: inline-flex; }
+.pui[data-density="compact"] .pui-field-help-wrap:not(.is-open) .pui-field-help { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.pui[data-density="compact"] .pui-field-help-wrap.is-open .pui-field-help { position: absolute; z-index: 30; left: 8px; right: 8px; top: calc(100% + 2px); width: auto; height: auto; padding: 5px 7px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); box-shadow: 0 4px 12px rgba(0,0,0,0.24); clip-path: none; white-space: normal; }
 .pui[data-density="compact"] .pui-field { grid-template-columns: minmax(84px, 32%) minmax(0, 1fr) auto; align-items: center; }
 .pui[data-density="compact"] .pui-caption,
 .pui[data-density="compact"] .pui-control-row,
