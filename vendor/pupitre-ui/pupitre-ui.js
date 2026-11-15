@@ -3838,13 +3838,23 @@
     var self = this;
     rec.presetsBar.textContent = "";
     var presets = isArray(rec.graph.presets) ? rec.graph.presets : [];
+    var open = rec.presetsBar.classList.contains("is-open");
+    var toggle = el("button", {type: "button", class: "pui-graph-presets-toggle", text: "Presets" + (presets.length ? " (" + presets.length + ")" : ""), "aria-expanded": open ? "true" : "false"});
+    toggle.addEventListener("click", function () {
+      open = !rec.presetsBar.classList.contains("is-open");
+      rec.presetsBar.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    rec.presetsBar.appendChild(toggle);
+    var body = el("div", {class: "pui-graph-presets-body"});
+    rec.presetsBar.appendChild(body);
     if (!rec.block.readonly) {
       var name = el("input", {type: "text", class: "pui-graph-preset-name", placeholder: "Preset name", "aria-label": "Preset name"});
       rec.presetName = name;
-      rec.presetsBar.appendChild(name);
+      body.appendChild(name);
       var save = el("button", {type: "button", class: "pui-button", text: "Save preset"});
       save.addEventListener("click", function () { self.graphSavePreset(rec); });
-      rec.presetsBar.appendChild(save);
+      body.appendChild(save);
     }
     presets.forEach(function (preset) {
       if (!isObject(preset)) return;
@@ -3860,7 +3870,7 @@
         });
         chip.appendChild(remove);
       }
-      rec.presetsBar.appendChild(chip);
+      body.appendChild(chip);
     });
     if (!rec.block.readonly && presets.length) {
       var morph = el("span", {class: "pui-graph-morph"});
@@ -3885,7 +3895,7 @@
       var morphButton = el("button", {type: "button", class: "pui-button", text: "Morph"});
       morphButton.addEventListener("click", function () { self.graphMorphPresets(rec, from.value, to.value); });
       morph.appendChild(morphButton);
-      rec.presetsBar.appendChild(morph);
+      body.appendChild(morph);
     }
   };
 
@@ -15763,7 +15773,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.31",
+    version: "1.18.32",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

@@ -699,6 +699,9 @@
   .pui-timeline-playhead-control input { flex: 1; width: auto; }
 }
 .pui-graph-presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; font-size: calc(var(--pui-type-base) * 0.7); }
+.pui-graph-presets-toggle { display: none; }
+.pui-graph-presets-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.pui-graph-presets-body > * { flex: 0 0 auto; }
 .pui-graph-preset-name { width: 120px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); font: inherit; padding: 3px 6px; }
 .pui-graph-preset { display: inline-flex; align-items: center; border: 1px solid var(--pui-border); border-radius: 999px; background: var(--pui-surface); overflow: hidden; }
 .pui-graph-preset-recall { border: 0; background: transparent; color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.68); padding: 2px 7px; cursor: pointer; }
@@ -1069,8 +1072,14 @@
   .pui-page-tabs .pui-tab { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
   .pui-graph-actions { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: thin; }
   .pui-graph-actions .pui-graph-add-button { flex: 0 0 auto; }
-  .pui-graph-presets { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
-  .pui-graph-presets > * { flex: 0 0 auto; }
+  .pui-graph-presets { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; }
+  .pui-graph-presets-toggle { display: flex; align-items: center; justify-content: space-between; min-height: var(--pui-touch); width: 100%; padding: 4px 8px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-bg); color: var(--pui-text); font: inherit; text-align: start; cursor: pointer; }
+  .pui-graph-presets-toggle::after { content: "▸"; color: var(--pui-muted); }
+  .pui-graph-presets-toggle[aria-expanded="true"]::after { transform: rotate(90deg); }
+  .pui-graph-presets-toggle:hover, .pui-graph-presets-toggle:focus-visible { border-color: var(--pui-accent); outline: none; }
+  .pui-graph-presets-body { display: none; flex-wrap: wrap; width: 100%; }
+  .pui-graph-presets.is-open .pui-graph-presets-body { display: flex; }
+  .pui-graph-presets-body > * { flex: 0 0 auto; }
   .pui-graph-preset-name { width: 132px; }
 }
 .pui .pui-curve-field input,
