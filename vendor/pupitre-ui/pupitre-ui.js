@@ -3887,11 +3887,31 @@
       if (presets.length > 1 && from.value === to.value) to.value = String(presets[presets.length - 1].id);
       rec.morphA = from.value;
       rec.morphB = to.value;
+      if (!(Number(rec.morphDuration) > 0)) rec.morphDuration = Number(rec.graphOptions.morph_duration) > 0 ? Number(rec.graphOptions.morph_duration) : 1;
+      if (!rec.morphEasing) rec.morphEasing = String(rec.graphOptions.morph_easing || "smoothstep");
       from.addEventListener("change", function () { rec.morphA = from.value; });
       to.addEventListener("change", function () { rec.morphB = to.value; });
       morph.appendChild(el("span", {class: "pui-graph-morph-label", text: "Morph"}));
       morph.appendChild(from);
+      morph.appendChild(el("span", {class: "pui-graph-morph-arrow", text: "→", "aria-hidden": "true"}));
       morph.appendChild(to);
+      var duration = el("input", {type: "number", class: "pui-graph-morph-duration", min: "0", step: "0.05", value: String(rec.morphDuration), "aria-label": "Morph duration in seconds"});
+      duration.title = "Interpolation time in seconds";
+      duration.addEventListener("change", function () {
+        var next = Number(duration.value);
+        rec.morphDuration = isFinite(next) && next >= 0 ? next : 1;
+        duration.value = String(rec.morphDuration);
+      });
+      morph.appendChild(duration);
+      morph.appendChild(el("span", {class: "pui-graph-morph-unit", text: "s"}));
+      var easing = el("select", {class: "pui-graph-morph-easing", "aria-label": "Morph easing"});
+      [["linear", "Linear"], ["ease_in", "Ease in"], ["ease_out", "Ease out"], ["ease_in_out", "Ease in/out"], ["smoothstep", "Smoothstep"]].forEach(function (entry) {
+        var option = el("option", {value: entry[0], text: entry[1]});
+        if (String(rec.morphEasing) === entry[0]) option.selected = true;
+        easing.appendChild(option);
+      });
+      easing.addEventListener("change", function () { rec.morphEasing = easing.value; });
+      morph.appendChild(easing);
       var morphButton = el("button", {type: "button", class: "pui-button", text: "Morph"});
       morphButton.addEventListener("click", function () { self.graphMorphPresets(rec, from.value, to.value); });
       morph.appendChild(morphButton);
@@ -3954,9 +3974,12 @@
       this.adapter.announce("warning", "Host does not expose graph morph.");
       return false;
     }
-    var result = this.adapter.graphAction({op: "preset.morph", from: String(fromId), to: String(toId), duration: 1, easing: "smoothstep"}, rec.graph, rec.block);
+    var duration = Number(rec.morphDuration);
+    if (!isFinite(duration) || duration < 0) duration = 1;
+    var easing = String(rec.morphEasing || "smoothstep");
+    var result = this.adapter.graphAction({op: "preset.morph", from: String(fromId), to: String(toId), duration: duration, easing: easing}, rec.graph, rec.block);
     if (result === false) return false;
-    this.adapter.announce("info", "Morphing " + String(from.label || fromId) + " → " + String(to.label || toId) + ".");
+    this.adapter.announce("info", "Morphing " + String(from.label || fromId) + " → " + String(to.label || toId) + " over " + duration + "s (" + easing + ").");
     return true;
   };
 
@@ -15779,7 +15802,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.33",
+    version: "1.18.34",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

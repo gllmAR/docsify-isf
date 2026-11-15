@@ -713,9 +713,12 @@
 .pui-graph-preset-recall:hover { color: var(--pui-accent); }
 .pui-graph-preset-delete { border: 0; border-inline-start: 1px solid var(--pui-border); background: transparent; color: var(--pui-muted); font: inherit; padding: 2px 6px; cursor: pointer; }
 .pui-graph-preset-delete:hover { color: var(--pui-danger); }
-.pui-graph-morph { display: inline-flex; align-items: center; gap: 4px; }
-.pui-graph-morph-label { color: var(--pui-muted); }
+.pui-graph-morph { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pui-graph-morph-label, .pui-graph-morph-unit { color: var(--pui-muted); }
+.pui-graph-morph-arrow { color: var(--pui-accent); }
 .pui-graph-morph select { max-width: 110px; }
+.pui-graph-morph-duration { width: 4.2em !important; max-width: 4.2em; padding: 2px 4px !important; }
+.pui-graph-morph-easing { max-width: 112px; }
 .pui-stage { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 10px; }
 .pui-stage-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pui-stage-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.9); }
