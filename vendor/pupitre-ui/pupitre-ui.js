@@ -423,7 +423,11 @@
     this.destroySlots();
     if (this.fieldColorRecord) this.graphCloseColorPicker(this.fieldColorRecord, true);
     var graphPick = this.graphRecords || [];
-    for (var gp = 0; gp < graphPick.length; gp++) { this.graphCloseColorPicker(graphPick[gp], true); this.graphUnbindEscape(graphPick[gp]); }
+    for (var gp = 0; gp < graphPick.length; gp++) {
+      if (graphPick[gp].inspectorSheet) this.graphSetInspectorSheet(graphPick[gp], false);
+      this.graphCloseColorPicker(graphPick[gp], true);
+      this.graphUnbindEscape(graphPick[gp]);
+    }
     this.disconnectPreviews();
     this.disconnectMeters();
     this.disconnectToolbarLayouts();
@@ -2696,10 +2700,22 @@
     viewport.appendChild(content);
     var bodyEl = el("div", {class: "pui-graph-body"});
     bodyEl.appendChild(viewport);
-    var inspector = el("aside", {class: "pui-graph-inspector", "aria-label": "Node inspector"});
+    var inspectorId = self.id("graph-inspector");
+    var inspector = el("aside", {class: "pui-graph-inspector", id: inspectorId, "aria-label": "Node inspector"});
     bodyEl.appendChild(inspector);
+    var sheetBackdrop = el("div", {class: "pui-graph-sheet-backdrop", hidden: true});
+    bodyEl.appendChild(sheetBackdrop);
+    var sheetToggle = el("button", {type: "button", class: "pui-graph-sheet-toggle", text: "Inspector", "aria-label": "Open graph inspector", "aria-expanded": "false", "aria-controls": inspectorId});
+    sheetToggle.addEventListener("click", function () { self.graphSetInspectorSheet(rec, !rec.inspectorSheet); });
+    viewport.appendChild(sheetToggle);
+    sheetBackdrop.addEventListener("click", function () { self.graphSetInspectorSheet(rec, false); });
     root.appendChild(bodyEl);
     rec.inspector = inspector;
+    rec.inspectorId = inspectorId;
+    rec.inspectorSheet = false;
+    rec.graphBody = bodyEl;
+    rec.sheetBackdrop = sheetBackdrop;
+    rec.sheetToggle = sheetToggle;
     var minimap = el("div", {class: "pui-graph-minimap", "aria-label": "Graph minimap"});
     var minimapSvg = svgEl("svg", {viewBox: "0 0 180 120", role: "img", "aria-label": "Graph minimap"});
     minimap.appendChild(minimapSvg);
@@ -3121,6 +3137,11 @@
     if (!rec || rec.escapeHandler || !global.document || !global.document.addEventListener) return;
     rec.escapeHandler = function (event) {
       if (String(event.key || "") !== "Escape" || event.defaultPrevented || !rec.root || !rec.root.isConnected) return;
+      if (rec.inspectorSheet) {
+        event.preventDefault();
+        self.graphSetInspectorSheet(rec, false);
+        return;
+      }
       if (!rec.navStack || rec.navStack.length < 2 || rec.colorPicker) return;
       var target = event.target;
       var inRoot = !!(target && rec.root.contains && rec.root.contains(target));
@@ -4302,6 +4323,12 @@
     var self = this;
     if (!rec.inspector) return;
     rec.inspector.textContent = "";
+    if (rec.inspectorSheet) {
+      var self = this;
+      var sheetClose = el("button", {type: "button", class: "pui-graph-sheet-close", text: "Close inspector", "aria-label": "Close graph inspector"});
+      sheetClose.addEventListener("click", function () { self.graphSetInspectorSheet(rec, false); });
+      rec.inspector.appendChild(sheetClose);
+    }
     var pinned = this.graphPinnedTarget(rec);
     var selectionTarget = this.graphSelectionTarget(rec);
     var pinBar = this.graphPinBar(rec, pinned, selectionTarget);
@@ -4648,6 +4675,64 @@
     });
     this._graphContextMenu = {el: menu, outside: closeOnOutside, escape: closeOnEscape, returnFocus: returnFocus || null};
     if (buttons[0]) buttons[0].focus();
+    return true;
+  };
+
+  /** Narrow-screen inspector sheet. Desktop keeps the docked inspector; this
+   * only toggles presentation and focus, never graph data. */
+  Renderer.prototype.graphSetInspectorSheet = function (rec, open) {
+    var self = this;
+    if (!rec || !rec.inspector || !rec.graphBody) return false;
+    open = !!open;
+    rec.inspectorSheet = open;
+    if (rec.graphBody.classList) rec.graphBody.classList.toggle("is-sheet-open", open);
+    if (rec.sheetBackdrop) rec.sheetBackdrop.hidden = !open;
+    if (rec.sheetToggle) {
+      rec.sheetToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      rec.sheetToggle.setAttribute("aria-label", open ? "Close graph inspector" : "Open graph inspector");
+    }
+    if (open) {
+      rec.inspector.setAttribute("role", "dialog");
+      rec.inspector.setAttribute("aria-modal", "true");
+      if (!rec.sheetKeyHandler && global.document && global.document.addEventListener) {
+        rec.sheetKeyHandler = function (event) {
+          var key = String(event.key || "");
+          if (key === "Escape") {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            self.graphSetInspectorSheet(rec, false);
+            return;
+          }
+          if (key !== "Tab") return;
+          var focusables = Array.from(rec.inspector.querySelectorAll("button, input, select, textarea, [href], [tabindex]:not([tabindex='-1'])")).filter(function (node) {
+            return !node.disabled && (!node.getAttribute || node.getAttribute("aria-hidden") !== "true");
+          });
+          if (!focusables.length) return;
+          var first = focusables[0], last = focusables[focusables.length - 1];
+          var active = global.document.activeElement;
+          if (event.shiftKey && (active === first || !rec.inspector.contains(active))) {
+            if (event.preventDefault) event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && active === last) {
+            if (event.preventDefault) event.preventDefault();
+            first.focus();
+          }
+        };
+        global.document.addEventListener("keydown", rec.sheetKeyHandler, true);
+      }
+    } else {
+      rec.inspector.removeAttribute("role");
+      rec.inspector.removeAttribute("aria-modal");
+      if (rec.sheetKeyHandler && global.document && global.document.removeEventListener) global.document.removeEventListener("keydown", rec.sheetKeyHandler, true);
+      rec.sheetKeyHandler = null;
+    }
+    this.renderGraphInspector(rec);
+    if (open) {
+      var close = rec.inspector.querySelector ? rec.inspector.querySelector(".pui-graph-sheet-close") : null;
+      if (close && close.focus) close.focus();
+    } else if (rec.sheetToggle && rec.sheetToggle.focus) {
+      rec.sheetToggle.focus();
+    }
     return true;
   };
 
@@ -5719,6 +5804,7 @@
 
   Renderer.prototype.rebuildGraph = function (rec, focusId, navStack, reveal) {
     this.closeGraphContextMenu(false);
+    if (rec && rec.inspectorSheet) this.graphSetInspectorSheet(rec, false);
     if (!rec.root || !rec.root.parentNode) return;
     this.graphCloseColorPicker(rec, false);
     this.graphUnbindEscape(rec);
@@ -15802,7 +15888,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.34",
+    version: "1.18.35",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

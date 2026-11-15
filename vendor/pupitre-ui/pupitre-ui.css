@@ -552,6 +552,7 @@
 .pui-graph-add-option { min-height: var(--pui-touch); padding: 6px 8px; text-align: start; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .pui-graph-add-option:hover, .pui-graph-add-option:focus-visible { border-color: var(--pui-accent); background: var(--pui-surface-2); outline: none; }
 .pui-graph-add-empty { margin: 4px 0; color: var(--pui-muted); }
+.pui-graph-sheet-toggle, .pui-graph-sheet-backdrop, .pui-graph-sheet-close { display: none; }
 .pui-graph-body { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 8px; align-items: start; }
 .pui-graph-inspector { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); max-height: min(58vh, 520px); overflow: auto; }
 .pui-graph-inspector-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
@@ -585,6 +586,12 @@
 @media (max-width: 760px) {
   .pui-graph-body { grid-template-columns: minmax(0, 1fr); }
   .pui-graph-inspector { max-height: none; }
+  .pui-graph-sheet-toggle { position: absolute; left: 8px; bottom: 8px; z-index: 5; display: inline-flex; align-items: center; min-height: var(--pui-touch); padding: 4px 9px; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-surface); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.72); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.24); }
+  .pui-graph-sheet-toggle:hover, .pui-graph-sheet-toggle:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
+  .pui-graph-body.is-sheet-open .pui-graph-sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 58; background: rgba(0,0,0,0.42); }
+  .pui-graph-body.is-sheet-open .pui-graph-inspector { position: fixed; z-index: 59; left: 8px; right: 8px; bottom: 8px; max-height: 72vh; overflow: auto; border-color: var(--pui-accent); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+  .pui-graph-body.is-sheet-open .pui-graph-sheet-close { display: inline-flex; align-self: flex-end; align-items: center; min-height: 32px; padding: 3px 8px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-bg); color: var(--pui-text); font: inherit; font-size: calc(var(--pui-type-base) * 0.68); cursor: pointer; }
+  .pui-graph-body.is-sheet-open .pui-graph-sheet-close:hover, .pui-graph-body.is-sheet-open .pui-graph-sheet-close:focus-visible { border-color: var(--pui-accent); color: var(--pui-accent); outline: none; }
 }
 .pui-graph-guides { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
 .pui-graph-guide-v { position: absolute; width: 1px; background: var(--pui-accent); opacity: 0.8; }
