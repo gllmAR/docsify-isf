@@ -15199,11 +15199,11 @@
       out.push({kind: "page", id: "page:" + String(rec.page.id || ""), label: String(rec.page.title || rec.page.id || "Page"), path: "#page=" + String(rec.page.id || ""), run: function () { self.navigate(rec.page.id); }});
     });
     this.records.forEach(function (rec) {
-      out.push({kind: "field", id: "field:" + rec.path, label: self.labelText(rec.block), path: rec.path, run: function () { self.focusPath(rec.path); }});
+      out.push({kind: "field", id: "field:" + rec.path, label: self.labelText(rec.block), path: rec.path, shortcut: rec.block.shortcut || "", disabled: !!rec.block.disabled, disabledReason: rec.block.disabled_reason || "Field is disabled", run: function () { self.focusPath(rec.path); }});
     });
     this.actions.forEach(function (rec) {
       var actionId = String(rec.block.id || rec.block.label || rec.block.call || rec.block.bind || "action");
-      out.push({kind: "action", id: "action:" + actionId, label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), run: function () { self.startAction(rec.block, rec.control); }});
+      out.push({kind: "action", id: "action:" + actionId, label: String(rec.block.label || rec.block.id || "Action"), path: rec.block.bind || "action:" + String(rec.block.id || ""), shortcut: rec.block.shortcut || "", disabled: !!rec.block.disabled, disabledReason: rec.block.disabled_reason || "Action is disabled", run: function () { self.startAction(rec.block, rec.control); }});
     });
     (this.workbenches || []).forEach(function (rec) {
       var layout = rec.layout || {};
@@ -15216,14 +15216,14 @@
       var titlebarActions = isObject(layout.titlebar) && isArray(layout.titlebar.actions) ? layout.titlebar.actions : [];
       titlebarActions.forEach(function (action) {
         if (!isObject(action) || !action.call) return;
-        out.push({kind: "action", id: "titlebar:" + String(action.id || action.call), label: String(action.label || action.title || action.id || "Action"), path: "action:" + String(action.id || action.call), run: function () { self.adapter.callAction(String(action.call), isObject(action.args) ? action.args : {}); }});
+        out.push({kind: "action", id: "titlebar:" + String(action.id || action.call), label: String(action.label || action.title || action.id || "Action"), path: "action:" + String(action.id || action.call), shortcut: action.shortcut || "", disabled: !!action.disabled, disabledReason: action.disabled_reason || "Action is disabled", run: function () { self.adapter.callAction(String(action.call), isObject(action.args) ? action.args : {}); }});
       });
     });
     if (typeof this.adapter.undo === "function") {
-      out.push({kind: "history", id: "history:undo", label: this.historyLabel("undo"), path: "history:undo", disabled: !this.canUndo(), run: function () { self.undo(); }});
+      out.push({kind: "history", id: "history:undo", label: this.historyLabel("undo"), path: "history:undo", shortcut: "Ctrl+Z", disabled: !this.canUndo(), disabledReason: "Nothing to undo", run: function () { self.undo(); }});
     }
     if (typeof this.adapter.redo === "function") {
-      out.push({kind: "history", id: "history:redo", label: this.historyLabel("redo"), path: "history:redo", disabled: !this.canRedo(), run: function () { self.redo(); }});
+      out.push({kind: "history", id: "history:redo", label: this.historyLabel("redo"), path: "history:redo", shortcut: "Ctrl+Shift+Z", disabled: !this.canRedo(), disabledReason: "Nothing to redo", run: function () { self.redo(); }});
     }
     return out;
   };
@@ -15274,16 +15274,22 @@
         // Hollow stars on every row read as rating controls; only mark real
         // favorites. The kind suffix already explains the command.
         if (favorite) option.appendChild(el("span", {class: "pui-palette-star", "aria-hidden": "true", text: "★"}));
-        option.appendChild(el("span", {class: "pui-palette-label", text: command.label + " · " + command.kind}));
+        var optionLabel = el("span", {class: "pui-palette-label"});
+        optionLabel.appendChild(el("span", {class: "pui-palette-title", text: command.label}));
+        optionLabel.appendChild(el("span", {class: "pui-palette-kind", text: command.kind}));
+        option.appendChild(optionLabel);
+        if (command.shortcut) option.appendChild(el("kbd", {class: "pui-palette-shortcut", text: String(command.shortcut)}));
+        if (command.disabledReason) option.appendChild(el("span", {class: "pui-palette-reason", text: String(command.disabledReason)}));
         option.setAttribute("data-pui-command", command.id);
         option.setAttribute("data-favorite", favorite ? "true" : "false");
         if (self.preferences.recent.indexOf(command.id) >= 0) option.setAttribute("data-recent", "true");
         if (command.disabled) {
-          option.disabled = true;
+          option.classList.add("is-disabled");
           option.setAttribute("aria-disabled", "true");
+          option.title = String(command.disabledReason || "Command unavailable");
         }
         option.setAttribute("aria-selected", index === active ? "true" : "false");
-        option.setAttribute("aria-label", command.label + " · " + command.kind + (favorite ? " · favorite" : "") + (self.preferences.recent.indexOf(command.id) >= 0 ? " · recent" : ""));
+        option.setAttribute("aria-label", command.label + " · " + command.kind + (command.shortcut ? ", shortcut " + command.shortcut : "") + (command.disabled ? ", unavailable: " + command.disabledReason : "") + (favorite ? " · favorite" : "") + (self.preferences.recent.indexOf(command.id) >= 0 ? " · recent" : ""));
         option.addEventListener("click", function () { choose(index); });
         list.appendChild(option);
         rows.push({button: option, command: command});
@@ -15773,7 +15779,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.32",
+    version: "1.18.33",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
