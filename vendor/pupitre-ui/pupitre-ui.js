@@ -6673,65 +6673,260 @@
     if (typeof raw === "string") {
       try { raw = JSON.parse(raw); } catch (error) { raw = null; }
     }
-    var ast = isObject(raw) && isObject(raw.ast) ? raw.ast : raw;
-    var body = isArray(ast) ? ast : (isObject(ast) && isArray(ast.body) ? ast.body : []);
-    var Logic = global.PupitreLogic || null;
+    var source = isObject(raw) && isObject(raw.ast) ? raw.ast : raw;
+    var ast = isArray(source) ? {version: 1, body: source} : (isObject(source) ? source : {version: 1, body: []});
+    if (!isArray(ast.body)) ast.body = [];
     var label = String(block.label || block.id || "Logic");
     var root = el("section", {class: "pui-logic", "data-pui-logic": path, role: "group", "aria-label": label});
-    var head = el("div", {class: "pui-logic-head"});
-    head.appendChild(el("h4", {text: label}));
-    head.appendChild(el("span", {class: "pui-logic-count", text: body.length + " block" + (body.length === 1 ? "" : "s")}));
-    if (isObject(ast) && ast.version !== undefined) head.appendChild(el("span", {class: "pui-logic-version", text: "v" + String(ast.version)}));
-    root.appendChild(head);
-    if (!body.length) {
-      root.appendChild(el("p", {class: "pui-logic-empty", text: "No logic blocks."}));
-      return root;
+    var selectedId = null;
+    var exprOps = ["+", "-", "*", "/", "%", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or"];
+    var exprCalls = {sin: 1, cos: 1, tan: 1, asin: 1, acos: 1, atan: 1, sqrt: 1, abs: 1, floor: 1, ceil: 1, round: 1, exp: 1, log: 1, sign: 1, fract: 1, min: 2, max: 2, pow: 2, step: 2, atan2: 2, clamp: 3, lerp: 3, if: 3};
+    var blockTypes = ["if", "repeat", "while", "let", "return", "expression"];
+
+    function clone(value) { return JSON.parse(JSON.stringify(value)); }
+    function newBlock(type) {
+      var id = "b" + Math.random().toString(36).slice(2, 8);
+      if (type === "if") return {id: id, type: type, condition: {op: ">", left: {ref: "input", name: "a"}, right: {ref: "input", name: "b"}}, then: [], else: []};
+      if (type === "repeat") return {id: id, type: type, count: {value: 4}, body: []};
+      if (type === "while") return {id: id, type: type, condition: {value: 1}, limit: 8, body: []};
+      if (type === "let") return {id: id, type: type, name: "x", value: {value: 0}};
+      if (type === "return") return {id: id, type: type, value: {value: 0}};
+      return {id: id, type: type, value: {value: 0}};
     }
-    var seen = [];
-    var list = el("ol", {class: "pui-logic-blocks"});
-    var renderStatements = function (statements, parent, depth) {
-      (isArray(statements) ? statements : []).forEach(function (statement) {
-        if (!isObject(statement) || seen.indexOf(statement) >= 0 || depth > 24) return;
-        seen.push(statement);
-        var item = el("li", {class: "pui-logic-block", "data-block-id": String(statement.id || ""), "data-block-type": String(statement.type || statement.kind || "")});
-        var title = String(statement.label || (Logic ? Logic.statementTitle(statement) : self.logicStatementTitle(statement)));
-        var button = el("button", {type: "button", class: "pui-logic-block-title", text: title, "aria-label": title});
-        if (statement.id !== undefined) button.setAttribute("data-block-id", String(statement.id));
-        button.addEventListener("click", function (event) {
-          if (event.stopPropagation) event.stopPropagation();
-          item.classList.add("is-selected");
-          if (typeof self.adapter.logicAction === "function") {
-            try { self.adapter.logicAction({op: "block.select", id: statement.id === undefined ? null : String(statement.id), type: String(statement.type || statement.kind || ""), block: statement}, ast, block); }
-            catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
-          }
+    function findBlock(statements, id) {
+      for (var i = 0; i < (statements || []).length; i++) {
+        var statement = statements[i];
+        if (String(statement.id) === String(id)) return {list: statements, index: i, block: statement};
+        var branches = [statement.then, statement.else, statement.body];
+        for (var b = 0; b < branches.length; b++) {
+          var found = findBlock(branches[b], id);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    function commit(next, selectId, op) {
+      next = isArray(next) ? {version: 1, body: next} : next;
+      if (path && self.setPath(path, next, block) === false) {
+        self.adapter.announce("error", "Logic AST was rejected by the host.");
+        return false;
+      }
+      ast = next;
+      selectedId = selectId || null;
+      if (typeof self.adapter.logicAction === "function") {
+        try { self.adapter.logicAction({op: op || "block.set", path: path, ast: next, blockId: selectedId}, next, block); }
+        catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
+      }
+      draw();
+      return true;
+    }
+    function drawExpression(expr, onChange, depth) {
+      depth = depth || 0;
+      var box = el("span", {class: "pui-logic-expression"});
+      if (depth > 4) {
+        box.appendChild(el("span", {class: "pui-logic-expression-truncated", text: "…"}));
+        return box;
+      }
+      var kind = "value";
+      if (isArray(expr)) kind = "value";
+      else if (isObject(expr)) {
+        if (expr.ref !== undefined || expr.kind === "input" || expr.kind === "var") kind = (expr.ref || expr.kind) === "var" ? "var" : "input";
+        else if (expr.op !== undefined) kind = "op";
+        else if (expr.call !== undefined) kind = "call";
+        else if (expr.value !== undefined) kind = "value";
+      }
+      var select = el("select", {class: "pui-logic-expr-kind", "aria-label": "Expression kind"});
+      [["value", "Number"], ["input", "Input"], ["var", "Variable"], ["op", "Operator"], ["call", "Function"]].forEach(function (entry) {
+        var option = el("option", {value: entry[0], text: entry[1]});
+        if (kind === entry[0]) option.selected = true;
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        if (select.value === "input") onChange({ref: "input", name: "a"});
+        else if (select.value === "var") onChange({ref: "var", name: "x"});
+        else if (select.value === "op") onChange({op: "+", left: {value: 0}, right: {value: 0}});
+        else if (select.value === "call") onChange({call: "clamp", args: [{value: 0}, {value: 0}, {value: 1}]});
+        else onChange({value: 0});
+      });
+      box.appendChild(select);
+      if (kind === "input") {
+        var input = el("select", {class: "pui-logic-expr-input", "aria-label": "Logic input"});
+        [["a", "A"], ["b", "B"]].forEach(function (entry) {
+          var option = el("option", {value: entry[0], text: entry[1]});
+          if (String(expr && expr.name || "a") === entry[0]) option.selected = true;
+          input.appendChild(option);
         });
+        input.addEventListener("change", function () { onChange({ref: "input", name: input.value}); });
+        box.appendChild(input);
+      } else if (kind === "var") {
+        var variable = el("input", {type: "text", class: "pui-logic-expr-var", "aria-label": "Variable name"});
+        variable.value = String(expr && expr.name || "x");
+        variable.addEventListener("change", function () { onChange({ref: "var", name: variable.value || "x"}); });
+        box.appendChild(variable);
+      } else if (kind === "op") {
+        var op = el("select", {class: "pui-logic-expr-op", "aria-label": "Operator"});
+        exprOps.forEach(function (entry) {
+          var option = el("option", {value: entry, text: entry});
+          if (String(expr && expr.op) === entry) option.selected = true;
+          op.appendChild(option);
+        });
+        op.addEventListener("change", function () { onChange({op: op.value, left: expr.left || {value: 0}, right: expr.right || {value: 0}}); });
+        box.appendChild(op);
+        box.appendChild(drawExpression(expr && expr.left, function (left) { onChange({op: expr.op, left: left, right: expr.right}); }, depth + 1));
+        box.appendChild(drawExpression(expr && expr.right, function (right) { onChange({op: expr.op, left: expr.left, right: right}); }, depth + 1));
+      } else if (kind === "call") {
+        var call = el("select", {class: "pui-logic-expr-call", "aria-label": "Function"});
+        Object.keys(exprCalls).forEach(function (name) {
+          var option = el("option", {value: name, text: name});
+          if (String(expr && expr.call) === name) option.selected = true;
+          call.appendChild(option);
+        });
+        call.addEventListener("change", function () {
+          var args = [];
+          for (var i = 0; i < exprCalls[call.value]; i++) args.push({value: 0});
+          onChange({call: call.value, args: args});
+        });
+        box.appendChild(call);
+        (expr && expr.args || []).forEach(function (arg, index) {
+          box.appendChild(drawExpression(arg, function (next) {
+            var args = (expr.args || []).slice();
+            args[index] = next;
+            onChange({call: expr.call, args: args});
+          }, depth + 1));
+        });
+      } else {
+        var value = el("input", {type: "number", class: "pui-logic-expr-value", step: "any", "aria-label": "Number"});
+        value.value = String(expr && expr.value !== undefined ? expr.value : 0);
+        value.addEventListener("change", function () { onChange({value: Number(value.value) || 0}); });
+        box.appendChild(value);
+      }
+      return box;
+    }
+    function drawAdd(parentList, afterSelected) {
+      var add = el("span", {class: "pui-logic-add"});
+      var select = el("select", {class: "pui-logic-add-type", "aria-label": "Block type"});
+      blockTypes.forEach(function (type) { select.appendChild(el("option", {value: type, text: type})); });
+      var button = el("button", {type: "button", class: "pui-logic-add-button", text: "+ Add"});
+      button.addEventListener("click", function () {
+        var next = clone(ast);
+        var added = newBlock(select.value);
+        var found = afterSelected && selectedId ? findBlock(next.body, selectedId) : null;
+        if (found) found.list.splice(found.index + 1, 0, added);
+        else next.body.push(added);
+        commit(next, added.id, "block.add");
+      });
+      add.appendChild(select);
+      add.appendChild(button);
+      return add;
+    }
+    function drawEditor() {
+      var found = selectedId ? findBlock(ast.body, selectedId) : null;
+      if (!found) return null;
+      var editor = el("div", {class: "pui-logic-editor"});
+      var heading = el("div", {class: "pui-logic-editor-head"});
+      heading.appendChild(el("strong", {text: String(found.block.type || found.block.kind || "block")}));
+      var actions = el("span", {class: "pui-logic-editor-actions"});
+      var up = el("button", {type: "button", class: "pui-button", text: "↑", "aria-label": "Move block up"});
+      up.disabled = found.index === 0;
+      up.addEventListener("click", function () {
+        var next = clone(ast); var current = findBlock(next.body, selectedId); if (!current || current.index === 0) return;
+        current.list.splice(current.index - 1, 0, current.list.splice(current.index, 1)[0]); commit(next, selectedId, "block.move");
+      });
+      var down = el("button", {type: "button", class: "pui-button", text: "↓", "aria-label": "Move block down"});
+      down.disabled = found.index === found.list.length - 1;
+      down.addEventListener("click", function () {
+        var next = clone(ast); var current = findBlock(next.body, selectedId); if (!current || current.index >= current.list.length - 1) return;
+        current.list.splice(current.index + 1, 0, current.list.splice(current.index, 1)[0]); commit(next, selectedId, "block.move");
+      });
+      var remove = el("button", {type: "button", class: "pui-button pui-danger", text: "Delete", "aria-label": "Delete block"});
+      remove.addEventListener("click", function () {
+        var next = clone(ast); var current = findBlock(next.body, selectedId); if (!current) return;
+        current.list.splice(current.index, 1); commit(next, null, "block.delete");
+      });
+      actions.appendChild(up); actions.appendChild(down); actions.appendChild(remove);
+      heading.appendChild(actions);
+      editor.appendChild(heading);
+      var block = found.block;
+      if (block.type === "let" || block.type === "set") {
+        var name = el("input", {type: "text", class: "pui-logic-name", "aria-label": "Variable name"});
+        name.value = String(block.name || "x");
+        name.addEventListener("change", function () { var next = clone(ast); findBlock(next.body, selectedId).block.name = name.value || "x"; commit(next, selectedId, "block.update"); });
+        editor.appendChild(el("label", {class: "pui-logic-edit-row", text: "Variable "}));
+        editor.appendChild(name);
+      }
+      if (block.type === "if" || block.type === "while") {
+        editor.appendChild(el("span", {class: "pui-logic-edit-label", text: "Condition"}));
+        editor.appendChild(drawExpression(block.condition, function (condition) { var next = clone(ast); findBlock(next.body, selectedId).block.condition = condition; commit(next, selectedId, "block.update"); }));
+      }
+      if (block.type === "repeat") {
+        editor.appendChild(el("span", {class: "pui-logic-edit-label", text: "Count"}));
+        editor.appendChild(drawExpression(block.count, function (count) { var next = clone(ast); findBlock(next.body, selectedId).block.count = count; commit(next, selectedId, "block.update"); }));
+      }
+      if (block.type === "while") {
+        var limit = el("input", {type: "number", min: "0", max: "256", class: "pui-logic-limit", "aria-label": "Loop limit"});
+        limit.value = String(block.limit === undefined ? 8 : block.limit);
+        limit.addEventListener("change", function () { var next = clone(ast); findBlock(next.body, selectedId).block.limit = Math.max(0, Math.min(256, Number(limit.value) || 0)); commit(next, selectedId, "block.update"); });
+        editor.appendChild(el("span", {class: "pui-logic-edit-label", text: "Limit"}));
+        editor.appendChild(limit);
+      }
+      if (block.type === "return" || block.type === "expression" || block.type === "let" || block.type === "set") {
+        editor.appendChild(el("span", {class: "pui-logic-edit-label", text: "Value"}));
+        editor.appendChild(drawExpression(block.value, function (value) { var next = clone(ast); findBlock(next.body, selectedId).block.value = value; commit(next, selectedId, "block.update"); }));
+      }
+      editor.appendChild(drawAdd(found.list, true));
+      return editor;
+    }
+    function drawList(statements) {
+      var list = el("ol", {class: "pui-logic-blocks"});
+      (isArray(statements) ? statements : []).forEach(function (statement) {
+        if (!isObject(statement)) return;
+        var item = el("li", {class: "pui-logic-block" + (String(statement.id) === String(selectedId) ? " is-selected" : ""), "data-block-id": String(statement.id || ""), "data-block-type": String(statement.type || statement.kind || "")});
+        var title = String(statement.label || (global.PupitreLogic ? global.PupitreLogic.statementTitle(statement) : self.logicStatementTitle(statement)));
+        var button = el("button", {type: "button", class: "pui-logic-block-title", text: title, "aria-label": title});
         button.addEventListener("dblclick", function (event) {
           if (event.preventDefault) event.preventDefault();
           if (typeof self.adapter.logicAction === "function") {
-            try { self.adapter.logicAction({op: "block.edit", id: statement.id === undefined ? null : String(statement.id), type: String(statement.type || statement.kind || ""), block: statement}, ast, block); }
+            try { self.adapter.logicAction({op: "block.edit", id: statement.id, type: String(statement.type || ""), block: statement}, ast, block); }
             catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
           }
         });
+        button.addEventListener("click", function () {
+          selectedId = String(statement.id);
+          if (typeof self.adapter.logicAction === "function") {
+            try { self.adapter.logicAction({op: "block.select", id: statement.id, type: String(statement.type || ""), block: statement}, ast, block); }
+            catch (error) { self.adapter.announce("error", "Logic action failed: " + String(error && error.message || error)); }
+          }
+          draw();
+        });
         item.appendChild(button);
-        var children = [];
-        if (isArray(statement.then)) children.push({label: "", items: statement.then});
-        if (isArray(statement.else)) children.push({label: "else", items: statement.else});
-        if (isArray(statement.body)) children.push({label: "", items: statement.body});
-        if (isArray(statement.statements)) children.push({label: "", items: statement.statements});
-        if (isArray(statement.children)) children.push({label: "", items: statement.children});
-        children.forEach(function (branch) {
+        var branches = [];
+        if (isArray(statement.then)) branches.push({label: "", items: statement.then});
+        if (isArray(statement.else)) branches.push({label: "else", items: statement.else});
+        if (isArray(statement.body)) branches.push({label: "", items: statement.body});
+        branches.forEach(function (branch) {
           var branchEl = el("div", {class: "pui-logic-branch"});
           if (branch.label) branchEl.appendChild(el("span", {class: "pui-logic-branch-label", text: branch.label}));
-          var childList = el("ol", {class: "pui-logic-blocks"});
-          renderStatements(branch.items, childList, depth + 1);
-          if (childList.childNodes.length) branchEl.appendChild(childList);
+          branchEl.appendChild(drawList(branch.items));
           item.appendChild(branchEl);
         });
-        parent.appendChild(item);
+        list.appendChild(item);
       });
-    };
-    renderStatements(body, list, 0);
-    root.appendChild(list);
+      return list;
+    }
+    function draw() {
+      root.textContent = "";
+      var head = el("div", {class: "pui-logic-head"});
+      head.appendChild(el("h4", {text: label}));
+      head.appendChild(el("span", {class: "pui-logic-count", text: (ast.body || []).length + " block" + ((ast.body || []).length === 1 ? "" : "s")}));
+      if (ast.version !== undefined) head.appendChild(el("span", {class: "pui-logic-version", text: "v" + String(ast.version)}));
+      root.appendChild(head);
+      if (!(ast.body || []).length) root.appendChild(el("p", {class: "pui-logic-empty", text: "No logic blocks."}));
+      root.appendChild(drawList(ast.body));
+      var editor = drawEditor();
+      if (editor) root.appendChild(editor);
+      root.appendChild(drawAdd(ast.body, false));
+    }
+    draw();
     return root;
   };
 
@@ -15916,7 +16111,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.36",
+    version: "1.18.38",
     create: create,
     validate: validate,
     validateStructured: validateStructured,

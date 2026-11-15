@@ -281,6 +281,9 @@
 .pui[data-density="compact"] .pui-field:not(:has(.pui-caption)) .pui-field-help-wrap { left: max(6px, calc(150px - 26px)); }
 .pui[data-density="compact"] .pui-field:has(.pui-field-help-wrap) .pui-caption { padding-inline-end: 24px; }
 .pui[data-density="compact"] .pui-help-toggle { display: inline-flex; }
+@media (pointer: coarse), (max-width: 640px) {
+  .pui[data-density="compact"] .pui-help-toggle { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
+}
 .pui[data-density="compact"] .pui-field-help-wrap:not(.is-open) .pui-field-help { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .pui[data-density="compact"] .pui-field-help-wrap.is-open .pui-field-help { position: absolute; z-index: 30; left: 8px; right: 8px; top: calc(100% + 2px); width: auto; height: auto; padding: 5px 7px; border: 1px solid var(--pui-border); border-radius: 4px; background: var(--pui-surface); color: var(--pui-text); box-shadow: 0 4px 12px rgba(0,0,0,0.24); clip-path: none; white-space: normal; }
 .pui[data-density="compact"] .pui-field { grid-template-columns: minmax(84px, 32%) minmax(0, 1fr) auto; align-items: center; }
@@ -1019,6 +1022,22 @@
 .pui-logic-branch { margin: 3px 0 0 10px; }
 .pui-logic-branch-label { display: block; margin: 0 0 2px 4px; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.64); text-transform: uppercase; letter-spacing: 0.04em; }
 .pui-logic-empty { margin: 4px 0 0; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.72); }
+.pui-logic-add { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
+.pui-logic-add-type { width: auto; min-height: 26px; padding: 2px 4px; }
+.pui-logic-add-button { min-height: 26px; padding: 2px 7px; }
+.pui-logic-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; padding: 6px; border: 1px solid var(--pui-border); border-radius: 5px; background: var(--pui-bg); }
+.pui-logic-editor-head { display: flex; flex: 1 0 100%; align-items: center; justify-content: space-between; gap: 6px; }
+.pui-logic-editor-actions { display: flex; gap: 3px; }
+.pui-logic-edit-label { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); }
+.pui-logic-edit-row { color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); }
+.pui-logic-expression { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; min-width: 0; }
+.pui-logic-expression select, .pui-logic-expression input { width: auto; min-height: 26px; padding: 2px 4px; }
+.pui-logic-expr-kind { max-width: 90px; }
+.pui-logic-expr-input { max-width: 48px; }
+.pui-logic-expr-var { max-width: 80px; }
+.pui-logic-expr-value { width: 5em !important; }
+.pui-logic-limit { width: 5em !important; }
+.pui-logic-name { width: 8em !important; }
 .pui-code { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 8px; }
 .pui-code-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .pui-code-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.85); }
