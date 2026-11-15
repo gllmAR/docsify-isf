@@ -726,6 +726,10 @@
 .pui-graph-morph select { max-width: 110px; }
 .pui-graph-morph-duration { width: 4.2em !important; max-width: 4.2em; padding: 2px 4px !important; }
 .pui-graph-morph-easing { max-width: 112px; }
+.pui-graph-morph-status { flex: 1 1 100%; margin: 0; color: var(--pui-muted); font-size: calc(var(--pui-type-base) * 0.66); }
+.pui-graph-morph-status.is-error, .pui-graph-morph-status.is-failed { color: var(--pui-danger); }
+.pui-graph-morph-status.is-done { color: var(--pui-success, #56c596); }
+.pui-graph-morph-progress { flex: 1 1 100%; width: 100%; height: 8px; }
 .pui-stage { border: 1px solid var(--pui-border); border-radius: var(--pui-radius); background: var(--pui-surface); padding: 10px; }
 .pui-stage-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pui-stage-head h4 { margin: 0; font-size: calc(var(--pui-type-base) * 0.9); }

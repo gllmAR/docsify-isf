@@ -1852,9 +1852,11 @@
     }, this);
     var oldPresets = rec.presetsSignature || "[]";
     var oldBookmarks = rec.bookmarksSignature || "[]";
+    var oldMorph = rec.morphSignature || "null";
     var nextPresets = JSON.stringify(next.presets || []);
     var nextBookmarks = JSON.stringify(next.view && next.view.bookmarks || []);
-    if (!changed && next === rec.graph && next.rev === rec.appliedGraphRev && oldPresets === nextPresets && oldBookmarks === nextBookmarks) return false;
+    var nextMorph = JSON.stringify(next.morph || null);
+    if (!changed && next === rec.graph && next.rev === rec.appliedGraphRev && oldPresets === nextPresets && oldBookmarks === nextBookmarks && oldMorph === nextMorph) return false;
     rec.graph = next;
     rec.types = types;
     rec.typeMap = {};
@@ -1865,13 +1867,14 @@
     rec.appliedGraphRev = next.rev;
     rec.presetsSignature = nextPresets;
     rec.bookmarksSignature = nextBookmarks;
+    rec.morphSignature = nextMorph;
     rec.nodeById = {};
     (next.nodes || []).forEach(function (node) { if (isObject(node)) rec.nodeById[String(node.id || "")] = node; });
     if (changed) this.updateGraphDom(rec, {nodes: dirtyNodes, frames: dirtyFrames});
     if (Object.keys(dirtyFrames).length) { this.graphRefreshCollapsed(rec); this.graphCull(rec); }
     this.graphRefreshIssues(rec);
     this.graphUpdateCount(rec);
-    if (oldPresets !== nextPresets) this.graphRenderPresets(rec);
+    if (oldPresets !== nextPresets || oldMorph !== nextMorph) this.graphRenderPresets(rec);
     if (oldBookmarks !== nextBookmarks) this.graphRenderBookmarks(rec);
     var mountedInspector = rec.selectedFrame ? dirtyFrames[String(rec.selectedFrame.id || "")] : Object.keys(rec.selected || {}).some(function (id) { return dirtyNodes[id]; });
     if (mountedInspector && rec.inspector) this.renderGraphInspector(rec);
@@ -3897,11 +3900,12 @@
       var morph = el("span", {class: "pui-graph-morph"});
       var from = el("select", {"aria-label": "Morph from preset"});
       var to = el("select", {"aria-label": "Morph to preset"});
+      from.appendChild(el("option", {value: "$current", text: "Current state"}));
       presets.forEach(function (preset) {
         from.appendChild(el("option", {value: String(preset.id), text: String(preset.label || preset.id)}));
         to.appendChild(el("option", {value: String(preset.id), text: String(preset.label || preset.id)}));
       });
-      if (presets.some(function (preset) { return String(preset.id) === String(rec.morphA); })) from.value = String(rec.morphA);
+      if (rec.morphA === "$current" || presets.some(function (preset) { return String(preset.id) === String(rec.morphA); })) from.value = String(rec.morphA);
       else from.value = String(presets[0].id);
       if (presets.some(function (preset) { return String(preset.id) === String(rec.morphB); })) to.value = String(rec.morphB);
       else to.value = String(presets[presets.length - 1].id);
@@ -3933,10 +3937,31 @@
       });
       easing.addEventListener("change", function () { rec.morphEasing = easing.value; });
       morph.appendChild(easing);
+      var morphState = isObject(rec.graph.morph) ? rec.graph.morph : null;
       var morphButton = el("button", {type: "button", class: "pui-button", text: "Morph"});
+      if (morphState && String(morphState.status || "") === "morphing") {
+        morphButton.disabled = true;
+        morphButton.title = "A morph is already running";
+      }
       morphButton.addEventListener("click", function () { self.graphMorphPresets(rec, from.value, to.value); });
       morph.appendChild(morphButton);
       body.appendChild(morph);
+      if (morphState) {
+        var status = String(morphState.status || "idle");
+        var fromLabel = morphState.from === "$current" || morphState.from === null ? "Current state" : String((presets.find(function (preset) { return String(preset.id) === String(morphState.from); }) || {}).label || morphState.from || "preset");
+        var toLabel = String((presets.find(function (preset) { return String(preset.id) === String(morphState.to); }) || {}).label || morphState.to || "preset");
+        var progress = Number(morphState.progress);
+        var statusLine = el("p", {class: "pui-graph-morph-status is-" + status, role: "status", "aria-live": "polite"});
+        if (status === "morphing") statusLine.textContent = "Morphing " + fromLabel + " → " + toLabel + (isFinite(progress) ? " · " + Math.round(progress * 100) + "%" : "");
+        else if (status === "done") statusLine.textContent = "Morph complete: " + fromLabel + " → " + toLabel;
+        else if (status === "failed") statusLine.textContent = "Morph failed" + (morphState.error ? ": " + String(morphState.error) : "");
+        else statusLine.textContent = "Morph idle";
+        rec.presetsBar.appendChild(statusLine);
+        if (status === "morphing" && isFinite(progress)) {
+          var progressEl = el("progress", {class: "pui-graph-morph-progress", max: "1", value: String(Math.max(0, Math.min(1, progress))), "aria-label": "Morph progress"});
+          rec.presetsBar.appendChild(progressEl);
+        }
+      }
     }
   };
 
@@ -3989,18 +4014,21 @@
 
   Renderer.prototype.graphMorphPresets = function (rec, fromId, toId) {
     if (rec.block.readonly) return false;
-    var from = (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (preset) { return String(preset.id) === String(fromId); });
+    var current = String(fromId) === "$current";
+    var from = current ? null : (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (preset) { return String(preset.id) === String(fromId); });
     var to = (isArray(rec.graph.presets) ? rec.graph.presets : []).find(function (preset) { return String(preset.id) === String(toId); });
-    if (!from || !to || typeof this.adapter.graphAction !== "function") {
+    if ((!from && !current) || !to || typeof this.adapter.graphAction !== "function") {
       this.adapter.announce("warning", "Host does not expose graph morph.");
       return false;
     }
     var duration = Number(rec.morphDuration);
     if (!isFinite(duration) || duration < 0) duration = 1;
     var easing = String(rec.morphEasing || "smoothstep");
-    var result = this.adapter.graphAction({op: "preset.morph", from: String(fromId), to: String(toId), duration: duration, easing: easing}, rec.graph, rec.block);
+    var intent = {op: "preset.morph", from: current ? null : String(fromId), to: String(toId), duration: duration, easing: easing};
+    if (current) intent.source = "current";
+    var result = this.adapter.graphAction(intent, rec.graph, rec.block);
     if (result === false) return false;
-    this.adapter.announce("info", "Morphing " + String(from.label || fromId) + " → " + String(to.label || toId) + " over " + duration + "s (" + easing + ").");
+    this.adapter.announce("info", "Morphing " + (current ? "current state" : String(from.label || fromId)) + " → " + String(to.label || toId) + " over " + duration + "s (" + easing + ").");
     return true;
   };
 
@@ -15888,7 +15916,7 @@
   }
 
   global.PupitreUI = {
-    version: "1.18.35",
+    version: "1.18.36",
     create: create,
     validate: validate,
     validateStructured: validateStructured,
