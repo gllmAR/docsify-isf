@@ -1,6 +1,6 @@
 # UI ergonomics audit — ISF workbench
 
-**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.26 · **docsify-isf:** 1.45.31
+**Scope:** docsify-isf viewer workbench · **Updated:** 2026-11-03 · **PUI:** 1.18.38 · **docsify-isf:** 1.45.44
 **Captures:** [`ui-audit/`](ui-audit/) · **Reproduce:** `node tools/ui-audit.mjs`
 
 This audit covers the embedded workbench, not the surrounding Docsify page. It
@@ -376,6 +376,17 @@ The second full capture review found and fixed:
   the camera stream and real audio texture path visually.
 - Without devices or permission, the sample remains animated with the built-in
   test pattern and synthetic audio fallback.
+
+## 4.17 Secure contexts and microphone activation (1.45.44)
+
+- Documented the browser secure-context matrix: HTTPS and HTTP localhost allow
+  media; arbitrary HTTP LAN origins are blocked and cannot be bypassed in JS.
+- Added the Chrome dev-only insecure-origin override and HTTPS deployment
+  guidance. The interaction test asserts `http://127.0.0.1` is a secure media
+  context.
+- Microphone `AudioContext` creation/resume now happens during the click
+  gesture, before the async `getUserMedia` result, preventing suspended/silent
+  analyser data. The trusted keyboard test is stable across repeated runs.
 
 ## 4.3 Runtime cost controls
 

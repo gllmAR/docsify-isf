@@ -134,6 +134,11 @@ page.on("pageerror", (error) => errors.push("pageerror: " + error.message));
 await page.setViewport({ width: 1280, height: 1000, deviceScaleFactor: 1 });
 await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
 await page.waitForFunction(() => document.querySelectorAll(".isf-workbench").length >= 12, { timeout: 30000 });
+const mediaContext = await page.evaluate(() => ({
+    secure: window.isSecureContext,
+    media: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+}));
+check("HTTP localhost is a secure media context", mediaContext.secure && mediaContext.media, mediaContext);
 await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: "center" }), selector);
 await sleep(1400);
 
@@ -420,10 +425,16 @@ const micCamera = await blockEval((block) => {
     };
 });
 if (micCamera.mic) {
-    await blockEval((block) => {
+    const micFocused = await blockEval((block) => {
         const button = Array.from(block.querySelectorAll("button")).find((node) => /Use mic/i.test(node.textContent));
-        if (button) button.click();
+        if (!button) return false;
+        button.scrollIntoView({ block: "center" });
+        button.focus();
+        return true;
     });
+    if (micFocused) {
+        await page.keyboard.press("Enter");
+    }
     await sleep(1600);
     await capture("13b-microphone");
     const micState = await blockEval((block) => {

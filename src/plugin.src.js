@@ -1,5 +1,5 @@
 /*!
- * docsify-isf v1.45.43
+ * docsify-isf v1.45.44
  * Interactive Shader Format (ISF) viewer for Docsify.
  *
  * Converts markdown links to `.fs` files into interactive WebGL viewers with
@@ -48,7 +48,7 @@
     /* @isf-core:inject — the vendored kernel bundle and adapter are generated here by tools/build.mjs */
     /* @pupitre-ui:inject — the vendored PUI renderer, ISF adapter and CSS are generated here by tools/build.mjs */
 
-    var VERSION = "1.45.43";
+    var VERSION = "1.45.44";
     var VIEWER_SEQ = 0;
     var SCRIPT_SRC = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
     var PUI_BASE = "";
@@ -7131,19 +7131,23 @@
         viewer.enableMicrophone = function () {
             var unavailable = mediaCaptureError("Microphone");
             if (unavailable) { viewer.warn(unavailable); viewer.notify("error", unavailable); return; }
+            var Context = window.AudioContext || window.webkitAudioContext;
+            if (!Context) {
+                var unsupported = "Web Audio is not available in this browser";
+                viewer.warn(unsupported); viewer.notify("error", unsupported);
+                return;
+            }
+            // Create/resume the audio context during the click gesture. Waiting
+            // until the getUserMedia promise resolves loses activation on some
+            // browsers and leaves the analyser silent.
+            var context = new Context();
+            if (context.state === "suspended" && context.resume) context.resume().catch(function () { /* best effort */ });
             navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
                 if (viewer.disposed) {
                     stream.getTracks().forEach(function (track) { track.stop(); });
+                    context.close();
                     return;
                 }
-                var Context = window.AudioContext || window.webkitAudioContext;
-                if (!Context) {
-                    stream.getTracks().forEach(function (track) { track.stop(); });
-                    viewer.warn("Web Audio is not available in this browser");
-                    return;
-                }
-                var context = new Context();
-                if (context.state === "suspended" && context.resume) context.resume().catch(function () { /* gesture may be required */ });
                 var analyser = context.createAnalyser();
                 analyser.fftSize = 2048;
                 analyser.smoothingTimeConstant = 0.75;
@@ -7153,6 +7157,7 @@
                 if (viewer.runtime) { viewer.runtime.needsRender = true; BUDGET.touch(viewer); }
                 viewer.notify("success", "Microphone input enabled");
             }).catch(function (error) {
+                try { context.close(); } catch (closeError) { /* ignore */ }
                 var message = mediaCaptureError("Microphone", error);
                 viewer.warn(message);
                 viewer.notify("error", message);

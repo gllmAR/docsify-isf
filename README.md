@@ -262,9 +262,9 @@ renderer, the source editor/import surface, the View controls and the ISF
 values.
 
 The workbench title bar labels the shader with an ISF **eyebrow**, its
-**title** and ISF **description**, and adds a PUI 1.18.26 **collapsible title
+**title** and ISF **description**, and adds a PUI 1.18.38 **collapsible title
 bar**, compact by default. Pane toggles and direct actions are icon-only (`</>`, `⚙`, `▶`,
-fullscreen, focus, reset, share, menu) with accessible names. PUI 1.18.26 gives
+fullscreen, focus, reset, share, menu) with accessible names. PUI 1.18.38 gives
 them hover/focus tooltips and a touch long-press label; the long press never
 activates the control. Active panes use the accent state. The description is one ellipsized line by default,
 so the identity row stays compact. Collapsing
@@ -297,7 +297,7 @@ Only one Parameters pane is open across viewers at a time, so panels never stack
 another open one.
 
 The renderer/adapter are vendored from the clean PUI **1.18.7** release
-(commit `cfed590`, upstream tag `v1.18.26`). The workbench titlebar contract
+(commit `5766f7e`, upstream tag `v1.18.38`). The workbench titlebar contract
 (`description`, collapsible heading, controls retained) is upstream in
 `spec/WORKBENCH.md`; no host
 positioning or title-bar CSS is required. Before PUI mounts — and when a shader
@@ -419,10 +419,30 @@ card](./samples/test-card.fs) are the quickest ways to verify both paths.
 
 ### 1. Serve from a secure context
 
-`getUserMedia` requires **HTTPS or localhost** and browser permission. It is
-not available from `file://`, a plain-HTTP LAN address, or an iframe without
-`allow="camera; microphone"`. OBS browser sources may also block media capture;
-use OBS capture sources when running inside OBS.
+`getUserMedia` requires a **secure context** and browser permission:
+
+| Origin | Camera / microphone |
+|---|---|
+| `https://…` | Yes, after permission |
+| `http://localhost`, `http://127.0.0.1`, `http://[::1]` | Yes, after permission |
+| `http://192.168.…` or any plain-HTTP hostname | **Blocked by the browser** |
+| `file://` | Blocked |
+| iframe / OBS browser source | Requires explicit permission policy and a secure parent |
+
+This is a browser security boundary, not a docsify-isf setting. The only reliable
+way to use live media over a LAN is to serve the page over **HTTPS** (real
+certificate, local CA/mkcert, Caddy, or a tunnel). For development only, Chrome
+can opt a specific HTTP origin into the secure context:
+
+```bash
+chrome --unsafely-treat-insecure-origin-as-secure=http://192.168.1.42:3000 \
+  --user-data-dir=/tmp/docsify-isf-chrome http://192.168.1.42:3000/
+```
+
+Without a secure context, **Choose image…** still loads files and audio still
+uses the synthetic waveform/spectrum; live camera/microphone capture has no
+JavaScript workaround. OBS browser sources should use an OBS capture source when
+they block media.
 
 ### 2. Connect the webcam
 
@@ -497,7 +517,7 @@ The media action now reports its failure as a PUI toast:
   `point2D`/`color` components stay in range. Out-of-range typing is corrected
   on change and flagged with `aria-invalid` while editing.
 - The workbench titlebar shows the shader **title** and ISF **description**.
-  Its collapse control (PUI 1.18.26) hides the description and keeps a compact
+  Its collapse control (PUI 1.18.38) hides the description and keeps a compact
   title, the function buttons, pane toggles and Header menu. The Menu is the home for fullscreen,
   reset, randomize, export, share, help and source.
 - **Source** (left) and **Parameters** (right) are independently shown/hidden
@@ -522,14 +542,14 @@ The media action now reports its failure as a PUI toast:
   shader share the list without a reload.
 - PUI dialogs (save/confirm/palette) copy the active PUI surface/text/font
   tokens, so they remain opaque on host pages whose tokens live on the PUI
-  root. This is PUI 1.18.26.
+  root. This is PUI 1.18.38.
 - The titlebar defaults to the compact 41 px identity row; expanding it restores
   the ISF eyebrow and one-line description. The Source header keeps only the
   compile dot + `Ln x, Col y` and the secondary More menu; the Source toolbar is
   one row (fold, Fragment/Vertex, Apply). The fold no longer freezes the editor
   width or height: the code follows pane resizes and scrolls internally.
 - PUI's compact parameter density renders labels beside controls (one row per
-  scalar), with `Presets` above. PUI 1.18.26 stretches custom slots and clamps
+  scalar), with `Presets` above. PUI 1.18.38 stretches custom slots and clamps
   menu popovers at the viewport edge.
 - Larger input sets are grouped into type disclosures (Media, Color, Geometry,
   Values, Constants) with a persisted open state; `GROUP`/`input.group` wins
